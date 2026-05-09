@@ -47,6 +47,38 @@ glossary, useful for bilingual workflows):
 python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite
 ```
 
+### Picking up new / missing Oracc projects
+
+`download_corpus.py` only knows about zips that are listed on the public
+[`/json/`](https://oracc.museum.upenn.edu/json/) download index. Oracc keeps
+adding new sub-projects, and a few are only reachable via the per-project
+`/{project}/json.zip` URL pattern instead of the index. To audit and pull
+anything we don't have yet:
+
+```bash
+# Just probe — list anything reachable on Oracc that's not in corpus/.
+python3 find_missing_corpora.py
+
+# Probe + download any reachable-but-missing zips, with zip-validity check
+# (Oracc occasionally returns a 200 + HTML error page when a project's
+# archive isn't built yet; bogus responses are detected and discarded).
+python3 find_missing_corpora.py --fetch
+
+# Optional: write a structured JSON report alongside the human one.
+python3 find_missing_corpora.py --json data/missing_corpora.json
+```
+
+After fetching new zips, rebuild the indexes so they pick up the new content:
+
+```bash
+python3 build_text_index.py
+python3 build_collocations.py    # only if you use the find_collocations MCP tool
+```
+
+`find_missing_corpora.py` reuses `download_corpus.py`'s SSL setup and
+resume-safe download, so the fetch is polite to Oracc's small academic
+server.
+
 ## Use as an MCP server (English → Sumerian translation tools for an LLM)
 
 The repo ships an MCP server exposing ten tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
@@ -104,6 +136,7 @@ Errors get full tracebacks. The startup banner reports loaded DB sizes so you ca
 |---|---|
 | **Code** | |
 | `download_corpus.py` | Stdlib-only batch downloader; resume-safe; auto-fetches the InCommon TLS intermediate that Oracc's server omits. |
+| `find_missing_corpora.py` | Audit tool: HEAD-probes every project in Oracc's `projects.json` against `corpus/`, lists what's reachable but missing. `--fetch` flag downloads them (with zip-validity check). |
 | `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, morphology, and instances. |
 | `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` and per-text catalogue metadata, builds `text_index.sqlite`. |
 | `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
