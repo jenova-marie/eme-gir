@@ -12,6 +12,7 @@ A workspace for **reverse-engineering and parsing the Oracc / ePSD2 (electronic 
 - `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · ePSD2" with `static/img/jenova.png`.
 - `text_resolver.py` — resolves glossary `word_ref` strings (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual line of Sumerian text by lazy-loading the right `corpusjson/{P-id}.json` from inside its zip. LRU-cached per-text.
 - `cuneify.py` — converts Oracc transliteration (`{d}lugal`, `lu₂-gal`, `peš₁₀-peš₁₀-e\l`) into Unicode cuneiform glyphs (𒀭𒈗, 𒇽𒃲, 𒁁𒁁𒂊). Loads the OGSL sign list from `corpus/ogsl.zip` once at import; exposed as a Jinja `cuneify` filter. ~93% of glossary spellings render with full glyph coverage.
+- `mcp_server.py` — MCP (Model Context Protocol) server exposing the corpus to LLM agents over stdio. Five tools: `translate_english`, `lookup_entry`, `see_examples`, `find_compound`, `cuneify`. Designed for English→Sumerian translation workflows; every candidate carries `sense_count` + `sense_pct` so the agent can distinguish "the word for X" from "X is a fringe meaning of this word".
 - `build_text_index.py` — scans every project zip in `corpus/` for `*/corpusjson/P*.json` files and builds `text_index.sqlite`, a `(project, text_id) → (zip_path, member_path)` map. Takes ~2 s for the full 208 zips.
 - `corpus/` — 208 zip files (~3.1 GB), one per Oracc project; this is the bulk dataset
 - `glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
@@ -51,6 +52,9 @@ sqlite3 -header -column glossary.sqlite "SELECT cf, gw, pos, icount FROM entries
 # Run the local Oracc-style glossary browser
 python3 app.py                # http://127.0.0.1:5050/epsd2/sux
 python3 app.py --port 8000 --debug
+
+# Run the MCP server (stdio; for use with Claude Desktop / Code MCP config)
+python3 mcp_server.py
 ```
 
 Dependencies: `ijson` (`pip install ijson`) — uses the C backend (`yajl2_c`) automatically when available. Everything else is stdlib.
@@ -193,6 +197,36 @@ Routes:
 Sumerian alphabetical sorting is implemented in `sort_key()` in `app.py`. Bumping `SORT_VERSION` triggers a one-shot re-population of the `letter` and `sort_key` columns on the next startup. Search-helper substitutions (`j→ŋ`, `sz→š`, `s,→ṣ`, `t,→ṭ`, digits → subscripts, `'→ʾ`) are applied to the `?q=` param in `normalize_query()`.
 
 Templates use **Oracc's own CSS** by linking the absolute `https://oracc.museum.upenn.edu/css/p4.css` etc. — so the look matches without us hosting any styles. If you want to detach for offline use, mirror those CSS files into `static/` and update `templates/base.html`.
+
+## MCP server (`mcp_server.py`)
+
+Exposes the corpus to LLM agents via the Model Context Protocol over stdio. Built with `mcp` Python SDK's `FastMCP`. Bias: every tool that returns lemma candidates returns BOTH `sense_count` (raw frequency of *this sense*) and `sense_pct` (what % of the entry's total uses are this sense), so the agent can rank "the word for X" above "X is a fringe meaning of this word" — see the discussion in CLAUDE history.
+
+Tools:
+
+| Tool | Purpose |
+|---|---|
+| `translate_english(query, limit)` | Rank Sumerian candidates for an English word. Hits both entry guide-words and per-sense meanings. Sorted by `sense.icount DESC`. |
+| `lookup_entry(oid)` | Full structured view: senses, top spellings (with cuneiform glyphs), periods, compounds. |
+| `see_examples(oid, limit, period)` | Real attested lines via `text_resolver`, target word marked. |
+| `find_compound(english_phrase)` | Find idiomatic Sumerian compound expressions for an English phrase. |
+| `cuneify(spelling)` | Render Oracc transliteration as Unicode cuneiform glyphs. |
+
+Sanity-checks `glossary.sqlite` and `text_index.sqlite` exist on startup; bails with a hint if not. Also requires the `app.py` casefold migration to have run (checks `meta.casefold_version`). Run order from cold: `download_corpus.py` → `build_text_index.py` → `build_glossary_db.py` → `python3 app.py` (once, to populate casefold + sort columns) → `python3 mcp_server.py`.
+
+To wire into Claude Code or Claude Desktop, add to the user's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "epsd2": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["/Users/jenova/projects/jenova-marie/epsd2/mcp_server.py"]
+    }
+  }
+}
+```
 
 ## Cuneiform rendering (`cuneify.py`)
 

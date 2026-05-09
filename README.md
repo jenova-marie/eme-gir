@@ -18,8 +18,8 @@ All Oracc data is released under CC0 (per each project's `metadata.json`); the c
 ## Setup
 
 ```bash
-# 1. Install the only third-party dependency
-pip install ijson flask
+# 1. Install dependencies
+pip install ijson flask mcp
 
 # 2. Download the entire Oracc JSON corpus (~3.1 GB, ~2 minutes on a fast link)
 python3 download_corpus.py
@@ -30,18 +30,34 @@ python3 build_text_index.py
 # 4. Build the Sumerian glossary index (~3.5 minutes)
 python3 build_glossary_db.py
 
-# 5. Run the web app
+# 5. Run the web app (also populates two one-shot SQLite migrations on first hit)
 python3 app.py
 # -> http://127.0.0.1:5050/epsd2/sux
 ```
-
-That's it. On first request, `app.py` runs two one-shot SQLite migrations (Sumerian-correct sort order + precomputed casefolded search columns) that take a few seconds each.
 
 To rebuild the glossary for a different project (e.g. the Akkadian glossary):
 
 ```bash
 python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db rinap_akk.sqlite
 ```
+
+## Use as an MCP server (English → Sumerian translation tools for an LLM)
+
+The repo also ships an MCP server exposing five tools designed for agent-driven English-to-Sumerian translation. Add to your Claude Desktop / Claude Code MCP config:
+
+```json
+{
+  "mcpServers": {
+    "epsd2": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["/path/to/this/repo/mcp_server.py"]
+    }
+  }
+}
+```
+
+Tools available to the agent: `translate_english`, `lookup_entry`, `see_examples`, `find_compound`, `cuneify`. Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
 
 ---
 
@@ -55,6 +71,7 @@ python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.jso
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | Loads OGSL on first use, exposes a Jinja `cuneify` filter. Tokenizes Oracc transliteration (determinatives, hyphen-joiners, compound graphemes, morphology tails) and renders Unicode cuneiform. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing five tools for agents over stdio. |
 | `static/img/jenova.png` | Header avatar / favicon. |
 | `corpus/` | Generated. 208 `.zip` files (~3.1 GB). Gitignored. |
 | `glossary.sqlite` | Generated. ~3.4 GB indexed extract of the Sumerian glossary. Gitignored. |
