@@ -2,6 +2,8 @@
 corpus/
 glossary.sqlite
 glossary.sqlite-*
+text_index.sqlite
+text_index.sqlite-*
 
 # Logs
 *.log

@@ -9,9 +9,13 @@ A workspace for **reverse-engineering and parsing the Oracc / ePSD2 (electronic 
 - `index.html`, `js/p4.js`, `js/p4cbd.js` — frontend files scraped from the live site, used to reverse-engineer the URL/API surface (jQuery is intentionally not vendored)
 - `download_corpus.py` — pulls the full set of `.zip` archives from `https://oracc.museum.upenn.edu/json/` into `corpus/`
 - `build_glossary_db.py` — streams a `gloss-{lang}.json` from inside its zip into a queryable SQLite index (`glossary.sqlite` by default). Uses ijson (yajl2_c backend) for constant-memory parsing.
-- `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs.
+- `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · ePSD2" with `static/img/jenova.png`.
+- `text_resolver.py` — resolves glossary `word_ref` strings (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual line of Sumerian text by lazy-loading the right `corpusjson/{P-id}.json` from inside its zip. LRU-cached per-text.
+- `build_text_index.py` — scans every project zip in `corpus/` for `*/corpusjson/P*.json` files and builds `text_index.sqlite`, a `(project, text_id) → (zip_path, member_path)` map. Takes ~2 s for the full 208 zips.
 - `corpus/` — 208 zip files (~3.1 GB), one per Oracc project; this is the bulk dataset
 - `glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
+- `text_index.sqlite` — ~6 MB index of 139,455 `(project, text_id)` pairs across all corpus zips, enabling instant text→zip lookup. ~92% of glossary instance refs are resolvable from local zips. Rebuild with `python3 build_text_index.py`.
+- `static/img/jenova.png` — header avatar (128×128, 24 KB) and favicon
 - `.incommon_intermediate.pem` — cached TLS intermediate cert (see "TLS gotcha" below); do not delete
 
 **Data license:** All Oracc JSON data is released under **CC0** (per each project's `metadata.json`). No attribution required, but customary.
@@ -36,6 +40,9 @@ unzip -p corpus/epsd2.zip epsd2/metadata.json | python3 -m json.tool
 python3 build_glossary_db.py
 # Build for a different language / project
 python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db rinap_akk.sqlite
+
+# Build the text-location index across all 208 zips (needed for attestation rendering)
+python3 build_text_index.py
 
 # Query the glossary
 sqlite3 -header -column glossary.sqlite "SELECT cf, gw, pos, icount FROM entries WHERE cf='lugal';"
@@ -186,11 +193,34 @@ Sumerian alphabetical sorting is implemented in `sort_key()` in `app.py`. Bumpin
 
 Templates use **Oracc's own CSS** by linking the absolute `https://oracc.museum.upenn.edu/css/p4.css` etc. — so the look matches without us hosting any styles. If you want to detach for offline use, mirror those CSS files into `static/` and update `templates/base.html`.
 
+## Attestation rendering (`text_resolver.py`)
+
+Entry detail pages show real Sumerian transliteration with the target word highlighted, pulled live from `corpusjson/{P-id}.json` inside the right project zip via a two-stage lookup:
+
+1. `parse_word_ref("epsd2/admin/ur3:P113959.10.3")` → `(project, text_id, line_n, word_n)`
+2. `_lookup(project, text_id)` queries `text_index.sqlite` → `(zip_path, member_path)`
+3. `_load_corpusjson(...)` opens the zip, parses JSON, depth-first walks the `cdl` tree
+4. Collects all `l`/`d` nodes whose `ref` starts with `{text_id}.{line_n}.` → those are the words on this line, in order
+5. Marks the word whose `ref == target_ref` as `is_target=True`
+
+Caching: `_load_corpusjson` is `@lru_cache(maxsize=512)`. Corpus texts are typically small (a few KB to a few hundred KB), so 512 cached parses ≈ a few hundred MB of RAM. Page-render latency stays at ~37 ms for warm-cache hits.
+
+`resolve_many(refs, limit=N)` deduplicates by `(project, text_id, line_n)`, so a word that appears 100x in the same line shows up once. The entry route over-fetches (500 raw refs) and lets the resolver pick up to 20 unique lines.
+
+Failure modes (all handled silently — return `None`):
+
+- Text not in any local zip (~8% of glossary refs cite projects we don't have)
+- Empty / malformed corpusjson file (`json.JSONDecodeError`, `BadZipFile`, `KeyError`)
+- Stale ref pointing at a line/word that no longer exists in the current corpus
+
+When *all* attestations fail to resolve, the entry page falls back to showing a small sample of raw `word_ref` strings.
+
 Known scope cutoffs (deliberate, for the MVP):
 
 - No determinative superscripts on spellings yet (`ŋeš`, `kuš`, `na₄` etc. — they're in the JSON's form structure, just not captured by the parser).
-- No textual attestation rendering yet — entry detail shows `word_ref` strings only. Resolving them needs the `corpusjson/{P-id}.json` files inside each project's zip; walk the `cdl` tree to the matching `ref`.
+- Composite-text refs (Q-ids) not handled by the regex; only P-ids.
 - No KWIC / sentence / line context-engine, no distribution profiles, no sign info.
+- No English translation pulled from sibling translation files yet.
 - The tiny page-2/3 ordering discrepancies vs Oracc.
 
 ## TLS gotcha (important for any HTTPS code)
