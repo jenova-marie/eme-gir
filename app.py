@@ -19,6 +19,7 @@ from pathlib import Path
 
 from flask import Flask, abort, g, redirect, render_template, request, url_for
 
+import cuneify as _cuneify
 import text_resolver
 
 ROOT = Path(__file__).resolve().parent
@@ -181,6 +182,7 @@ def create_app() -> Flask:
     bootstrap.close()
 
     app = Flask(__name__)
+    app.jinja_env.filters["cuneify"] = _cuneify.cuneify
 
     @app.teardown_appcontext
     def _close(_exc):

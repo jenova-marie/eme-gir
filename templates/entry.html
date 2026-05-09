@@ -16,7 +16,11 @@
 {% block content %}
 <div class="ce" id="p4CEcbdcontent">
   <div class="cbd-article">
-    <h1 class="article-headword">
+    <h1 class="article-headword" style="display:flex; align-items:baseline; gap:0.5em; flex-wrap:wrap;">
+      {% set headword_cuneiform = entry.cf | cuneify %}
+      {% if headword_cuneiform and '□' not in headword_cuneiform %}
+      <span style="font-family:'Noto Sans Cuneiform','Akkadian',serif; font-size:1.4em; line-height:1;" title="cuneiform: {{ entry.cf }}">{{ headword_cuneiform }}</span>
+      {% endif %}
       <span class="cf">{{ entry.cf }}</span>
       [<span class="gw">{{ entry.gw|upper }}</span>]
       <span class="cf">{{ entry.pos }}</span>
@@ -80,12 +84,16 @@
     {% if forms %}
     <h2>Spellings ({{ forms|length }})</h2>
     <table class="forms-table" style="border-collapse: collapse;">
-      <thead><tr><th style="text-align:left; padding:0.2em 1em 0.2em 0;">spelling</th>
+      <thead><tr>
+        <th style="text-align:left; padding:0.2em 1em 0.2em 0;">cuneiform</th>
+        <th style="text-align:left; padding:0.2em 1em 0.2em 0;">spelling</th>
         <th style="text-align:right; padding:0.2em 1em 0.2em 0;">count</th>
-        <th style="text-align:right;">%</th></tr></thead>
+        <th style="text-align:right;">%</th>
+      </tr></thead>
       <tbody>
         {% for f in forms %}
         <tr>
+          <td style="font-family:'Noto Sans Cuneiform','Akkadian',serif; font-size:1.6em; line-height:1; padding-right:1em; min-width:3em;">{{ f.n | cuneify }}</td>
           <td><span class="wr"><span class="w sux"><span class="sux">{{ f.n }}</span></span></span></td>
           <td style="text-align:right; padding-right:1em;">{{ f.icount or 0 }}</td>
           <td style="text-align:right; opacity:0.6;">{{ f.ipct or 0 }}%</td>
