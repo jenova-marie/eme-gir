@@ -56,7 +56,25 @@ def _lookup(project: str, text_id: str) -> tuple[str, str] | None:
         ).fetchone()
     finally:
         con.close()
-    return tuple(row) if row else None
+    return (row[0], row[1]) if row else None
+
+
+def text_metadata(project: str, text_id: str) -> dict[str, str | None]:
+    """Return {period, designation} for a (project, text_id), or empty if unknown."""
+    if not TEXT_INDEX_DB.exists():
+        return {"period": None, "designation": None}
+    con = sqlite3.connect(TEXT_INDEX_DB)
+    try:
+        row = con.execute(
+            "SELECT period, designation FROM text_locations "
+            "WHERE project=? AND text_id=?",
+            (project, text_id),
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return {"period": None, "designation": None}
+    return {"period": row[0], "designation": row[1]}
 
 
 @functools.lru_cache(maxsize=512)
@@ -147,6 +165,7 @@ def resolve_word_ref(word_ref: str) -> dict | None:
     if not line_words and not line_label:
         return None  # nothing matched — likely a stale ref
 
+    meta = text_metadata(project, text_id)
     return {
         "raw_ref": word_ref,
         "project": project,
@@ -155,6 +174,8 @@ def resolve_word_ref(word_ref: str) -> dict | None:
         "line_n": line_n,
         "target_ref": target_ref,
         "words": line_words,
+        "period": meta["period"],
+        "designation": meta["designation"],
     }
 
 

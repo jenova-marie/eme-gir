@@ -16,10 +16,13 @@ import time
 import zipfile
 from pathlib import Path
 
+import ijson
+
 # Project prefix may be multi-level (e.g. "epsd2/admin/ur3/corpusjson/P12345.json")
 # so we capture everything up to "/corpusjson/" — that prefix is exactly the
 # project path used in the glossary's word_ref strings.
 CORPUSJSON_RE = re.compile(r"^(.+)/corpusjson/(P\d+)\.json$")
+CATALOGUE_RE = re.compile(r"^(.+)/catalogue\.json$")
 
 SCHEMA = """
 CREATE TABLE text_locations (
@@ -27,10 +30,13 @@ CREATE TABLE text_locations (
     text_id     TEXT NOT NULL,      -- e.g., "P405162"
     zip_path    TEXT NOT NULL,      -- relative path to the project zip
     member_path TEXT NOT NULL,      -- full path inside the zip
+    period      TEXT,               -- attestation period from project catalogue (e.g., "Ur III", "Old Babylonian")
+    designation TEXT,               -- publication-style citation (e.g., "YOS 14, 341")
     PRIMARY KEY (project, text_id)
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_text_locations_text_id ON text_locations(text_id);
+CREATE INDEX idx_text_locations_period  ON text_locations(period);
 """
 
 
@@ -62,23 +68,47 @@ def main() -> int:
 
     for zp in zips:
         rows = []
+        catalogue_members: dict[str, str] = {}  # project -> catalogue.json member path
         with zipfile.ZipFile(zp) as z:
             for name in z.namelist():
                 m = CORPUSJSON_RE.match(name)
                 if m:
                     project, text_id = m.groups()
-                    rows.append((project, text_id, str(zp), name))
+                    rows.append([project, text_id, str(zp), name, None, None])
+                    continue
+                m = CATALOGUE_RE.match(name)
+                if m:
+                    catalogue_members[m.group(1)] = name
+
+            # Stream-read each project's catalogue.json for period + designation.
+            # Catalogues can be 100MB+ (epsd2 itself is 76MB), so use ijson.kvitems
+            # to stay constant-memory.
+            cat_meta: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+            for proj, member in catalogue_members.items():
+                try:
+                    with z.open(member) as f:
+                        for tid, meta in ijson.kvitems(f, "members"):
+                            if isinstance(meta, dict):
+                                cat_meta[(proj, tid)] = (
+                                    meta.get("period"),
+                                    meta.get("designation"),
+                                )
+                except (KeyError, ijson.JSONError):
+                    pass
+
+        # Splice catalogue metadata onto rows
+        for r in rows:
+            r[4], r[5] = cat_meta.get((r[0], r[1]), (None, None))
+
         if rows:
-            # OR IGNORE keeps the first hit deterministically (sorted zip iter).
-            # Different sub-projects can hold the same P-id under different
-            # project paths; the (project, text_id) PK preserves both.
             cur.executemany(
-                "INSERT OR IGNORE INTO text_locations VALUES (?,?,?,?)", rows
+                "INSERT OR IGNORE INTO text_locations VALUES (?,?,?,?,?,?)", rows
             )
             inserted = cur.rowcount
             dupes += len(rows) - inserted
             con.commit()
-            print(f"  {zp.name:<40} {len(rows):>6,} texts ({inserted:,} new)")
+            with_period = sum(1 for r in rows if r[4])
+            print(f"  {zp.name:<40} {len(rows):>6,} texts ({inserted:,} new, {with_period:,} with period)")
             total += inserted
 
     con.close()
