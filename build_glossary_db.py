@@ -50,6 +50,16 @@ CREATE TABLE compounds (
     PRIMARY KEY (entry_id, xcpd)
 ) WITHOUT ROWID;
 
+CREATE TABLE morphology (
+    cbd_id   TEXT PRIMARY KEY,    -- e.g., "o0023086.207"; globally unique within glossary
+    entry_id TEXT NOT NULL,       -- the entry this morpheme belongs to
+    kind     TEXT NOT NULL,       -- one of: morph, morph2, stem, base, prefix, form-sans
+    n        TEXT NOT NULL,       -- the morpheme pattern (e.g., "~", "mu.na:~", "a₂", "{ŋeš}a₂", "mu-na-|A+KU₄|")
+    icount   INTEGER,
+    ipct     INTEGER,
+    xis      TEXT
+) WITHOUT ROWID;
+
 CREATE TABLE forms (
     id       TEXT PRIMARY KEY,
     entry_id TEXT NOT NULL,
@@ -112,6 +122,9 @@ INDEXES = [
     "CREATE INDEX idx_instances_ref    ON instances(word_ref)",
     "CREATE INDEX idx_periods_p        ON periods(p)",
     "CREATE INDEX idx_compounds_eref   ON compounds(eref)",
+    "CREATE INDEX idx_morph_entry_kind ON morphology(entry_id, kind)",
+    "CREATE INDEX idx_morph_kind_n     ON morphology(kind, n)",
+    "CREATE INDEX idx_morph_xis        ON morphology(xis)",
 ]
 
 BATCH = 5000
@@ -144,9 +157,19 @@ def configure(con: sqlite3.Connection):
     """)
 
 
-def ingest_entries(con, stream, log_every: int) -> tuple[int, int, int, int, int, int, int]:
-    e_buf, f_buf, n_buf, s_buf, sig_buf, p_buf, c_buf = [], [], [], [], [], [], []
-    n_e = n_f = n_n = n_s = n_sig = n_p = n_c = 0
+MORPH_FIELDS = (
+    ("morphs",     "morph"),
+    ("morph2s",    "morph2"),
+    ("stems",      "stem"),
+    ("bases",      "base"),
+    ("prefixs",    "prefix"),
+    ("form-sanss", "form-sans"),
+)
+
+
+def ingest_entries(con, stream, log_every: int) -> tuple[int, int, int, int, int, int, int, int]:
+    e_buf, f_buf, n_buf, s_buf, sig_buf, p_buf, c_buf, m_buf = [], [], [], [], [], [], [], []
+    n_e = n_f = n_n = n_s = n_sig = n_p = n_c = n_m = 0
     t0 = time.monotonic()
 
     cur = con.cursor()
@@ -177,6 +200,18 @@ def ingest_entries(con, stream, log_every: int) -> tuple[int, int, int, int, int
             if not xcpd:
                 continue
             c_buf.append((eid, xcpd, cmpd.get("eref")))
+        for json_field, kind in MORPH_FIELDS:
+            for item in entry.get(json_field) or ():
+                cbd_id = item.get("cbd_id")
+                n_val = item.get("n")
+                if not cbd_id or n_val is None:
+                    continue
+                m_buf.append((
+                    cbd_id, eid, kind, n_val,
+                    to_int(item.get("icount")),
+                    to_int(item.get("ipct")),
+                    item.get("xis"),
+                ))
         for form in entry.get("forms") or ():
             fid = form.get("id")
             if not fid:
@@ -216,8 +251,9 @@ def ingest_entries(con, stream, log_every: int) -> tuple[int, int, int, int, int
             cur.executemany("INSERT OR IGNORE INTO sense_sigs VALUES (?,?,?,?,?,?)",       sig_buf)
             cur.executemany("INSERT OR IGNORE INTO periods    VALUES (?,?,?,?,?,?)",       p_buf)
             cur.executemany("INSERT OR IGNORE INTO compounds  VALUES (?,?,?)",             c_buf)
-            n_f += len(f_buf); n_n += len(n_buf); n_s += len(s_buf); n_sig += len(sig_buf); n_p += len(p_buf); n_c += len(c_buf)
-            e_buf.clear(); f_buf.clear(); n_buf.clear(); s_buf.clear(); sig_buf.clear(); p_buf.clear(); c_buf.clear()
+            cur.executemany("INSERT OR IGNORE INTO morphology VALUES (?,?,?,?,?,?,?)",     m_buf)
+            n_f += len(f_buf); n_n += len(n_buf); n_s += len(s_buf); n_sig += len(sig_buf); n_p += len(p_buf); n_c += len(c_buf); n_m += len(m_buf)
+            e_buf.clear(); f_buf.clear(); n_buf.clear(); s_buf.clear(); sig_buf.clear(); p_buf.clear(); c_buf.clear(); m_buf.clear()
             con.commit()
             if n_e % log_every == 0:
                 rate = n_e / (time.monotonic() - t0)
@@ -231,10 +267,11 @@ def ingest_entries(con, stream, log_every: int) -> tuple[int, int, int, int, int
         cur.executemany("INSERT OR IGNORE INTO sense_sigs VALUES (?,?,?,?,?,?)",       sig_buf)
         cur.executemany("INSERT OR IGNORE INTO periods    VALUES (?,?,?,?,?,?)",       p_buf)
         cur.executemany("INSERT OR IGNORE INTO compounds  VALUES (?,?,?)",             c_buf)
-        n_f += len(f_buf); n_n += len(n_buf); n_s += len(s_buf); n_sig += len(sig_buf); n_p += len(p_buf); n_c += len(c_buf)
+        cur.executemany("INSERT OR IGNORE INTO morphology VALUES (?,?,?,?,?,?,?)",     m_buf)
+        n_f += len(f_buf); n_n += len(n_buf); n_s += len(s_buf); n_sig += len(sig_buf); n_p += len(p_buf); n_c += len(c_buf); n_m += len(m_buf)
         con.commit()
 
-    return n_e, n_f, n_n, n_s, n_sig, n_p, n_c
+    return n_e, n_f, n_n, n_s, n_sig, n_p, n_c, n_m
 
 
 def ingest_instances(con, stream, log_every: int) -> int:
@@ -301,14 +338,15 @@ def main() -> int:
     t0 = time.monotonic()
     z, stream = open_stream(zip_path, member, json_path)
     try:
-        n_e, n_f, n_n, n_s, n_sig, n_p, n_c = ingest_entries(con, stream, args.log_every)
+        n_e, n_f, n_n, n_s, n_sig, n_p, n_c, n_m = ingest_entries(con, stream, args.log_every)
     finally:
         stream.close()
         if z:
             z.close()
     print(f"  -> {n_e:,} entries, {n_f:,} forms, {n_n:,} norms, "
           f"{n_s:,} senses, {n_sig:,} sigs, {n_p:,} period rows, "
-          f"{n_c:,} compound refs in {time.monotonic() - t0:.1f}s\n")
+          f"{n_c:,} compound refs, {n_m:,} morphology rows in "
+          f"{time.monotonic() - t0:.1f}s\n")
 
     # Pass 2 — instances map
     print("Pass 2/2: instances")
@@ -333,6 +371,7 @@ def main() -> int:
         ("sigs", str(n_sig)),
         ("periods", str(n_p)),
         ("compounds", str(n_c)),
+        ("morphology", str(n_m)),
         ("instances", str(n_i)),
         ("ingested_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
     ])
