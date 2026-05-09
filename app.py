@@ -51,8 +51,20 @@ def first_letter(cf: str) -> str:
 
 
 SORT_VERSION = "4"  # bump to force re-migration on next startup
+CASEFOLD_VERSION = "1"  # bump to force re-population of casefold columns
 DIGITS = "0123456789"
 SUBSCRIPTS = "₀₁₂₃₄₅₆₇₈₉"
+
+# Tables to extend with a casefolded mirror column for fast substring search.
+# (table, new_col, source_col, pk_cols) — pk_cols defines the WHERE for UPDATE.
+CASEFOLD_TARGETS = [
+    ("entries",   "cf_cf",   "cf",   ("id",)),
+    ("entries",   "gw_cf",   "gw",   ("id",)),
+    ("senses",    "mng_cf",  "mng",  ("id",)),
+    ("forms",     "n_cf",    "n",    ("id",)),
+    ("norms",     "n_cf",    "n",    ("id",)),
+    ("compounds", "xcpd_cf", "xcpd", ("entry_id", "xcpd")),
+]
 
 
 def sort_key(cf: str) -> str:
@@ -86,6 +98,42 @@ def sort_key(cf: str) -> str:
         else:
             out.append(f"99{ch}")
     return "".join(out)
+
+
+def ensure_casefold_columns(con: sqlite3.Connection) -> None:
+    """Add and populate <col>_cf mirror columns so search avoids per-row casefold().
+
+    Python's str.casefold() is the right Unicode-aware fold (handles ŋ/Ŋ, š/Š,
+    ḫ/Ḫ, ṣ/Ṣ, ṭ/Ṭ correctly), but calling it as a SQLite UDF on every row of
+    every search query is ~3.5x slower than a precomputed column.
+    """
+    current = con.execute(
+        "SELECT value FROM meta WHERE key='casefold_version'"
+    ).fetchone()
+    if current and current[0] == CASEFOLD_VERSION:
+        return
+    print(f"Populating casefold columns (version {CASEFOLD_VERSION}) ...")
+    for table, new_col, src_col, pk_cols in CASEFOLD_TARGETS:
+        cols = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+        if new_col not in cols:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {new_col} TEXT")
+        select_cols = ", ".join((*pk_cols, src_col))
+        rows = con.execute(f"SELECT {select_cols} FROM {table}").fetchall()
+        where_clause = " AND ".join(f"{c}=?" for c in pk_cols)
+        updates = [
+            (r[-1].casefold() if isinstance(r[-1], str) else None, *r[:-1])
+            for r in rows
+        ]
+        con.executemany(
+            f"UPDATE {table} SET {new_col}=? WHERE {where_clause}", updates
+        )
+        print(f"  {table}.{new_col}: {len(updates):,} rows")
+    con.execute(
+        "INSERT OR REPLACE INTO meta VALUES ('casefold_version', ?)",
+        (CASEFOLD_VERSION,),
+    )
+    con.commit()
+    print("  done.")
 
 
 def ensure_sort_columns(con: sqlite3.Connection) -> None:
@@ -124,9 +172,10 @@ def create_app() -> Flask:
     if not DB_PATH.exists():
         raise SystemExit(f"glossary.sqlite not found at {DB_PATH}. Run build_glossary_db.py first.")
 
-    # Run the migration once on a dedicated connection.
+    # Run the migrations once on a dedicated connection.
     bootstrap = sqlite3.connect(DB_PATH)
     ensure_sort_columns(bootstrap)
+    ensure_casefold_columns(bootstrap)
     bootstrap.close()
 
     app = Flask(__name__)
@@ -157,8 +206,22 @@ def create_app() -> Flask:
 
         where, params = [], []
         if q:
-            where.append("(cf LIKE ? OR gw LIKE ?)")
-            params += [f"%{q}%", f"%{q}%"]
+            # Unicode case-insensitive search across every user-meaningful
+            # text field: citation form, English gloss, sense meanings,
+            # spelling variants, normalizations, and compound headwords.
+            # Uses precomputed *_cf mirror columns populated by
+            # ensure_casefold_columns() so the per-row Python casefold() cost
+            # is paid once at migration time, not per query.
+            needle = f"%{q.casefold()}%"
+            where.append(
+                "(cf_cf LIKE ?"
+                " OR gw_cf LIKE ?"
+                " OR id IN (SELECT entry_id FROM senses    WHERE mng_cf  LIKE ?)"
+                " OR id IN (SELECT entry_id FROM forms     WHERE n_cf    LIKE ?)"
+                " OR id IN (SELECT entry_id FROM norms     WHERE n_cf    LIKE ?)"
+                " OR id IN (SELECT entry_id FROM compounds WHERE xcpd_cf LIKE ?))"
+            )
+            params += [needle] * 6
         elif zoom and zoom in LETTER_INDEX:
             where.append("letter = ?")
             params.append(zoom)
