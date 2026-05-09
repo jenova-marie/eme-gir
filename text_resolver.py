@@ -11,11 +11,9 @@ import functools
 import json
 import sqlite3
 import zipfile
-from pathlib import Path
 from typing import Any, Iterator
 
-ROOT = Path(__file__).resolve().parent
-TEXT_INDEX_DB = ROOT / "text_index.sqlite"
+from paths import TEXT_INDEX_DB
 
 
 def parse_word_ref(word_ref: str) -> tuple[str, str, str, str | None] | None:

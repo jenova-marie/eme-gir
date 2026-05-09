@@ -38,11 +38,13 @@ python3 app.py
 # -> http://127.0.0.1:5050/epsd2/sux
 ```
 
+All generated SQLite indexes land in `data/`; logs land in `log/`. Both directories are auto-created on first run.
+
 To rebuild the glossary for a different language / project (e.g. the Akkadian
 glossary, useful for bilingual workflows):
 
 ```bash
-python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db glossary_akk.sqlite
+python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite
 ```
 
 ## Use as an MCP server (English → Sumerian translation tools for an LLM)
@@ -82,14 +84,14 @@ Plus one MCP resource: `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar 
 
 Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
 
-For a complete agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`AGENT_PROMPT.md`](AGENT_PROMPT.md). It's a drop-in for the system message of any agent connected to this server.
+For a complete agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md). It's a drop-in for the system message of any agent connected to this server.
 
 ### Watching the server live
 
-Every tool call is logged to `mcp_server.log` next to the script (rotating, 5 MB × 3 backups), with arguments, duration, and a one-line result summary. Tail it while chatting with the agent:
+Every tool call is logged to `log/mcp_server.log` (rotating, 5 MB × 3 backups), with arguments, duration, and a one-line result summary. Tail it while chatting with the agent:
 
 ```bash
-tail -F mcp_server.log
+tail -F log/mcp_server.log
 ```
 
 Errors get full tracebacks. The startup banner reports loaded DB sizes so you can confirm the right files are mounted.
@@ -108,20 +110,21 @@ Errors get full tracebacks. The startup banner reports loaded DB sizes so you ca
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 10 tools + 1 resource for agents over stdio. Logs every call to `mcp_server.log`. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 10 tools + 1 resource for agents over stdio. Logs every call to `log/mcp_server.log`. |
+| `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
 | **Docs / config** | |
 | `.mcp.json` | Project-scoped MCP server config — Claude Code auto-detects when launched in this directory. |
-| `SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003), also served as the MCP resource `oracc://grammar/sumerian`. |
-| `AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. |
+| `prompt/SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003), also served as the MCP resource `oracc://grammar/sumerian`. |
+| `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. |
 | `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, and project-prefix glossary. |
 | `static/img/jenova.png` | Header avatar / favicon. |
 | **Generated artifacts (gitignored)** | |
 | `corpus/` | 208 `.zip` files (~3.1 GB), one per Oracc project. |
-| `glossary.sqlite` | ~3.4 GB indexed extract of the Sumerian glossary (15,940 entries, 35.5 M attestations, 248 K morphology rows). |
-| `glossary_akk.sqlite` | ~114 MB Akkadian glossary built from `corpus/rinap.zip` for bilingual workflows (optional). |
-| `text_index.sqlite` | ~10 MB index of 139,455 `(project, text_id, period, designation)` rows. |
-| `collocations.sqlite` | ~22 MB index of ~178 K phrasal n-grams of citation forms mined from the corpus. |
-| `mcp_server.log` | Live tool-call log; rotates at 5 MB × 3 backups. |
+| `data/glossary.sqlite` | ~3.4 GB indexed extract of the Sumerian glossary (15,940 entries, 35.5 M attestations, 248 K morphology rows). |
+| `data/glossary_akk.sqlite` | ~114 MB Akkadian glossary built from `corpus/rinap.zip` for bilingual workflows (optional). |
+| `data/text_index.sqlite` | ~10 MB index of 139,455 `(project, text_id, period, designation)` rows. |
+| `data/collocations.sqlite` | ~22 MB index of ~178 K phrasal n-grams of citation forms mined from the corpus. |
+| `log/mcp_server.log` | Live tool-call log; rotates at 5 MB × 3 backups. |
 
 ---
 
@@ -136,7 +139,7 @@ GET /epsd2/o0033341 (lugal)
        ├─> text_resolver.resolve_many(refs, limit=20)
        │       │
        │       ├─> parse_word_ref('epsd2:P347156.34.5')
-       │       ├─> text_index.sqlite: lookup (project, text_id)
+       │       ├─> data/text_index.sqlite: lookup (project, text_id)
        │       ├─> open corpus/epsd2.zip, parse corpusjson/P347156.json
        │       ├─> walk cdl tree, collect words on line 34
        │       └─> mark target word, dedupe by (text, line)

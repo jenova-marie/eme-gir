@@ -21,9 +21,7 @@ from flask import Flask, abort, g, redirect, render_template, request, url_for
 
 import cuneify as _cuneify
 import text_resolver
-
-ROOT = Path(__file__).resolve().parent
-DB_PATH = ROOT / "glossary.sqlite"
+from paths import GLOSSARY_DB as DB_PATH, ROOT
 
 # Sumerian alphabet order (from index.html letter nav).
 LETTER_ORDER = "ABCDEGŊHḪIKLMNOPRSṢŠTṬUWXYZ"

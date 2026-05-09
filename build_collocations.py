@@ -26,8 +26,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterator
 
-ROOT = Path(__file__).resolve().parent
-TEXT_INDEX_DB = ROOT / "text_index.sqlite"
+from paths import COLLOCATIONS_DB, TEXT_INDEX_DB
 
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
@@ -92,7 +91,7 @@ def ngrams(seq: list[str], n: int) -> Iterator[tuple[str, ...]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", default="collocations.sqlite", help="output SQLite path")
+    ap.add_argument("--db", default=str(COLLOCATIONS_DB), help="output SQLite path")
     ap.add_argument("--min-count", type=int, default=3,
                     help="drop n-grams with fewer than this many occurrences "
                          "across the whole corpus (default 3, keeps the index "

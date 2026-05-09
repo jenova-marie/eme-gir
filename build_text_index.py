@@ -18,6 +18,8 @@ from pathlib import Path
 
 import ijson
 
+from paths import TEXT_INDEX_DB
+
 # Project prefix may be multi-level (e.g. "epsd2/admin/ur3/corpusjson/P12345.json")
 # so we capture everything up to "/corpusjson/" — that prefix is exactly the
 # project path used in the glossary's word_ref strings.
@@ -43,7 +45,7 @@ CREATE INDEX idx_text_locations_period  ON text_locations(period);
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--corpus", default="corpus", help="folder containing the project zips")
-    ap.add_argument("--db", default="text_index.sqlite", help="output SQLite path")
+    ap.add_argument("--db", default=str(TEXT_INDEX_DB), help="output SQLite path")
     args = ap.parse_args()
 
     corpus = Path(args.corpus)

@@ -37,21 +37,22 @@ from mcp.server.fastmcp import FastMCP
 
 import cuneify as _cuneify
 import text_resolver
-
-ROOT = Path(__file__).resolve().parent
-GLOSSARY_DB = ROOT / "glossary.sqlite"
-TEXT_INDEX_DB = ROOT / "text_index.sqlite"
-COLLOCATIONS_DB = ROOT / "collocations.sqlite"
-GRAMMAR_DOC = ROOT / "SUMERIAN_GRAMMAR.md"
+from paths import (
+    COLLOCATIONS_DB,
+    GLOSSARY_DB,
+    GRAMMAR_DOC,
+    MCP_SERVER_LOG as LOG_FILE,
+    ROOT,
+    TEXT_INDEX_DB,
+)
 
 # Logs go to TWO places so they're visible no matter how the server is run:
 #   - stderr (visible if launched directly: `python3 mcp_server.py 2>&1`)
-#   - mcp_server.log next to the script (always — Claude Code discards stderr,
-#     so without this file the logs would be invisible to its users; tail with
-#     `tail -F mcp_server.log` while chatting with the agent).
+#   - log/mcp_server.log (always — Claude Code discards stderr, so without
+#     this file the logs would be invisible to its users; tail with
+#     `tail -F log/mcp_server.log` while chatting with the agent).
 # stdout is intentionally NOT a log target — it's reserved for the JSON-RPC
 # protocol stream and any extra writes there would corrupt the connection.
-LOG_FILE = Path(__file__).resolve().parent / "mcp_server.log"
 _log_format = logging.Formatter(
     "%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
@@ -1079,7 +1080,7 @@ def grammar_cheatsheet() -> str:
     if _GRAMMAR_CACHE is None:
         if not GRAMMAR_DOC.exists():
             return (
-                "# SUMERIAN_GRAMMAR.md missing\n\n"
+                "# prompt/SUMERIAN_GRAMMAR.md missing\n\n"
                 f"Expected at {GRAMMAR_DOC}. Re-run the project setup."
             )
         _GRAMMAR_CACHE = GRAMMAR_DOC.read_text(encoding="utf-8")

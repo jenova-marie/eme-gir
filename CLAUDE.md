@@ -14,16 +14,20 @@ A workspace for **parsing the Oracc / ePSD2 (electronic Pennsylvania Sumerian Di
 - `mcp_server.py` — MCP (Model Context Protocol) server exposing the corpus to LLM agents over stdio. Ten tools: `translate_english`, `translate_sumerian`, `lookup_entry`, `see_examples`, `find_compound`, `find_collocations`, `get_inflections`, `analyze_form`, `lookup_sign`, `cuneify`. Designed for English↔Sumerian translation workflows; every candidate carries `sense_count` + `sense_pct` so the agent can distinguish "the word for X" from "X is a fringe meaning of this word". Also serves the `oracc://grammar/sumerian` resource.
 - `build_collocations.py` — walks every corpusjson text in `corpus/`, extracts 2/3/4-grams of citation forms within each line, stores counts in `collocations.sqlite`. ~138K texts → ~178K collocations kept (default `--min-count 3`).
 - `build_text_index.py` — scans every project zip in `corpus/` for `*/corpusjson/P*.json` files and builds `text_index.sqlite`, a `(project, text_id) → (zip_path, member_path)` map. Takes ~2 s for the full 208 zips.
+- `paths.py` — single source of truth for project file locations (DATA_DIR, LOG_DIR, GLOSSARY_DB, etc.). Every other module imports its canonical paths from here.
 - `corpus/` — 208 zip files (~3.1 GB), one per Oracc project; this is the bulk dataset
-- `glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
-- `text_index.sqlite` — ~10 MB index of 139,455 `(project, text_id, period, designation)` rows across all corpus zips, enabling instant text→zip lookup AND period filtering on attestations. 85% of texts have period metadata pulled from each project's `catalogue.json`. Rebuild with `python3 build_text_index.py`.
-- `collocations.sqlite` — ~22 MB index of 178K phrasal collocations (2/3/4-grams of citation forms) mined from ~138K corpusjson texts, with min count 3. Plus 62K unigram counts. Rebuild with `python3 build_collocations.py`.
-- `glossary_akk.sqlite` — ~114 MB Akkadian glossary built from `corpus/rinap.zip::rinap/gloss-akk.json` (3,651 Akkadian entries, 1.18 M instance refs). Built via the same `build_glossary_db.py` with `--member rinap/gloss-akk.json`. Not the default DB the MCP server reads; available for bilingual workflows when wired in.
-- `SUMERIAN_GRAMMAR.md` — ~14 KB Sumerian grammar cheat sheet distilled from Edzard 2003. Shipped both as a file AND as the MCP resource `oracc://grammar/sumerian` so an agent can fetch it once per session.
-- `AGENT_PROMPT.md` — drop-in system prompt that teaches an LLM agent how to use the MCP server's tools end-to-end (10-step English→Sumerian workflow + reverse direction + worked example). Distinct from SUMERIAN_GRAMMAR.md: the prompt teaches HOW to use the tools, the grammar teaches WHAT Sumerian is.
+- `data/` — generated SQLite indexes live here (auto-created on first run via `paths.py`):
+  - `data/glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
+  - `data/text_index.sqlite` — ~10 MB index of 139,455 `(project, text_id, period, designation)` rows across all corpus zips, enabling instant text→zip lookup AND period filtering on attestations. 85% of texts have period metadata pulled from each project's `catalogue.json`. Rebuild with `python3 build_text_index.py`.
+  - `data/collocations.sqlite` — ~22 MB index of 178K phrasal collocations (2/3/4-grams of citation forms) mined from ~138K corpusjson texts, with min count 3. Plus 62K unigram counts. Rebuild with `python3 build_collocations.py`.
+  - `data/glossary_akk.sqlite` — ~114 MB Akkadian glossary built from `corpus/rinap.zip::rinap/gloss-akk.json` (3,651 Akkadian entries, 1.18 M instance refs). Built via `python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite`. Not the default DB the MCP server reads; available for bilingual workflows when wired in.
+- `log/` — generated server logs live here.
+- `prompt/` — checked-in prompt + reference material for LLM agents:
+  - `prompt/SUMERIAN_GRAMMAR.md` — ~14 KB Sumerian grammar cheat sheet distilled from Edzard 2003. Shipped both as a file AND as the MCP resource `oracc://grammar/sumerian` so an agent can fetch it once per session.
+  - `prompt/AGENT_PROMPT.md` — drop-in system prompt that teaches an LLM agent how to use the MCP server's tools end-to-end (10-step English→Sumerian workflow + reverse direction + worked example). Distinct from SUMERIAN_GRAMMAR.md: the prompt teaches HOW to use the tools, the grammar teaches WHAT Sumerian is.
 - `README.md` — top-level project README aimed at humans cloning the repo.
 - `.mcp.json` — project-scoped MCP server config so Claude Code auto-detects the server when launched in this directory. **Uses absolute paths** because Claude Code spawns MCP server processes without sourcing the user's shell init, so a bare `python3` resolves to `/usr/bin/python3` (no `mcp` package). See "MCP server" section.
-- `mcp_server.log` — generated. Live tool-call log written by the server's `_log_call` decorator (rotating, 5 MB × 3 backups). Tail with `tail -F mcp_server.log` to watch agent activity in real time.
+- `log/mcp_server.log` — generated. Live tool-call log written by the server's `_log_call` decorator (rotating, 5 MB × 3 backups). Tail with `tail -F log/mcp_server.log` to watch agent activity in real time.
 - `static/img/jenova.png` — header avatar (128×128, 24 KB) and favicon
 - `.incommon_intermediate.pem` — cached TLS intermediate cert (see "TLS gotcha" below); do not delete
 
@@ -45,16 +49,16 @@ python3 download_corpus.py --workers 2
 unzip -l corpus/epsd2.zip
 unzip -p corpus/epsd2.zip epsd2/metadata.json | python3 -m json.tool
 
-# Build the glossary SQLite index (defaults: corpus/epsd2.zip → epsd2/gloss-sux.json → glossary.sqlite)
+# Build the glossary SQLite index (defaults: corpus/epsd2.zip → epsd2/gloss-sux.json → data/glossary.sqlite)
 python3 build_glossary_db.py
 # Build for a different language / project
-python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db rinap_akk.sqlite
+python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite
 
 # Build the text-location index across all 208 zips (needed for attestation rendering)
 python3 build_text_index.py
 
 # Query the glossary
-sqlite3 -header -column glossary.sqlite "SELECT cf, gw, pos, icount FROM entries WHERE cf='lugal';"
+sqlite3 -header -column data/glossary.sqlite "SELECT cf, gw, pos, icount FROM entries WHERE cf='lugal';"
 
 # Run the local Oracc-style glossary browser
 python3 app.py                # http://127.0.0.1:5050/epsd2/sux
@@ -71,6 +75,17 @@ Dependencies (`pip install ijson flask mcp`):
 - Everything else is stdlib.
 
 There are no tests, build, or lint steps — this is a data/scripts repo.
+
+**Log convention:** when capturing build script output, write to `log/`:
+
+```bash
+python3 build_glossary_db.py 2>&1 | tee log/build_glossary.log
+python3 build_text_index.py  2>&1 | tee log/text_index_build.log
+python3 build_collocations.py 2>&1 | tee log/collocations_build.log
+python3 download_corpus.py   2>&1 | tee log/corpus_download.log
+```
+
+The MCP server writes its own log to `log/mcp_server.log` automatically; build scripts only log to disk if you `tee` them. `*.log` is gitignored anywhere.
 
 ## The reverse-engineered Oracc URL surface
 
@@ -237,7 +252,7 @@ The `find_collocations` tool degrades gracefully (returns an error structure) if
 
 ### Logging
 
-Every tool call goes through a `_log_call` decorator that emits `→ tool(args)` / `← tool (Nms) → summary` lines to BOTH stderr AND a rotating `mcp_server.log` (5 MB × 3 backups) next to the script. The file handler is essential because Claude Code captures only client-side events in its `~/Library/Caches/claude-cli-nodejs/.../mcp-logs-epsd2/*.jsonl` — the server's stderr is otherwise discarded. Tail with `tail -F mcp_server.log` while chatting with the agent. Errors get full tracebacks via `log.exception`. The startup banner logs DB sizes so you can confirm the right files are loaded.
+Every tool call goes through a `_log_call` decorator that emits `→ tool(args)` / `← tool (Nms) → summary` lines to BOTH stderr AND a rotating `log/mcp_server.log` (5 MB × 3 backups). The file handler is essential because Claude Code captures only client-side events in its `~/Library/Caches/claude-cli-nodejs/.../mcp-logs-epsd2/*.jsonl` — the server's stderr is otherwise discarded. Tail with `tail -F log/mcp_server.log` while chatting with the agent. Errors get full tracebacks via `log.exception`. The startup banner logs DB sizes so you can confirm the right files are loaded.
 
 ### Wiring into Claude Code / Claude Desktop
 

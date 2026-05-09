@@ -19,10 +19,9 @@ import functools
 import json
 import re
 import zipfile
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-OGSL_ZIP = ROOT / "corpus" / "ogsl.zip"
+from paths import OGSL_ZIP
+
 OGSL_MEMBER = "ogsl/ogsl-sl.json"
 
 PLACEHOLDER = "□"          # substituted for unknown signs ('x', missing values)

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import ijson
 
+from paths import GLOSSARY_DB
+
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 
@@ -303,7 +305,7 @@ def main() -> int:
     ap.add_argument("--member", default="epsd2/gloss-sux.json",
                     help="path inside the zip (default: epsd2/gloss-sux.json)")
     ap.add_argument("--json", help="alternative: read this loose JSON file directly")
-    ap.add_argument("--db", default="glossary.sqlite", help="output SQLite path")
+    ap.add_argument("--db", default=str(GLOSSARY_DB), help="output SQLite path")
     ap.add_argument("--log-every", type=int, default=20000,
                     help="print progress every N entries (default: 20000)")
     args = ap.parse_args()
