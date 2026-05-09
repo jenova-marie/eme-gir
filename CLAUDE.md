@@ -11,6 +11,7 @@ A workspace for **reverse-engineering and parsing the Oracc / ePSD2 (electronic 
 - `build_glossary_db.py` — streams a `gloss-{lang}.json` from inside its zip into a queryable SQLite index (`glossary.sqlite` by default). Uses ijson (yajl2_c backend) for constant-memory parsing.
 - `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · ePSD2" with `static/img/jenova.png`.
 - `text_resolver.py` — resolves glossary `word_ref` strings (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual line of Sumerian text by lazy-loading the right `corpusjson/{P-id}.json` from inside its zip. LRU-cached per-text.
+- `cuneify.py` — converts Oracc transliteration (`{d}lugal`, `lu₂-gal`, `peš₁₀-peš₁₀-e\l`) into Unicode cuneiform glyphs (𒀭𒈗, 𒇽𒃲, 𒁁𒁁𒂊). Loads the OGSL sign list from `corpus/ogsl.zip` once at import; exposed as a Jinja `cuneify` filter. ~93% of glossary spellings render with full glyph coverage.
 - `build_text_index.py` — scans every project zip in `corpus/` for `*/corpusjson/P*.json` files and builds `text_index.sqlite`, a `(project, text_id) → (zip_path, member_path)` map. Takes ~2 s for the full 208 zips.
 - `corpus/` — 208 zip files (~3.1 GB), one per Oracc project; this is the bulk dataset
 - `glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
@@ -193,6 +194,23 @@ Sumerian alphabetical sorting is implemented in `sort_key()` in `app.py`. Bumpin
 
 Templates use **Oracc's own CSS** by linking the absolute `https://oracc.museum.upenn.edu/css/p4.css` etc. — so the look matches without us hosting any styles. If you want to detach for offline use, mirror those CSS files into `static/` and update `templates/base.html`.
 
+## Cuneiform rendering (`cuneify.py`)
+
+Templates use `{{ spelling | cuneify }}` to convert transliteration into Unicode cuneiform glyphs. The font stack is `'Noto Sans Cuneiform','Akkadian',serif` — most modern macOS/Linux systems already have a Cuneiform-capable font installed; the OS falls back automatically.
+
+Tokenization handles:
+
+- Hyphen-joined sign sequences: `lu₂-gal` → 𒇽𒃲
+- Sign-list dot-compounds: `AB.GAR`
+- Braced determinatives, pre and post: `{d}lugal` → 𒀭𒈗, `lugal{mušen}` → 𒈗𒄷
+- Multi-word spellings split on whitespace: `gu₃ mu-un-de₂`
+- Morphology tails after backslash: `peš₁₀-peš₁₀-e\l` → keeps only the part before `\`
+- Compound graphemes with parens: `muₓ(|KA×GAN₂@t|)` → uses the inner `|...|` form
+
+The OGSL lookup is built lazily via `@functools.lru_cache(maxsize=1)` on `_load_lookup()`, indexes both phonetic values (lowercase, e.g. `lugal`) and sign names (uppercase, e.g. `LUGAL`), and prefers the first sign for ambiguous values (5.5% of cases). Unknown signs render as `□` (PLACEHOLDER constant).
+
+Coverage: 92.9% of the 124,649 forms in `glossary.sqlite` render with no `□` placeholders. Throughput is ~200K forms/sec, so cuneify is essentially free per page render.
+
 ## Attestation rendering (`text_resolver.py`)
 
 Entry detail pages show real Sumerian transliteration with the target word highlighted, pulled live from `corpusjson/{P-id}.json` inside the right project zip via a two-stage lookup:
@@ -218,9 +236,12 @@ When *all* attestations fail to resolve, the entry page falls back to showing a 
 Known scope cutoffs (deliberate, for the MVP):
 
 - No determinative superscripts on spellings yet (`ŋeš`, `kuš`, `na₄` etc. — they're in the JSON's form structure, just not captured by the parser).
-- Composite-text refs (Q-ids) not handled by the regex; only P-ids.
-- No KWIC / sentence / line context-engine, no distribution profiles, no sign info.
-- No English translation pulled from sibling translation files yet.
+- Composite-text refs (Q-ids) not handled by the resolver regex; only P-ids.
+- No KWIC / sentence / line context-engine, no distribution profiles.
+- No English translation pulled from sibling `tr-en/` files yet.
+- No Bibliography section / publication shorthand from `catalogue.json`.
+- No Period × Form cross-tab on entry pages.
+- The 7.1% of spellings whose signs are missing from OGSL render with `□` placeholders.
 - The tiny page-2/3 ordering discrepancies vs Oracc.
 
 ## TLS gotcha (important for any HTTPS code)
