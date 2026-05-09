@@ -33,7 +33,10 @@ python3 build_glossary_db.py
 # 5. (Optional) Build the collocations index for find_collocations MCP tool (~5 min)
 python3 build_collocations.py
 
-# 6. Run the web app (also populates two one-shot SQLite migrations on first hit)
+# 6. (Optional) Build the ETCSL literary corpus for the etcsl_* MCP tools (~10 sec)
+python3 build_etcsl_db.py
+
+# 7. Run the web app (also populates two one-shot SQLite migrations on first hit)
 python3 app.py
 # -> http://127.0.0.1:5050/epsd2/sux
 ```
@@ -46,6 +49,16 @@ glossary, useful for bilingual workflows):
 ```bash
 python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite
 ```
+
+### Building the ETCSL literary corpus (optional)
+
+ETCSL — the Oxford [Electronic Text Corpus of Sumerian Literature](https://etcsl.orinst.ox.ac.uk/) — is a curated set of 394 Sumerian *literary* texts (hymns, myths, royal hymns, proverbs, wisdom, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems, etc.) shipped as TEI XML with **per-word lemmatization AND English translations**. This is exactly the bilingual corpus the Oracc administrative-text bulk JSON lacks. The build script downloads the 4.9 MB zip from the Oxford Text Archive and ingests it to `data/etcsl.sqlite` (~31 MB) with FTS5 indexes for English and Sumerian search:
+
+```bash
+python3 build_etcsl_db.py
+```
+
+Once built, the MCP server exposes four `etcsl_*` tools: `etcsl_search_english`, `etcsl_lines_with_lemma`, `etcsl_search_sumerian`, and `etcsl_lookup_text`. ETCSL data is **CC BY 3.0 UK** — every tool result includes an `attribution` field; preserve it when quoting.
 
 ### Picking up new / missing Oracc projects
 
@@ -81,7 +94,7 @@ server.
 
 ## Use as an MCP server (English → Sumerian translation tools for an LLM)
 
-The repo ships an MCP server exposing ten tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
+The repo ships an MCP server exposing fourteen tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
 
 For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
 
@@ -99,7 +112,9 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 
 > **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
 
-Ten tools available to the agent:
+Fourteen tools available to the agent:
+
+ePSD2 dictionary + corpus tools:
 
 - `translate_english(query, limit)` — rank Sumerian candidates for an English meaning
 - `translate_sumerian(transliteration)` — reverse: parse a Sumerian phrase into per-token glosses
@@ -111,6 +126,13 @@ Ten tools available to the agent:
 - `analyze_form(spelling)` — decompose an attested spelling into candidate lemmas + morphology
 - `lookup_sign(query)` — find a cuneiform sign by name or phonetic value
 - `cuneify(spelling)` — render Oracc transliteration as Unicode cuneiform glyphs
+
+ETCSL literary-corpus tools (bilingual; require `python3 build_etcsl_db.py`):
+
+- `etcsl_search_english(query, limit)` — FTS5 over English translations; returns each match with its Sumerian lines
+- `etcsl_lines_with_lemma(lemma, limit)` — literary lines containing a given Sumerian lemma + the English paragraph
+- `etcsl_search_sumerian(query, limit)` — FTS5 over Sumerian transliterations; returns bilingual matches
+- `etcsl_lookup_text(text_id, start, line_limit)` — read a whole composition, paginated, bilingual
 
 Plus one MCP resource: `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar cheat sheet (Edzard 2003) the agent should fetch once per translation session.
 
@@ -140,10 +162,11 @@ Errors get full tracebacks. The startup banner reports loaded DB sizes so you ca
 | `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, morphology, and instances. |
 | `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` and per-text catalogue metadata, builds `text_index.sqlite`. |
 | `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
+| `build_etcsl_db.py` | Downloads the ETCSL bulk zip (4.9 MB) from the Oxford Text Archive, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs), normalizes ETCSL's ASCII transliteration to ePSD2/Oracc Unicode, ingests to `etcsl.sqlite` with FTS5 indexes. Powers the `etcsl_*` MCP tools. |
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 10 tools + 1 resource for agents over stdio. Logs every call to `log/mcp_server.log`. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 14 tools + 1 resource for agents over stdio. Logs every call to `log/mcp_server.log`. |
 | `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
 | **Docs / config** | |
 | `.mcp.json` | Project-scoped MCP server config — Claude Code auto-detects when launched in this directory. |
@@ -157,6 +180,8 @@ Errors get full tracebacks. The startup banner reports loaded DB sizes so you ca
 | `data/glossary_akk.sqlite` | ~114 MB Akkadian glossary built from `corpus/rinap.zip` for bilingual workflows (optional). |
 | `data/text_index.sqlite` | ~10 MB index of 139,455 `(project, text_id, period, designation)` rows. |
 | `data/collocations.sqlite` | ~22 MB index of ~178 K phrasal n-grams of citation forms mined from the corpus. |
+| `data/etcsl.sqlite` | ~31 MB ETCSL literary corpus (394 texts, 34,229 lines, 159,963 words, 5,608 translation paragraphs) with FTS5 indexes on Sumerian and English. |
+| `data/etcsl.zip` | ~4.9 MB cached download of the Oxford Text Archive ETCSL bulk zip; rebuilds skip re-downloading if present. |
 | `log/mcp_server.log` | Live tool-call log; rotates at 5 MB × 3 backups. |
 
 ---
@@ -192,7 +217,7 @@ GET /epsd2/o0033341 (lugal)
 - The web app's entry page doesn't yet render a dedicated Bibliography section, per-sense interleaved examples, or a Period × Form cross-tab — though attestation lines DO surface the publication shorthand (e.g., "YOS 14, 341") via `text_index.sqlite`'s `designation` column.
 - The `/epsd2/sux` glossary list page matches Oracc page-1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't reverse-engineered).
 - Composite text refs (Q-ids) aren't handled by the resolver; only P-ids.
-- **English translations are not in Oracc's public JSON archive** — they exist only in the live HTML pages at `/{project}/{P-id}` and would need scraping. The metadata `formats.tr-en` list tells us *which* texts have a translation available, not the translation itself.
+- **English translations are not in Oracc's public JSON archive** — they exist only in the live HTML pages at `/{project}/{P-id}` and would need scraping. The metadata `formats.tr-en` list tells us *which* texts have a translation available, not the translation itself. **Workaround:** the optional ETCSL ingest above pulls in 394 literary texts that DO ship with English translations, so any literary lookup via the `etcsl_*` tools is bilingual out of the box.
 
 ---
 
