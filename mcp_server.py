@@ -465,7 +465,12 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
             return {"oid": oid, "lines": [], "note": "entry has no instance refs"}
         # Pull all refs upfront when filtering — small DB op, lets us slim
         # the resolve pass to only candidates from period-matching texts.
-        ref_limit = 50000 if period_needle else 500
+        # No-filter case bumped to 5000 (was 500) because for heavily
+        # attested lemmas the first 500 refs may all sit in one project
+        # whose corpusjson is missing locally; 5000 catches more variety
+        # without meaningfully slowing the happy path (resolve_many stops
+        # at over_fetch_lines anyway).
+        ref_limit = 50000 if period_needle else 5000
         word_refs = [
             r[0] for r in con.execute(
                 "SELECT word_ref FROM instances WHERE xis=? LIMIT ?",
@@ -534,13 +539,43 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
         })
         if len(lines) >= limit:
             break
-    return {
+    payload: dict[str, Any] = {
         "oid": oid,
         "cf": entry["cf"],
         "gw": entry["gw"],
         "period_filter": period,
         "lines": lines,
     }
+
+    # When we returned nothing despite having refs, give the caller a
+    # diagnostic so they understand WHY (most common cause: the lemma's
+    # attestations live in projects we don't have downloaded locally,
+    # or in composite-text Q-ids where the corpusjson exists but is empty).
+    if not lines and word_refs:
+        from collections import Counter
+        proj_counter: Counter[str] = Counter()
+        text_id_kind = Counter()  # 'P' or 'Q'
+        for r in word_refs:
+            parsed = text_resolver.parse_word_ref(r)
+            if not parsed:
+                continue
+            proj_counter[parsed[0]] += 1
+            text_id_kind[parsed[1][:1]] += 1
+        top_projects = ", ".join(
+            f"{p} ({c:,})" for p, c in proj_counter.most_common(3)
+        )
+        kind_breakdown = ", ".join(
+            f"{n} {k}-id" for k, n in text_id_kind.most_common()
+        )
+        payload["diagnostic"] = (
+            f"Tried {len(word_refs):,} refs ({kind_breakdown}); "
+            f"top source projects: {top_projects}. "
+            f"Empty result usually means those projects' corpusjson files "
+            f"aren't in our local corpus/, or the texts exist as empty "
+            f"composite-edition placeholders. Try a higher-attested lemma, "
+            f"a different period, or download the missing project zips."
+        )
+    return payload
 
 
 @mcp.tool()

@@ -23,7 +23,12 @@ from paths import TEXT_INDEX_DB
 # Project prefix may be multi-level (e.g. "epsd2/admin/ur3/corpusjson/P12345.json")
 # so we capture everything up to "/corpusjson/" — that prefix is exactly the
 # project path used in the glossary's word_ref strings.
-CORPUSJSON_RE = re.compile(r"^(.+)/corpusjson/(P\d+)\.json$")
+#
+# Index BOTH P-ids (physical tablets) AND Q-ids (composite editions). Q-ids
+# are common for literary / hymn texts where multiple manuscripts have been
+# merged into a single critical edition; the glossary cites them just like
+# P-ids in word_refs.
+CORPUSJSON_RE = re.compile(r"^(.+)/corpusjson/([PQ]\d+)\.json$")
 CATALOGUE_RE = re.compile(r"^(.+)/catalogue\.json$")
 
 SCHEMA = """
