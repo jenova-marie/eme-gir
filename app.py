@@ -54,19 +54,28 @@ def first_letter(cf: str) -> str:
 
 
 SORT_VERSION = "4"  # bump to force re-migration on next startup
-CASEFOLD_VERSION = "1"  # bump to force re-population of casefold columns
+CASEFOLD_VERSION = "2"  # bump to force re-population of casefold columns
 DIGITS = "0123456789"
 SUBSCRIPTS = "₀₁₂₃₄₅₆₇₈₉"
 
 # Tables to extend with a casefolded mirror column for fast substring search.
 # (table, new_col, source_col, pk_cols) — pk_cols defines the WHERE for UPDATE.
 CASEFOLD_TARGETS = [
-    ("entries",   "cf_cf",   "cf",   ("id",)),
-    ("entries",   "gw_cf",   "gw",   ("id",)),
-    ("senses",    "mng_cf",  "mng",  ("id",)),
-    ("forms",     "n_cf",    "n",    ("id",)),
-    ("norms",     "n_cf",    "n",    ("id",)),
-    ("compounds", "xcpd_cf", "xcpd", ("entry_id", "xcpd")),
+    ("entries",    "cf_cf",   "cf",   ("id",)),
+    ("entries",    "gw_cf",   "gw",   ("id",)),
+    ("senses",     "mng_cf",  "mng",  ("id",)),
+    ("forms",      "n_cf",    "n",    ("id",)),
+    ("norms",      "n_cf",    "n",    ("id",)),
+    ("compounds",  "xcpd_cf", "xcpd", ("entry_id", "xcpd")),
+    ("morphology", "n_cf",    "n",    ("cbd_id",)),
+]
+
+# Indexes to create after the casefold migration. Most casefold columns are
+# hit with LIKE %x% (leading wildcard kills index utility), but morphology.n_cf
+# is hit with exact-equality lookups in translate_sumerian — there an index
+# on (kind, n_cf) lets SQLite do a fast indexed join instead of a full scan.
+CASEFOLD_INDEXES = [
+    ("idx_morphology_kind_n_cf", "morphology(kind, n_cf)"),
 ]
 
 
@@ -131,6 +140,9 @@ def ensure_casefold_columns(con: sqlite3.Connection) -> None:
             f"UPDATE {table} SET {new_col}=? WHERE {where_clause}", updates
         )
         print(f"  {table}.{new_col}: {len(updates):,} rows")
+    for idx_name, idx_target in CASEFOLD_INDEXES:
+        con.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_target}")
+        print(f"  index: {idx_name} ON {idx_target}")
     con.execute(
         "INSERT OR REPLACE INTO meta VALUES ('casefold_version', ?)",
         (CASEFOLD_VERSION,),

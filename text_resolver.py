@@ -77,20 +77,40 @@ def text_metadata(project: str, text_id: str) -> dict[str, str | None]:
     return {"period": row[0], "designation": row[1]}
 
 
+@functools.lru_cache(maxsize=8)
+def _open_zip(zip_path: str) -> zipfile.ZipFile:
+    """Cache open ZipFile handles by path.
+
+    `zipfile.ZipFile()` re-scans the archive's central directory on every
+    open — for the 536 MB epsd2-admin-ur3.zip with ~30K members this is
+    20-30 ms a pop. Repeated cold calls (e.g. resolving 50 attestations of
+    `lugal` after a fresh server start) compounded that to ~20 s.
+
+    With maxsize=8 we keep at most 8 zip handles open at a time, well
+    within typical fd budgets, and let lru eviction garbage-collect old
+    handles (whose `__del__` closes the file).
+    """
+    return zipfile.ZipFile(zip_path)
+
+
 @functools.lru_cache(maxsize=512)
 def _load_corpusjson(project: str, text_id: str) -> dict | None:
     """Load and parse the corpusjson for a given (project, text_id).
 
-    Cached so repeated word_refs into the same text don't re-open the zip.
-    Each text JSON is small (a few KB to a few hundred KB). Returns None on
-    any I/O / parse failure (some corpusjson files are empty placeholders).
+    Cached at the parsed-doc level so repeated word_refs into the same
+    text are free. The underlying ZipFile is also cached (above), so cold
+    text reads pay only the json.load cost — typically a few ms per text.
+    Each text JSON is small (a few KB to a few hundred KB). Returns None
+    on any I/O / parse failure (some corpusjson files are empty
+    placeholders).
     """
     loc = _lookup(project, text_id)
     if loc is None:
         return None
     zip_path, member = loc
     try:
-        with zipfile.ZipFile(zip_path) as z, z.open(member) as f:
+        z = _open_zip(zip_path)
+        with z.open(member) as f:
             return json.load(f)
     except (json.JSONDecodeError, zipfile.BadZipFile, KeyError, OSError):
         return None
