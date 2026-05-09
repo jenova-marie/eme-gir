@@ -20,3 +20,7 @@ venv/
 *.swp
 .vscode/
 .idea/
+
+# Copyrighted reference material — kept locally, never committed
+Sumerian Grammar (Edzard).pdf
+*.pdf
