@@ -12,11 +12,14 @@ A workspace for **reverse-engineering and parsing the Oracc / ePSD2 (electronic 
 - `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · ePSD2" with `static/img/jenova.png`.
 - `text_resolver.py` — resolves glossary `word_ref` strings (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual line of Sumerian text by lazy-loading the right `corpusjson/{P-id}.json` from inside its zip. LRU-cached per-text.
 - `cuneify.py` — converts Oracc transliteration (`{d}lugal`, `lu₂-gal`, `peš₁₀-peš₁₀-e\l`) into Unicode cuneiform glyphs (𒀭𒈗, 𒇽𒃲, 𒁁𒁁𒂊). Loads the OGSL sign list from `corpus/ogsl.zip` once at import; exposed as a Jinja `cuneify` filter. ~93% of glossary spellings render with full glyph coverage.
-- `mcp_server.py` — MCP (Model Context Protocol) server exposing the corpus to LLM agents over stdio. Five tools: `translate_english`, `lookup_entry`, `see_examples`, `find_compound`, `cuneify`. Designed for English→Sumerian translation workflows; every candidate carries `sense_count` + `sense_pct` so the agent can distinguish "the word for X" from "X is a fringe meaning of this word".
+- `mcp_server.py` — MCP (Model Context Protocol) server exposing the corpus to LLM agents over stdio. Ten tools: `translate_english`, `translate_sumerian`, `lookup_entry`, `see_examples`, `find_compound`, `find_collocations`, `get_inflections`, `analyze_form`, `lookup_sign`, `cuneify`. Designed for English↔Sumerian translation workflows; every candidate carries `sense_count` + `sense_pct` so the agent can distinguish "the word for X" from "X is a fringe meaning of this word". Also serves the `oracc://grammar/sumerian` resource.
+- `build_collocations.py` — walks every corpusjson text in `corpus/`, extracts 2/3/4-grams of citation forms within each line, stores counts in `collocations.sqlite`. ~138K texts → ~178K collocations kept (default `--min-count 3`).
 - `build_text_index.py` — scans every project zip in `corpus/` for `*/corpusjson/P*.json` files and builds `text_index.sqlite`, a `(project, text_id) → (zip_path, member_path)` map. Takes ~2 s for the full 208 zips.
 - `corpus/` — 208 zip files (~3.1 GB), one per Oracc project; this is the bulk dataset
 - `glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
-- `text_index.sqlite` — ~6 MB index of 139,455 `(project, text_id)` pairs across all corpus zips, enabling instant text→zip lookup. ~92% of glossary instance refs are resolvable from local zips. Rebuild with `python3 build_text_index.py`.
+- `text_index.sqlite` — ~10 MB index of 139,455 `(project, text_id, period, designation)` rows across all corpus zips, enabling instant text→zip lookup AND period filtering on attestations. 85% of texts have period metadata pulled from each project's `catalogue.json`. Rebuild with `python3 build_text_index.py`.
+- `collocations.sqlite` — ~22 MB index of 178K phrasal collocations (2/3/4-grams of citation forms) mined from ~138K corpusjson texts, with min count 3. Plus 62K unigram counts. Rebuild with `python3 build_collocations.py`.
+- `glossary_akk.sqlite` — ~114 MB Akkadian glossary built from `corpus/rinap.zip::rinap/gloss-akk.json` (3,651 Akkadian entries, 1.18 M instance refs). Built via the same `build_glossary_db.py` with `--member rinap/gloss-akk.json`. Not the default DB the MCP server reads; available for bilingual workflows when wired in.
 - `static/img/jenova.png` — header avatar (128×128, 24 KB) and favicon
 - `.incommon_intermediate.pem` — cached TLS intermediate cert (see "TLS gotcha" below); do not delete
 
@@ -207,12 +210,19 @@ Tools:
 | Tool | Purpose |
 |---|---|
 | `translate_english(query, limit)` | Rank Sumerian candidates for an English word. Hits both entry guide-words and per-sense meanings. Sorted by `sense.icount DESC`. |
+| `translate_sumerian(transliteration, limit_per_token)` | Reverse-direction lookup: parse a Sumerian phrase into per-token English glosses. Tokenizes on whitespace + hyphen + dot, strips braced determinatives, queries forms + form-sans + bases. |
 | `lookup_entry(oid)` | Full structured view: senses, top spellings (with cuneiform glyphs), periods, compounds. |
-| `see_examples(oid, limit, period)` | Real attested lines via `text_resolver`, target word marked. |
+| `see_examples(oid, limit, period)` | Real attested lines via `text_resolver`, target word marked. Supports period filter (substring, case-insensitive — "babylonian" matches Old AND Middle Babylonian) — pre-fetches matching text IDs from `text_index.sqlite` to avoid resolving irrelevant texts. |
 | `find_compound(english_phrase)` | Find idiomatic Sumerian compound expressions for an English phrase. |
+| `find_collocations(word, length, limit)` | Find multi-word phrasal idioms attested with a given lemma. Reads `collocations.sqlite`. Surfaces things like "Šusuen lugal" (year-name template), "lugal an-anubda" ("king of the four corners"), "lu kiŋgia lugal" ("the king's messenger"). |
+| `get_inflections(oid)` | Show every attested morphological breakdown (base/morph/morph2/stem/prefix/form-sans) of a lemma with attestation counts. The `~` in morph patterns marks the base position. |
+| `analyze_form(spelling, limit)` | Decompose a Sumerian spelling into candidate lemmas + their morphological role. Searches forms + form-sans + bases + morph patterns. |
+| `lookup_sign(query)` | Look up a cuneiform sign by name ("LUGAL") or phonetic value ("lugal"). Returns the Unicode glyph, sign name, all phonetic readings. |
 | `cuneify(spelling)` | Render Oracc transliteration as Unicode cuneiform glyphs. |
 
-Sanity-checks `glossary.sqlite` and `text_index.sqlite` exist on startup; bails with a hint if not. Also requires the `app.py` casefold migration to have run (checks `meta.casefold_version`). Run order from cold: `download_corpus.py` → `build_text_index.py` → `build_glossary_db.py` → `python3 app.py` (once, to populate casefold + sort columns) → `python3 mcp_server.py`.
+Sanity-checks `glossary.sqlite` and `text_index.sqlite` exist on startup; bails with a hint if not. Also requires the `app.py` casefold migration to have run (checks `meta.casefold_version`). Run order from cold: `download_corpus.py` → `build_text_index.py` → `build_glossary_db.py` → `build_collocations.py` (optional, only needed for `find_collocations` tool) → `python3 app.py` (once, to populate casefold + sort columns) → `python3 mcp_server.py`.
+
+The `find_collocations` tool degrades gracefully (returns an error structure) if `collocations.sqlite` is absent. Other tools work without it.
 
 To wire into Claude Code or Claude Desktop, add to the user's MCP config:
 

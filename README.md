@@ -30,15 +30,19 @@ python3 build_text_index.py
 # 4. Build the Sumerian glossary index (~3.5 minutes)
 python3 build_glossary_db.py
 
-# 5. Run the web app (also populates two one-shot SQLite migrations on first hit)
+# 5. (Optional) Build the collocations index for find_collocations MCP tool (~5 min)
+python3 build_collocations.py
+
+# 6. Run the web app (also populates two one-shot SQLite migrations on first hit)
 python3 app.py
 # -> http://127.0.0.1:5050/epsd2/sux
 ```
 
-To rebuild the glossary for a different project (e.g. the Akkadian glossary):
+To rebuild the glossary for a different language / project (e.g. the Akkadian
+glossary, useful for bilingual workflows):
 
 ```bash
-python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db rinap_akk.sqlite
+python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db glossary_akk.sqlite
 ```
 
 ## Use as an MCP server (English → Sumerian translation tools for an LLM)
@@ -57,7 +61,22 @@ The repo also ships an MCP server exposing five tools designed for agent-driven 
 }
 ```
 
-Tools available to the agent: `translate_english`, `lookup_entry`, `see_examples`, `find_compound`, `cuneify`. Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
+Ten tools available to the agent:
+
+- `translate_english(query, limit)` — rank Sumerian candidates for an English meaning
+- `translate_sumerian(transliteration)` — reverse: parse a Sumerian phrase into per-token glosses
+- `lookup_entry(oid)` — full structured view of a chosen lemma
+- `see_examples(oid, limit, period)` — real attested lines, target word marked, period-filterable
+- `find_compound(english_phrase)` — find idiomatic Sumerian compound expressions
+- `find_collocations(word, length, limit)` — phrasal idioms attested with a given lemma (mined from the corpus, not the dictionary — surfaces formulas like "Šusuen lugal", year-name templates, royal titles)
+- `get_inflections(oid)` — every attested morphological breakdown of a lemma
+- `analyze_form(spelling)` — decompose an attested spelling into candidate lemmas + morphology
+- `lookup_sign(query)` — find a cuneiform sign by name or phonetic value
+- `cuneify(spelling)` — render Oracc transliteration as Unicode cuneiform glyphs
+
+Plus one MCP resource: `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar cheat sheet (Edzard 2003) the agent should fetch once per translation session.
+
+Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
 
 ---
 
@@ -71,7 +90,13 @@ Tools available to the agent: `translate_english`, `lookup_entry`, `see_examples
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | Loads OGSL on first use, exposes a Jinja `cuneify` filter. Tokenizes Oracc transliteration (determinatives, hyphen-joiners, compound graphemes, morphology tails) and renders Unicode cuneiform. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing five tools for agents over stdio. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 10 tools + 1 resource for agents over stdio. |
+| `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
+| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` into an attested Sumerian line. |
+| `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter; Jinja filter and stand-alone. |
+| `SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003) shipped both as a file and as an MCP resource. |
+| `text_index.sqlite` | Generated. `(project, text_id) → (zip, member, period, designation)` for ~140K texts. |
+| `collocations.sqlite` | Generated. ~178K phrasal n-grams of citation forms mined from the corpus. |
 | `static/img/jenova.png` | Header avatar / favicon. |
 | `corpus/` | Generated. 208 `.zip` files (~3.1 GB). Gitignored. |
 | `glossary.sqlite` | Generated. ~3.4 GB indexed extract of the Sumerian glossary. Gitignored. |
