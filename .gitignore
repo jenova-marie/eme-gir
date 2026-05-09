@@ -1,5 +1,5 @@
 # Bulk data — large, regenerable from oracc.museum.upenn.edu
-corpus/
+*.zip
 *.sqlite*
 
 # Logs
