@@ -1,9 +1,6 @@
 # Bulk data — large, regenerable from oracc.museum.upenn.edu
 corpus/
-glossary.sqlite
-glossary.sqlite-*
-text_index.sqlite
-text_index.sqlite-*
+*.sqlite*
 
 # Logs
 *.log
