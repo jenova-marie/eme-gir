@@ -7,14 +7,21 @@
   <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/css/p4-cuneify.css"/>
   <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/epsd2/css/p3colours.css"/>
   <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/epsd2/css/projcss.css"/>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/jenova.png') }}"/>
   <title>{% block title %}epsd2 (local){% endblock %}</title>
 </head>
 <body>
 <div id="p4Pager" class="bborder-top list page dglo rglo default" data-proj="epsd2" data-glos="sux">
   <div id="p4Masthead">
-    <p id="p4HeadTitle" class="banner bborder-top bborder1-bot">
-      <a href="{{ url_for('glossary') }}">Local ePSD2:</a>
-      <a href="{{ url_for('glossary') }}">ePSD2 — electronic PSD 2nd Edition (local)</a>
+    <p id="p4HeadTitle" class="banner bborder-top bborder1-bot" style="display:flex; align-items:center; gap:0.6em;">
+      <a href="{{ url_for('glossary') }}" style="display:inline-flex; align-items:center;">
+        <img src="{{ url_for('static', filename='img/jenova.png') }}"
+             alt="Jenova" title="Jenova's Local"
+             style="height:36px; width:36px; border-radius:50%; vertical-align:middle;"/>
+      </a>
+      <a href="{{ url_for('glossary') }}"><strong>Jenova's Local</strong></a>
+      <span style="opacity:0.6;">·</span>
+      <a href="{{ url_for('glossary') }}">ePSD2</a>
     </p>
   </div>
   <div id="p4Header" class="menu banner bborder-bot">
