@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}epsd2 — {% if q %}search “{{ q }}”{% elif zoom %}{{ zoom }}{% else %}glossary{% endif %}{% endblock %}
+
+{% block nav %}
+<div id="p4Controls">
+  <div id="p4PageNav" class="p4pages">
+    <p class="p3toccenter bg-dk">
+      {% if page > 1 %}
+      <a href="{{ url_for('glossary', page=page-1, zoom=zoom or None, q=q or None) }}">◀</a>
+      {% endif %}
+      <form action="{{ url_for('glossary') }}" method="get" style="display:inline">
+        {% if zoom %}<input type="hidden" name="zoom" value="{{ zoom }}"/>{% endif %}
+        {% if q %}<input type="hidden" name="q" value="{{ q }}"/>{% endif %}
+        <input name="page" type="text" size="3" value="{{ page }}"/>
+      </form>
+      {% if page < pages %}
+      <a href="{{ url_for('glossary', page=page+1, zoom=zoom or None, q=q or None) }}">▶</a>
+      {% endif %}
+      &nbsp;{{ total }} entries / {{ pages }} pages
+      {% if q %}<span class="p4srchresults">[search: {{ q }}]</span>{% endif %}
+      {% if zoom %}<span class="p4srchresults">[letter: {{ zoom }}]</span>{% endif %}
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div xmlns="http://www.w3.org/1999/xhtml" class="ce" id="p4CEsummContent">
+  <div class="summ">
+    {% for e in entries %}
+    <p class="summary" data-oid="{{ e.id }}">
+      <span class="summary"><span class="summary-headword">
+        <a href="{{ url_for('entry', oid=e.id) }}">
+          <span class="cf">{{ e.cf }}</span>
+          [<span class="gw">{{ e.gw|upper }}</span>]
+          <span class="cf">{{ e.pos }}</span>
+        </a>
+        ({{ e.icount or 0 }}x)
+      </span>
+      {%- set periods = periods_by_entry.get(e.id, []) -%}
+      {%- if periods %} {{ periods|join(', ') }} {%- endif -%}
+      {%- set forms = forms_by_entry.get(e.id, []) -%}
+      {%- if forms %}
+      &nbsp;wr.
+      {% for f in forms[:12] %}
+        <span class="wr"><span class="w sux"><span class="sux">{{ f }}</span></span></span>{% if not loop.last %}; {% endif %}
+      {% endfor %}
+      {%- endif -%}
+      {%- set senses = senses_by_entry.get(e.id, []) -%}
+      {%- if senses %}
+      &nbsp;"{{ senses|join('; ') }}"
+      {%- endif -%}
+      </span>
+    </p>
+    {% else %}
+    <p>No entries match.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

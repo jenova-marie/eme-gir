@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.cf }} [{{ entry.gw }}] {{ entry.pos }}{% endblock %}
+
+{% block nav %}
+<div id="p4Controls">
+  <div id="p4PageNav" class="p4pages">
+    <p class="p3toccenter bg-dk">
+      <a href="{{ url_for('glossary') }}">← back to glossary</a>
+      &nbsp;|&nbsp; oid: <code>{{ entry.id }}</code>
+      &nbsp;|&nbsp; <a href="https://oracc.museum.upenn.edu/epsd2/{{ entry.id }}" target="_blank">view on oracc.org ↗</a>
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="ce" id="p4CEcbdcontent">
+  <div class="cbd-article">
+    <h1 class="article-headword">
+      <span class="cf">{{ entry.cf }}</span>
+      [<span class="gw">{{ entry.gw|upper }}</span>]
+      <span class="cf">{{ entry.pos }}</span>
+      <span style="font-size:0.6em; opacity:0.6;">({{ entry.icount or 0 }}x)</span>
+    </h1>
+
+    {% if periods %}
+    <h2>Time periods</h2>
+    <table style="border-collapse: collapse;">
+      <thead><tr>
+        <th style="text-align:left; padding:0.2em 1em 0.2em 0;">period</th>
+        <th style="text-align:right; padding:0.2em 1em 0.2em 0;">count</th>
+        <th style="text-align:right;">%</th>
+      </tr></thead>
+      <tbody>
+        {% for p in periods %}
+        <tr>
+          <td>{{ p.p }}</td>
+          <td style="text-align:right; padding-right:1em;">{{ p.icount or 0 }}</td>
+          <td style="text-align:right; opacity:0.6;">{{ p.ipct or 0 }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if compounds %}
+    <h2>Compounds ({{ compounds|length }})</h2>
+    <ul>
+      {% for c in compounds %}
+      <li>{% if c.eref %}<a href="{{ url_for('entry', oid=c.eref) }}"><code>{{ c.xcpd }}</code></a>{% else %}<code>{{ c.xcpd }}</code>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if senses %}
+    <h2>Senses</h2>
+    <ul class="senses">
+      {% for s in senses %}
+      <li>
+        <strong>{{ s.mng or s.n }}</strong>
+        {% if s.pos %}<em>({{ s.pos }})</em>{% endif %}
+        — {{ s.icount or 0 }}x ({{ s.ipct or 0 }}%)
+        {% set sigs = sense_sigs.get(s.id, []) %}
+        {% if sigs %}
+        <details>
+          <summary style="cursor:pointer;">{{ sigs|length }} signature(s)</summary>
+          <ul style="font-family:monospace; font-size:0.85em;">
+            {% for sig in sigs[:30] %}
+            <li>{{ sig.sig }} <span style="opacity:0.6;">({{ sig.icount }}x)</span></li>
+            {% endfor %}
+            {% if sigs|length > 30 %}<li>… and {{ sigs|length - 30 }} more</li>{% endif %}
+          </ul>
+        </details>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if forms %}
+    <h2>Spellings ({{ forms|length }})</h2>
+    <table class="forms-table" style="border-collapse: collapse;">
+      <thead><tr><th style="text-align:left; padding:0.2em 1em 0.2em 0;">spelling</th>
+        <th style="text-align:right; padding:0.2em 1em 0.2em 0;">count</th>
+        <th style="text-align:right;">%</th></tr></thead>
+      <tbody>
+        {% for f in forms %}
+        <tr>
+          <td><span class="wr"><span class="w sux"><span class="sux">{{ f.n }}</span></span></span></td>
+          <td style="text-align:right; padding-right:1em;">{{ f.icount or 0 }}</td>
+          <td style="text-align:right; opacity:0.6;">{{ f.ipct or 0 }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if norms %}
+    <h2>Normalizations ({{ norms|length }})</h2>
+    <ul>
+      {% for n in norms %}
+      <li><em>{{ n.n }}</em> — {{ n.icount or 0 }}x ({{ n.ipct or 0 }}%)</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if sample_instances %}
+    <h2>Sample attestations (first {{ sample_instances|length }})</h2>
+    <p style="font-size:0.85em; opacity:0.7;">
+      Each ref is <code>{project}:{P-id}.{line}.{word}</code>; future phase will join into corpusjson for full transliteration.
+    </p>
+    <ul style="font-family:monospace; font-size:0.85em; columns: 3;">
+      {% for inst in sample_instances %}
+      <li>{{ inst.word_ref }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

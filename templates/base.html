@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/css/p4.css"/>
+  <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/css/p4-cuneify.css"/>
+  <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/epsd2/css/p3colours.css"/>
+  <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/epsd2/css/projcss.css"/>
+  <title>{% block title %}epsd2 (local){% endblock %}</title>
+</head>
+<body>
+<div id="p4Pager" class="bborder-top list page dglo rglo default" data-proj="epsd2" data-glos="sux">
+  <div id="p4Masthead">
+    <p id="p4HeadTitle" class="banner bborder-top bborder1-bot">
+      <a href="{{ url_for('glossary') }}">Local ePSD2:</a>
+      <a href="{{ url_for('glossary') }}">ePSD2 — electronic PSD 2nd Edition (local)</a>
+    </p>
+  </div>
+  <div id="p4Header" class="menu banner bborder-bot">
+    <div id="p4Search">
+      <form action="{{ url_for('glossary') }}" method="get">
+        <p>
+          <input id="p4SrchBox" name="q" type="text" size="30" value="{{ q or '' }}"/>
+          <input type="submit" value="Search"/>
+        </p>
+        <p id="p4SrchChars">(j=ŋ&#xa0;sz=š&#xa0;s,=ṣ&#xa0;t,=ṭ&#xa0;0-9=₀-₉; '=ʾ)</p>
+      </form>
+    </div>
+    {% block nav %}{% endblock %}
+  </div>
+
+  <div id="p4Data">
+    <div id="p4Menu">
+      <div id="p4Letters">
+        <p class="all-letters"><a href="{{ url_for('glossary') }}">ALL</a></p>
+        {% for L in LETTER_ORDER %}
+        <p><a href="{{ url_for('glossary', zoom=L) }}"><span>{{ L }}</span></a></p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="p4Content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+  <div id="p4Footer">
+    <p style="text-align:center; font-size:0.85em; padding:0.5em 0; opacity:0.7;">
+      Local rendering of Oracc / ePSD2 data (CC0). Source:
+      <a href="https://oracc.museum.upenn.edu/epsd2/sux">oracc.museum.upenn.edu/epsd2/sux</a>.
+    </p>
+  </div>
+</div>
+</body>
+</html>
