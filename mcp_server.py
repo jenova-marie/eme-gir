@@ -597,11 +597,13 @@ def find_compound(english_phrase: str, limit: int = 10) -> dict:
 
 @mcp.tool()
 @_log_call
-def get_inflections(oid: str) -> dict:
-    """Show every attested morphological breakdown of a lemma.
+def get_inflections(
+    oid: str, min_count: int = 2, limit_per_kind: int = 25,
+) -> dict:
+    """Show attested morphological breakdowns of a lemma.
 
-    For each kind of morphological data, returns the patterns/forms with
-    their attestation counts. Use this to understand HOW a verb actually
+    For each kind of morphological data, returns the most-frequent patterns
+    with attestation counts. Use this to understand HOW a verb actually
     inflects in the corpus, before composing a new sentence — Sumerian
     inflection is too irregular to generate from rules; better to retrieve
     real attested patterns and adapt.
@@ -622,7 +624,30 @@ def get_inflections(oid: str) -> dict:
 
     Args:
         oid: entry OID (e.g., 'o0033341' for lugal).
+        min_count: drop rows with attestation count below this (default 2 —
+            filters out the long tail of zero/one-off noise; common entries
+            like `lugal` have 100+ form-sans rows where most have count<2).
+            Pass 0 to see everything.
+        limit_per_kind: cap each `kind` bucket at this many rows (default
+            25). Pass 0 for no cap. The result also includes `truncated`
+            flags so the caller knows when more data exists.
+
+    Returned shape:
+        {
+          "oid": ..., "cf": ..., "gw": ..., "pos": ...,
+          "morphology": {
+            "base":      [{n, count, pct, xis}, ...],
+            "form-sans": [{n, count, pct, xis}, ...],
+            "morph":     [{n, count, pct, xis}, ...],
+            ...
+          },
+          "kinds": [...],
+          "truncated": {"form-sans": "showed 25 of 132 (filtered count>=2)"}
+        }
     """
+    min_count = max(0, int(min_count))
+    limit_per_kind = max(0, int(limit_per_kind))
+
     con = _connect()
     try:
         entry = con.execute(
@@ -637,14 +662,31 @@ def get_inflections(oid: str) -> dict:
         ).fetchall()
     finally:
         con.close()
-    by_kind: dict[str, list[dict]] = {}
+
+    raw_by_kind: dict[str, list[dict]] = {}
     for r in rows:
-        by_kind.setdefault(r["kind"], []).append({
+        raw_by_kind.setdefault(r["kind"], []).append({
             "n": r["n"],
             "count": r["icount"] or 0,
             "pct": r["ipct"] or 0,
             "xis": r["xis"],
         })
+
+    by_kind: dict[str, list[dict]] = {}
+    truncated: dict[str, str] = {}
+    for kind, items in raw_by_kind.items():
+        filtered = [i for i in items if i["count"] >= min_count]
+        kept = filtered[:limit_per_kind] if limit_per_kind else filtered
+        by_kind[kind] = kept
+        total = len(items)
+        if len(kept) < total:
+            truncated[kind] = (
+                f"showed {len(kept)} of {total} "
+                f"(filtered count>={min_count}"
+                + (f", capped at {limit_per_kind}" if limit_per_kind else "")
+                + ")"
+            )
+
     return {
         "oid": oid,
         "cf": entry["cf"],
@@ -652,6 +694,8 @@ def get_inflections(oid: str) -> dict:
         "pos": entry["pos"],
         "morphology": by_kind,
         "kinds": sorted(by_kind.keys()),
+        "truncated": truncated,
+        "filters": {"min_count": min_count, "limit_per_kind": limit_per_kind},
     }
 
 
@@ -682,6 +726,12 @@ def analyze_form(spelling: str, limit: int = 20) -> dict:
 
     con = _connect()
     try:
+        # Both branches use _cf indexed equality (forms.n_cf and
+        # morphology.n_cf) so each is a fast indexed lookup. Previously the
+        # morphology branch had `lower(m.n) = lower(?)` which forced a full
+        # scan of all 248K morphology rows (~340-550 ms per call); the
+        # n_cf column populated by app.ensure_casefold_columns() lets
+        # idx_morphology_kind_n_cf do the work in a few ms.
         rows = con.execute(
             """
             SELECT 'forms' AS source, e.id AS oid, e.cf, e.gw, e.pos,
@@ -692,12 +742,12 @@ def analyze_form(spelling: str, limit: int = 20) -> dict:
             SELECT 'morphology.' || m.kind AS source, e.id AS oid, e.cf, e.gw, e.pos,
                    m.n AS matched, m.icount AS count, m.ipct AS pct, m.xis
             FROM morphology m JOIN entries e ON e.id = m.entry_id
-            WHERE lower(m.n) = lower(?)
-              AND m.kind IN ('base', 'form-sans', 'morph')
+            WHERE m.kind IN ('base', 'form-sans', 'morph')
+              AND m.n_cf = ?
             ORDER BY count DESC NULLS LAST
             LIMIT ?
             """,
-            (needle, spelling, limit),
+            (needle, needle, limit),
         ).fetchall()
     finally:
         con.close()
@@ -824,37 +874,74 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
         }
     limit = max(1, min(50, int(limit)))
 
-    where = ["(cf1=? OR cf2=? OR cf3=? OR cf4=?)"]
-    params: list[Any] = [word, word, word, word]
-    if length in (2, 3, 4):
-        where.append("n=?")
-        params.append(length)
-    sql_where = "WHERE " + " AND ".join(where)
-
-    con = sqlite3.connect(COLLOCATIONS_DB)
-    con.row_factory = sqlite3.Row
-    try:
+    def _query(con: sqlite3.Connection, term: str) -> tuple[list[dict], int]:
+        where = ["(cf1=? OR cf2=? OR cf3=? OR cf4=?)"]
+        params: list[Any] = [term, term, term, term]
+        if length in (2, 3, 4):
+            where.append("n=?")
+            params.append(length)
+        sql_where = "WHERE " + " AND ".join(where)
         rows = con.execute(
             f"SELECT n, ngram, count FROM collocations {sql_where} "
             "ORDER BY count DESC LIMIT ?",
             (*params, limit),
         ).fetchall()
-        # also pull unigram count of the word for context (MI-style intuition)
-        ucount_row = con.execute(
-            "SELECT count FROM unigrams WHERE cf=?", (word,)
+        ucount = con.execute(
+            "SELECT count FROM unigrams WHERE cf=?", (term,)
         ).fetchone()
+        return (
+            [{"n": r["n"], "ngram": r["ngram"], "count": r["count"]} for r in rows],
+            ucount["count"] if ucount else 0,
+        )
+
+    con = sqlite3.connect(COLLOCATIONS_DB)
+    con.row_factory = sqlite3.Row
+    resolved_from: str | None = None
+    try:
+        results, unigram = _query(con, word)
+        if unigram == 0 and not results:
+            # The collocations index is keyed by citation form (cf), not by
+            # spelling. The agent likely passed an inflected spelling like
+            # 'e₂' (a variant of cf 'e') or 'lugal-e' (an inflection of
+            # 'lugal'). Look the spelling up in forms/morphology and retry
+            # with the most-attested cf — and tell the caller via
+            # `resolved_from` so they know we substituted.
+            gcon = _connect()
+            try:
+                cf_row = gcon.execute(
+                    """
+                    SELECT e.cf, e.icount FROM (
+                        SELECT entry_id FROM forms WHERE n_cf = ?
+                        UNION
+                        SELECT entry_id FROM morphology
+                        WHERE n_cf = ? AND kind IN ('base', 'form-sans')
+                    ) m JOIN entries e ON e.id = m.entry_id
+                    ORDER BY e.icount DESC NULLS LAST LIMIT 1
+                    """,
+                    (word.casefold(), word.casefold()),
+                ).fetchone()
+            finally:
+                gcon.close()
+            if cf_row and cf_row["cf"] != word:
+                resolved_from = word
+                word = cf_row["cf"]
+                results, unigram = _query(con, word)
     finally:
         con.close()
 
-    return {
+    payload: dict[str, Any] = {
         "word": word,
-        "word_unigram_count": ucount_row["count"] if ucount_row else 0,
-        "results": [{
-            "n": r["n"],
-            "ngram": r["ngram"],
-            "count": r["count"],
-        } for r in rows],
+        "word_unigram_count": unigram,
+        "results": results,
     }
+    if resolved_from:
+        payload["resolved_from"] = resolved_from
+        payload["note"] = (
+            f"input {resolved_from!r} appears to be a spelling/form; "
+            f"resolved to citation form {word!r} for the lookup. The "
+            "collocations index is keyed by cf, not by spelling."
+        )
+    return payload
 
 
 @mcp.tool()
