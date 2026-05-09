@@ -4,9 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A workspace for **reverse-engineering and parsing the Oracc / ePSD2 (electronic Pennsylvania Sumerian Dictionary) corpus**. Oracc is "The Open Richly Annotated Cuneiform Corpus" hosted at `https://oracc.museum.upenn.edu`. This directory holds:
+A workspace for **parsing the Oracc / ePSD2 (electronic Pennsylvania Sumerian Dictionary) corpus and exposing it to LLM agents** for English ↔ Sumerian translation. Oracc is "The Open Richly Annotated Cuneiform Corpus" hosted at `https://oracc.museum.upenn.edu`. This directory holds:
 
-- `index.html`, `js/p4.js`, `js/p4cbd.js` — frontend files scraped from the live site, used to reverse-engineer the URL/API surface (jQuery is intentionally not vendored)
 - `download_corpus.py` — pulls the full set of `.zip` archives from `https://oracc.museum.upenn.edu/json/` into `corpus/`
 - `build_glossary_db.py` — streams a `gloss-{lang}.json` from inside its zip into a queryable SQLite index (`glossary.sqlite` by default). Uses ijson (yajl2_c backend) for constant-memory parsing.
 - `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · ePSD2" with `static/img/jenova.png`.
@@ -20,6 +19,11 @@ A workspace for **reverse-engineering and parsing the Oracc / ePSD2 (electronic 
 - `text_index.sqlite` — ~10 MB index of 139,455 `(project, text_id, period, designation)` rows across all corpus zips, enabling instant text→zip lookup AND period filtering on attestations. 85% of texts have period metadata pulled from each project's `catalogue.json`. Rebuild with `python3 build_text_index.py`.
 - `collocations.sqlite` — ~22 MB index of 178K phrasal collocations (2/3/4-grams of citation forms) mined from ~138K corpusjson texts, with min count 3. Plus 62K unigram counts. Rebuild with `python3 build_collocations.py`.
 - `glossary_akk.sqlite` — ~114 MB Akkadian glossary built from `corpus/rinap.zip::rinap/gloss-akk.json` (3,651 Akkadian entries, 1.18 M instance refs). Built via the same `build_glossary_db.py` with `--member rinap/gloss-akk.json`. Not the default DB the MCP server reads; available for bilingual workflows when wired in.
+- `SUMERIAN_GRAMMAR.md` — ~14 KB Sumerian grammar cheat sheet distilled from Edzard 2003. Shipped both as a file AND as the MCP resource `oracc://grammar/sumerian` so an agent can fetch it once per session.
+- `AGENT_PROMPT.md` — drop-in system prompt that teaches an LLM agent how to use the MCP server's tools end-to-end (10-step English→Sumerian workflow + reverse direction + worked example). Distinct from SUMERIAN_GRAMMAR.md: the prompt teaches HOW to use the tools, the grammar teaches WHAT Sumerian is.
+- `README.md` — top-level project README aimed at humans cloning the repo.
+- `.mcp.json` — project-scoped MCP server config so Claude Code auto-detects the server when launched in this directory. **Uses absolute paths** because Claude Code spawns MCP server processes without sourcing the user's shell init, so a bare `python3` resolves to `/usr/bin/python3` (no `mcp` package). See "MCP server" section.
+- `mcp_server.log` — generated. Live tool-call log written by the server's `_log_call` decorator (rotating, 5 MB × 3 backups). Tail with `tail -F mcp_server.log` to watch agent activity in real time.
 - `static/img/jenova.png` — header avatar (128×128, 24 KB) and favicon
 - `.incommon_intermediate.pem` — cached TLS intermediate cert (see "TLS gotcha" below); do not delete
 
@@ -60,7 +64,11 @@ python3 app.py --port 8000 --debug
 python3 mcp_server.py
 ```
 
-Dependencies: `ijson` (`pip install ijson`) — uses the C backend (`yajl2_c`) automatically when available. Everything else is stdlib.
+Dependencies (`pip install ijson flask mcp`):
+- `ijson` — constant-memory streaming JSON parser. Uses the `yajl2_c` backend automatically when available; required by `build_glossary_db.py`, `build_text_index.py`, `download_corpus.py`.
+- `flask` — required by `app.py` (the local glossary browser).
+- `mcp` — required by `mcp_server.py` (the MCP server).
+- Everything else is stdlib.
 
 There are no tests, build, or lint steps — this is a data/scripts repo.
 
@@ -165,6 +173,7 @@ Built by `build_glossary_db.py`. All `icount`/`ipct` fields are integers (cast f
 | `sense_sigs` | 366,760 | `id PK, sense_id, sig, icount, ipct, xis` | full Oracc signature occurrences (`@proj%lang:form=cf[gw//sense]pos'epos$norm`). Indexed on `sense_id`, `sig`. |
 | `periods` | 37,659 | `entry_id, ord, p, icount, ipct, xis, PK(entry_id, ord) WITHOUT ROWID` | per-period attestation counts (e.g., "Ur III: 9816, Old Babylonian: …"). `ord` preserves Oracc's display order. Indexed on `p`. |
 | `compounds` | 1,901 | `entry_id, xcpd, eref, PK(entry_id, xcpd) WITHOUT ROWID` | "see-compounds" cross-references — e.g. *a* [ARM] → *a aŋ* [COMMAND], *a bad* [SPREAD], etc. `eref` points at the compound entry's `id`. Indexed on `eref`. |
+| `morphology` | 248,176 | `cbd_id PK, entry_id, kind, n, icount, ipct, xis WITHOUT ROWID` | per-entry morphological breakdown. `kind` ∈ {`base`, `morph`, `morph2`, `stem`, `prefix`, `form-sans`}. `n` is the morpheme pattern (`~` marks the base position in `morph` patterns; `mu.na:~` = prefix chain `mu.na` + base; `~,bi.a` = base + 3sg.nonp poss + locative). For epsd2/sux: 120K form-sans, 75K morphs, 38K bases, 15K prefixes; stem and morph2 empty. Indexed on `(entry_id, kind)`, `(kind, n)`, `xis`, and `(kind, n_cf)` for case-insensitive lookups. |
 | `instances` | 35,533,056 | `xis, word_ref, PK(xis,word_ref) WITHOUT ROWID` | the `xis → [{project}:{textid}.{line}.{word}]` map flattened into rows. Indexed on `word_ref` for reverse lookups. |
 
 Common queries:
@@ -199,6 +208,8 @@ Routes:
 
 Sumerian alphabetical sorting is implemented in `sort_key()` in `app.py`. Bumping `SORT_VERSION` triggers a one-shot re-population of the `letter` and `sort_key` columns on the next startup. Search-helper substitutions (`j→ŋ`, `sz→š`, `s,→ṣ`, `t,→ṭ`, digits → subscripts, `'→ʾ`) are applied to the `?q=` param in `normalize_query()`.
 
+`app.py` also owns the casefold migration (`ensure_casefold_columns()`, gated on `CASEFOLD_VERSION`): adds `_cf` mirror columns to `entries.cf`, `entries.gw`, `senses.mng`, `forms.n`, `norms.n`, `compounds.xcpd`, and `morphology.n` for fast Unicode-aware case-insensitive search, plus an `idx_morphology_kind_n_cf` index that the MCP server's `analyze_form` and `translate_sumerian` rely on. Bumping `CASEFOLD_VERSION` re-runs the migration. Both migrations are idempotent and run on `python3 app.py` startup; the MCP server checks for `casefold_version` in `meta` and bails with a hint if absent.
+
 Templates use **Oracc's own CSS** by linking the absolute `https://oracc.museum.upenn.edu/css/p4.css` etc. — so the look matches without us hosting any styles. If you want to detach for offline use, mirror those CSS files into `static/` and update `templates/base.html`.
 
 ## MCP server (`mcp_server.py`)
@@ -214,9 +225,9 @@ Tools:
 | `lookup_entry(oid)` | Full structured view: senses, top spellings (with cuneiform glyphs), periods, compounds. |
 | `see_examples(oid, limit, period)` | Real attested lines via `text_resolver`, target word marked. Supports period filter (substring, case-insensitive — "babylonian" matches Old AND Middle Babylonian) — pre-fetches matching text IDs from `text_index.sqlite` to avoid resolving irrelevant texts. |
 | `find_compound(english_phrase)` | Find idiomatic Sumerian compound expressions for an English phrase. |
-| `find_collocations(word, length, limit)` | Find multi-word phrasal idioms attested with a given lemma. Reads `collocations.sqlite`. Surfaces things like "Šusuen lugal" (year-name template), "lugal an-anubda" ("king of the four corners"), "lu kiŋgia lugal" ("the king's messenger"). |
-| `get_inflections(oid)` | Show every attested morphological breakdown (base/morph/morph2/stem/prefix/form-sans) of a lemma with attestation counts. The `~` in morph patterns marks the base position. |
-| `analyze_form(spelling, limit)` | Decompose a Sumerian spelling into candidate lemmas + their morphological role. Searches forms + form-sans + bases + morph patterns. |
+| `find_collocations(word, length, limit)` | Find multi-word phrasal idioms attested with a given lemma. Reads `collocations.sqlite`. The index is keyed by **citation form (cf)**, NOT by spelling — but the tool auto-resolves common misses: if `word='e₂'` (a spelling) returns zero, it looks up `e₂` in `forms.n_cf`/`morphology.n_cf`, picks the most-attested matching cf (`e`), and retries. Result includes `resolved_from` when this happened. |
+| `get_inflections(oid, min_count=2, limit_per_kind=25)` | Show attested morphological breakdowns. Defaults filter the long tail of count<2 noise and cap each kind bucket at 25 to keep results scannable in an MCP context. Pass `min_count=0, limit_per_kind=0` for the full firehose (e.g. `lugal` has 132 form-sans rows total). Result includes `truncated` dict telling the caller when more data exists. |
+| `analyze_form(spelling, limit)` | Decompose a Sumerian spelling into candidate lemmas + their morphological role. Indexed lookup against `forms.n_cf` + `morphology.n_cf` (kind in base/form-sans/morph). |
 | `lookup_sign(query)` | Look up a cuneiform sign by name ("LUGAL") or phonetic value ("lugal"). Returns the Unicode glyph, sign name, all phonetic readings. |
 | `cuneify(spelling)` | Render Oracc transliteration as Unicode cuneiform glyphs. |
 
@@ -224,19 +235,27 @@ Sanity-checks `glossary.sqlite` and `text_index.sqlite` exist on startup; bails 
 
 The `find_collocations` tool degrades gracefully (returns an error structure) if `collocations.sqlite` is absent. Other tools work without it.
 
-To wire into Claude Code or Claude Desktop, add to the user's MCP config:
+### Logging
+
+Every tool call goes through a `_log_call` decorator that emits `→ tool(args)` / `← tool (Nms) → summary` lines to BOTH stderr AND a rotating `mcp_server.log` (5 MB × 3 backups) next to the script. The file handler is essential because Claude Code captures only client-side events in its `~/Library/Caches/claude-cli-nodejs/.../mcp-logs-epsd2/*.jsonl` — the server's stderr is otherwise discarded. Tail with `tail -F mcp_server.log` while chatting with the agent. Errors get full tracebacks via `log.exception`. The startup banner logs DB sizes so you can confirm the right files are loaded.
+
+### Wiring into Claude Code / Claude Desktop
+
+The repo ships `.mcp.json` for project-scoped auto-detection. **Both paths must be absolute** because Claude Code spawns MCP servers without sourcing the user's shell init — a bare `python3` resolves to `/usr/bin/python3` which doesn't have the `mcp` package, and the server dies before responding to `initialize` (looks like "MCP server is down"):
 
 ```json
 {
   "mcpServers": {
     "epsd2": {
       "type": "stdio",
-      "command": "python3",
+      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
       "args": ["/Users/jenova/projects/jenova-marie/epsd2/mcp_server.py"]
     }
   }
 }
 ```
+
+For a different machine, swap the python path to whatever has `mcp` installed (`which python3`).
 
 ## Cuneiform rendering (`cuneify.py`)
 
@@ -282,8 +301,8 @@ Known scope cutoffs (deliberate, for the MVP):
 - No determinative superscripts on spellings yet (`ŋeš`, `kuš`, `na₄` etc. — they're in the JSON's form structure, just not captured by the parser).
 - Composite-text refs (Q-ids) not handled by the resolver regex; only P-ids.
 - No KWIC / sentence / line context-engine, no distribution profiles.
-- No English translation pulled from sibling `tr-en/` files yet.
-- No Bibliography section / publication shorthand from `catalogue.json`.
+- **English translations not in JSON archive** — the Oracc public JSON open data does NOT ship English translations; they exist only in the live HTML at `/{proj}/{P-id}` (look for `class="t1 xtr"` / `class="tr"` markers). To get translations we'd have to scrape + cache. The metadata.json `formats.tr-en` list tells us *which* texts have a translation available, not the translation itself.
+- Bibliography is partially surfaced: `see_examples` returns `designation` (e.g., "YOS 14, 341") per line via `text_index.sqlite`, but the web app's entry page doesn't yet render a dedicated Bibliography section.
 - No Period × Form cross-tab on entry pages.
 - The 7.1% of spellings whose signs are missing from OGSL render with `□` placeholders.
 - The tiny page-2/3 ordering discrepancies vs Oracc.

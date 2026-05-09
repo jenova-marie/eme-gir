@@ -47,19 +47,23 @@ python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.jso
 
 ## Use as an MCP server (English → Sumerian translation tools for an LLM)
 
-The repo also ships an MCP server exposing five tools designed for agent-driven English-to-Sumerian translation. Add to your Claude Desktop / Claude Code MCP config:
+The repo ships an MCP server exposing ten tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
+
+For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
 
 ```json
 {
   "mcpServers": {
     "epsd2": {
       "type": "stdio",
-      "command": "python3",
-      "args": ["/path/to/this/repo/mcp_server.py"]
+      "command": "/absolute/path/to/python3-with-mcp-installed",
+      "args": ["/absolute/path/to/this/repo/mcp_server.py"]
     }
   }
 }
 ```
+
+> **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
 
 Ten tools available to the agent:
 
@@ -78,30 +82,46 @@ Plus one MCP resource: `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar 
 
 Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
 
+For a complete agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`AGENT_PROMPT.md`](AGENT_PROMPT.md). It's a drop-in for the system message of any agent connected to this server.
+
+### Watching the server live
+
+Every tool call is logged to `mcp_server.log` next to the script (rotating, 5 MB × 3 backups), with arguments, duration, and a one-line result summary. Tail it while chatting with the agent:
+
+```bash
+tail -F mcp_server.log
+```
+
+Errors get full tracebacks. The startup banner reports loaded DB sizes so you can confirm the right files are mounted.
+
 ---
 
 ## What lives where
 
 | | |
 |---|---|
+| **Code** | |
 | `download_corpus.py` | Stdlib-only batch downloader; resume-safe; auto-fetches the InCommon TLS intermediate that Oracc's server omits. |
-| `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, and instances. |
-| `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` files, builds `text_index.sqlite` mapping `(project, text_id) -> (zip, member)`. |
-| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
-| `cuneify.py` | Loads OGSL on first use, exposes a Jinja `cuneify` filter. Tokenizes Oracc transliteration (determinatives, hyphen-joiners, compound graphemes, morphology tails) and renders Unicode cuneiform. |
-| `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 10 tools + 1 resource for agents over stdio. |
+| `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, morphology, and instances. |
+| `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` and per-text catalogue metadata, builds `text_index.sqlite`. |
 | `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
-| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` into an attested Sumerian line. |
-| `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter; Jinja filter and stand-alone. |
-| `SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003) shipped both as a file and as an MCP resource. |
-| `text_index.sqlite` | Generated. `(project, text_id) → (zip, member, period, designation)` for ~140K texts. |
-| `collocations.sqlite` | Generated. ~178K phrasal n-grams of citation forms mined from the corpus. |
+| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
+| `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
+| `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 10 tools + 1 resource for agents over stdio. Logs every call to `mcp_server.log`. |
+| **Docs / config** | |
+| `.mcp.json` | Project-scoped MCP server config — Claude Code auto-detects when launched in this directory. |
+| `SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003), also served as the MCP resource `oracc://grammar/sumerian`. |
+| `AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. |
+| `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, and project-prefix glossary. |
 | `static/img/jenova.png` | Header avatar / favicon. |
-| `corpus/` | Generated. 208 `.zip` files (~3.1 GB). Gitignored. |
-| `glossary.sqlite` | Generated. ~3.4 GB indexed extract of the Sumerian glossary. Gitignored. |
-| `text_index.sqlite` | Generated. ~6 MB index of 139,455 `(project, text_id)` pairs. Gitignored. |
-| `CLAUDE.md` | Detailed reference for AI coding assistants and humans alike — schema docs, the Oracc URL surface, the TLS gotcha, and project-prefix glossary. |
+| **Generated artifacts (gitignored)** | |
+| `corpus/` | 208 `.zip` files (~3.1 GB), one per Oracc project. |
+| `glossary.sqlite` | ~3.4 GB indexed extract of the Sumerian glossary (15,940 entries, 35.5 M attestations, 248 K morphology rows). |
+| `glossary_akk.sqlite` | ~114 MB Akkadian glossary built from `corpus/rinap.zip` for bilingual workflows (optional). |
+| `text_index.sqlite` | ~10 MB index of 139,455 `(project, text_id, period, designation)` rows. |
+| `collocations.sqlite` | ~22 MB index of ~178 K phrasal n-grams of citation forms mined from the corpus. |
+| `mcp_server.log` | Live tool-call log; rotates at 5 MB × 3 backups. |
 
 ---
 
@@ -133,10 +153,10 @@ GET /epsd2/o0033341 (lugal)
 
 - ~8% of glossary instance refs cite texts in projects we don't have downloaded; those fall back to raw refs.
 - ~7% of spellings contain at least one sign that's missing from OGSL and renders as a `□` placeholder.
-- No Bibliography section, no per-sense interleaved examples, no period × form cross-tab — Oracc shows these on the entry page; we don't yet.
+- The web app's entry page doesn't yet render a dedicated Bibliography section, per-sense interleaved examples, or a Period × Form cross-tab — though attestation lines DO surface the publication shorthand (e.g., "YOS 14, 341") via `text_index.sqlite`'s `designation` column.
 - The `/epsd2/sux` glossary list page matches Oracc page-1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't reverse-engineered).
 - Composite text refs (Q-ids) aren't handled by the resolver; only P-ids.
-- No English translations pulled from sibling `tr-en/` files yet.
+- **English translations are not in Oracc's public JSON archive** — they exist only in the live HTML pages at `/{project}/{P-id}` and would need scraping. The metadata `formats.tr-en` list tells us *which* texts have a translation available, not the translation itself.
 
 ---
 
