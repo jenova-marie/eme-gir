@@ -78,6 +78,36 @@ in the corpus).
 3. For ambiguous words, call `lookup_entry(oid)` and check sense
    distribution.
 
+## Literary content (hymns, myths, royal hymns, proverbs, wisdom)
+
+For literary content, reach for the **`etcsl_*`** tools instead of (or
+alongside) `see_examples`. Unlike the administrative corpus that
+backs `see_examples`, ETCSL ships **English translations**, so every
+hit comes back **bilingual** — invaluable when the user asks how a
+concept is expressed in canonical Sumerian literature.
+
+- `etcsl_search_english(query)` — concept-level lookup. FTS5 over the
+  Oxford translations: try `'kingship'`, `'underworld'`, `'descend*'`,
+  `'"divine power"'`. Returns each hit with the English paragraph AND
+  its corresponding Sumerian lines.
+- `etcsl_lines_with_lemma(lemma)` — ground a specific Sumerian lemma
+  (cf, e.g. `lugal`, `inana`) in literary use. Returns lines + the
+  English paragraph each line belongs to.
+- `etcsl_search_sumerian(query)` — FTS5 over Sumerian
+  transliteration (`'lugal kalam'`, `'me-te'`); returns bilingual
+  matches.
+- `etcsl_lookup_text(text_id, start, line_limit)` — read a whole
+  composition. Famous IDs: `c.1.4.1` (Inana's Descent), `c.1.8.1.4`
+  (Gilgameš and the Underworld), `c.2.1.1` (Sumerian King List),
+  `c.6.1.*` (proverb collections). For long works, page with `start`
+  and use the returned `next_start` to continue.
+
+Prefer `etcsl_*` whenever the user says "literary", "hymn",
+"composition", "Inana", "Gilgameš", "proverb", "King List", "Šulgi",
+or asks how a poet/scribe would have phrased something. Always
+include the `attribution` field when quoting ETCSL material — it's
+CC BY 3.0 UK and credit is required.
+
 ## Quality and citation
 
 - **Always cite an attestation** for non-trivial translations. Use

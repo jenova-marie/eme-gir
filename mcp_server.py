@@ -12,6 +12,12 @@ Tools:
     lookup_sign(query)                     - find a cuneiform sign by name or phonetic value
     cuneify(spelling)                      - render transliteration as Unicode cuneiform
 
+ETCSL (Sumerian literary corpus + English translations) — Oxford 2006:
+    etcsl_search_english(query, limit)     - FTS over English translations; returns bilingual lines
+    etcsl_lines_with_lemma(lemma, limit)   - literary attestations of a Sumerian lemma + their English
+    etcsl_lookup_text(text_id, line_range) - read a whole composition (e.g. c.1.4.1 = Inana's Descent)
+    etcsl_search_sumerian(query, limit)    - FTS over Sumerian transliteration; returns bilingual lines
+
 One resource:
     oracc://grammar/sumerian               - compact Sumerian grammar cheat sheet
                                              (Edzard 2003); fetch once per session
@@ -39,11 +45,17 @@ import cuneify as _cuneify
 import text_resolver
 from paths import (
     COLLOCATIONS_DB,
+    ETCSL_DB,
     GLOSSARY_DB,
     GRAMMAR_DOC,
     MCP_SERVER_LOG as LOG_FILE,
     ROOT,
     TEXT_INDEX_DB,
+)
+
+ETCSL_ATTRIBUTION = (
+    "ETCSL: Black, J.A. et al., The Electronic Text Corpus of Sumerian "
+    "Literature (etcsl.orinst.ox.ac.uk), Oxford 1998-2006. CC BY 3.0 UK."
 )
 
 # Logs go to TWO places so they're visible no matter how the server is run:
@@ -159,7 +171,16 @@ mcp = FastMCP(
         "cuneiform.\n\n"
         "For Sumerian → English: translate_sumerian(transliteration) parses "
         "a phrase into per-token candidate lemmas; analyze_form(spelling) "
-        "decomposes a single word; lookup_sign(query) maps signs ↔ values."
+        "decomposes a single word; lookup_sign(query) maps signs ↔ values.\n\n"
+        "For literary content (hymns, myths, royal hymns, proverbs, wisdom): "
+        "the etcsl_* tools query the Electronic Text Corpus of Sumerian "
+        "Literature (Oxford 2006, CC BY 3.0, 394 compositions / 33,698 "
+        "lines). UNLIKE the Oracc-based corpus, ETCSL ships English "
+        "translations alongside every line, so etcsl_search_english() and "
+        "etcsl_lines_with_lemma() return bilingual results — perfect for "
+        "grounding translations and learning real Sumerian style. Reach "
+        "for these whenever the user asks about hymns, myths, kings' "
+        "speeches, or anything literary."
     ),
 )
 
@@ -1083,6 +1104,293 @@ def cuneify(spelling: str) -> dict:
         "cuneiform": glyphs,
         "complete": not has_placeholder,
         "placeholder_count": glyphs.count("□"),
+    }
+
+
+# -----------------------------------------------------------------------------
+# ETCSL tools (Sumerian literary corpus, Oxford 2006)
+# -----------------------------------------------------------------------------
+
+def _etcsl_connect() -> sqlite3.Connection:
+    if not ETCSL_DB.exists():
+        raise FileNotFoundError(
+            f"etcsl.sqlite not found at {ETCSL_DB}. "
+            "Build it with: python3 build_etcsl_db.py"
+        )
+    con = sqlite3.connect(ETCSL_DB)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def _etcsl_lines_for_paragraph(con: sqlite3.Connection, text_id: str, para_id: str) -> list[dict]:
+    """Return the Sumerian lines that this translation paragraph covers."""
+    rows = con.execute(
+        "SELECT line_label, transliteration FROM lines "
+        "WHERE text_id=? AND paragraph_id=? ORDER BY ord",
+        (text_id, para_id),
+    ).fetchall()
+    return [{"line": r["line_label"], "transliteration": r["transliteration"]} for r in rows]
+
+
+@mcp.tool()
+@_log_call
+def etcsl_search_english(query: str, limit: int = 10) -> dict:
+    """Full-text search across English translations of Sumerian literary
+    texts. Returns bilingual matches: each hit includes the English
+    paragraph plus the Sumerian lines that produced it.
+
+    Excellent for: literary/hymn/myth content, finding how a concept is
+    expressed in genuine Sumerian literature. Complements `see_examples`,
+    which works best for administrative texts.
+
+    Search syntax is SQLite FTS5 (porter-stemmed): single words, AND/OR/NOT
+    operators, "exact phrases", prefix*. E.g.:
+        'kingship'           -> stemmed match for king/kings/kingship/...
+        '"divine power"'     -> exact phrase
+        'temple AND build'   -> both terms
+        'descend*'           -> prefix
+
+    Args:
+        query: FTS5 query string (English).
+        limit: max matches (default 10, cap 50).
+    """
+    limit = max(1, min(50, int(limit)))
+    con = _etcsl_connect()
+    try:
+        rows = con.execute(
+            """
+            SELECT t.text_id, t.title, p.para_id, p.line_range, p.translation
+            FROM paragraphs_fts f
+            JOIN paragraphs p ON p.rowid = f.rowid
+            JOIN texts t ON t.text_id = p.text_id
+            WHERE paragraphs_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (query, limit),
+        ).fetchall()
+        results = []
+        for r in rows:
+            results.append({
+                "text_id": r["text_id"],
+                "title": r["title"],
+                "line_range": r["line_range"],
+                "translation": r["translation"],
+                "sumerian_lines": _etcsl_lines_for_paragraph(con, r["text_id"], r["para_id"]),
+            })
+    finally:
+        con.close()
+    return {
+        "query": query,
+        "results": results,
+        "attribution": ETCSL_ATTRIBUTION,
+    }
+
+
+@mcp.tool()
+@_log_call
+def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> dict:
+    """Find Sumerian literary lines containing the given lemma (cf), with
+    each line's English translation paragraph alongside.
+
+    Use after translate_english to verify how a chosen Sumerian word is
+    actually used in canonical literary contexts (hymns, myths, royal
+    inscriptions, wisdom). Often surfaces collocational patterns the
+    administrative corpus misses.
+
+    Args:
+        lemma: the citation form (cf) to search for, e.g. 'lugal',
+               'inana', 'ŋeš' (use ŋ not 'j' or 'g'). Case-insensitive.
+        limit: max lines to return (default 10, cap 50).
+    """
+    limit = max(1, min(50, int(limit)))
+    con = _etcsl_connect()
+    try:
+        # The words index is case-sensitive on lemma, but ePSD2 lemmas are
+        # always lowercase (except proper nouns). Try lower then capitalized.
+        rows = con.execute(
+            """
+            SELECT l.text_id, t.title, l.line_label, l.line_id, l.ord,
+                   l.transliteration, l.paragraph_id
+            FROM words w
+            JOIN lines l USING (text_id, line_id)
+            JOIN texts t ON t.text_id = l.text_id
+            WHERE w.lemma = ?
+            ORDER BY l.text_id, l.ord
+            LIMIT ?
+            """,
+            (lemma, limit),
+        ).fetchall()
+
+        results = []
+        for r in rows:
+            translation = None
+            if r["paragraph_id"]:
+                tr = con.execute(
+                    "SELECT translation FROM paragraphs WHERE text_id=? AND para_id=?",
+                    (r["text_id"], r["paragraph_id"]),
+                ).fetchone()
+                if tr:
+                    translation = tr["translation"]
+            results.append({
+                "text_id": r["text_id"],
+                "title": r["title"],
+                "line": r["line_label"],
+                "transliteration": r["transliteration"],
+                "translation_paragraph": translation,
+            })
+    finally:
+        con.close()
+    return {
+        "lemma": lemma,
+        "results": results,
+        "attribution": ETCSL_ATTRIBUTION,
+    }
+
+
+@mcp.tool()
+@_log_call
+def etcsl_lookup_text(text_id: str, start: int = 1, line_limit: int = 50) -> dict:
+    """Read a Sumerian literary composition with line-by-line transliteration
+    and the corresponding English translation paragraphs.
+
+    Famous text IDs to know:
+      c.1.4.1   - Inana's Descent to the Underworld
+      c.1.8.1.4 - Gilgameš, Enkidu and the Underworld
+      c.2.1.1   - The Sumerian King List
+      c.2.4.2.* - Šulgi praise poems
+      c.6.1.*   - Sumerian proverbs collections
+
+    Args:
+        text_id: ETCSL composition ID, e.g. 'c.1.4.1'.
+        start: sequential ordinal of the first line to return (1-based;
+               default 1). Use the `line_end` field from the previous call to
+               page through long texts. This is an `ord` index, not a line
+               label — multi-section works (e.g. c.2.4.2.16) are sequenced
+               across all sections so paging never silently skips them.
+        line_limit: max lines (default 50, cap 200). For long works (King
+                    List = 350+ lines, Inana's Descent = 415+ lines), call
+                    multiple times with bumped `start` to read in chunks.
+    """
+    line_limit = max(1, min(200, int(line_limit)))
+    con = _etcsl_connect()
+    try:
+        text = con.execute(
+            "SELECT text_id, title, has_translation FROM texts WHERE text_id=?",
+            (text_id,),
+        ).fetchone()
+        if not text:
+            return {"error": f"no ETCSL text with id={text_id!r}"}
+        total_lines = con.execute(
+            "SELECT COUNT(*) FROM lines WHERE text_id=?", (text_id,)
+        ).fetchone()[0]
+
+        line_rows = con.execute(
+            "SELECT ord, line_label, transliteration, paragraph_id FROM lines "
+            "WHERE text_id=? AND ord >= ? ORDER BY ord LIMIT ?",
+            (text_id, start, line_limit),
+        ).fetchall()
+        # Fetch all paragraphs referenced by these lines in one query
+        para_ids = sorted({r["paragraph_id"] for r in line_rows if r["paragraph_id"]})
+        translations: dict[str, str] = {}
+        if para_ids:
+            placeholders = ",".join("?" * len(para_ids))
+            for r in con.execute(
+                f"SELECT para_id, translation FROM paragraphs "
+                f"WHERE text_id=? AND para_id IN ({placeholders})",
+                (text_id, *para_ids),
+            ):
+                translations[r["para_id"]] = r["translation"]
+
+        # Group consecutive lines by their paragraph_id so the agent sees
+        # natural bilingual blocks instead of repeated translations.
+        blocks: list[dict] = []
+        current_para: str | None = ...  # sentinel
+        for r in line_rows:
+            if r["paragraph_id"] != current_para:
+                blocks.append({
+                    "paragraph_id": r["paragraph_id"],
+                    "translation": translations.get(r["paragraph_id"]) if r["paragraph_id"] else None,
+                    "lines": [],
+                })
+                current_para = r["paragraph_id"]
+            blocks[-1]["lines"].append({
+                "ord": r["ord"],
+                "line": r["line_label"],
+                "transliteration": r["transliteration"],
+            })
+    finally:
+        con.close()
+    return {
+        "text_id": text_id,
+        "title": text["title"],
+        "total_lines": total_lines,
+        "returned_lines": len(line_rows),
+        "start": start,
+        "last_ord": line_rows[-1]["ord"] if line_rows else None,
+        "next_start": (line_rows[-1]["ord"] + 1) if line_rows and (line_rows[-1]["ord"] < total_lines) else None,
+        "has_translation": bool(text["has_translation"]),
+        "blocks": blocks,
+        "attribution": ETCSL_ATTRIBUTION,
+    }
+
+
+@mcp.tool()
+@_log_call
+def etcsl_search_sumerian(query: str, limit: int = 10) -> dict:
+    """Full-text search across Sumerian transliterations of literary texts.
+    Returns each matching line with its English translation paragraph.
+
+    Use to find specific Sumerian phrases or formulas in literary contexts,
+    e.g. 'lugal kalam' for "king of the land", 'me-te' for "fitting".
+
+    Search syntax: SQLite FTS5 with unicode61 tokenizer. Hyphens within
+    spellings (lugal-bi) become token separators, so quote multi-token
+    spellings as 'lugal-bi'.
+
+    Args:
+        query: FTS5 query string (Sumerian transliteration).
+        limit: max matches (default 10, cap 50).
+    """
+    limit = max(1, min(50, int(limit)))
+    con = _etcsl_connect()
+    try:
+        rows = con.execute(
+            """
+            SELECT l.text_id, t.title, l.line_label, l.transliteration,
+                   l.paragraph_id
+            FROM lines_fts f
+            JOIN lines l ON l.rowid = f.rowid
+            JOIN texts t ON t.text_id = l.text_id
+            WHERE lines_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (query, limit),
+        ).fetchall()
+        results = []
+        for r in rows:
+            tr = None
+            if r["paragraph_id"]:
+                row = con.execute(
+                    "SELECT translation FROM paragraphs WHERE text_id=? AND para_id=?",
+                    (r["text_id"], r["paragraph_id"]),
+                ).fetchone()
+                if row:
+                    tr = row["translation"]
+            results.append({
+                "text_id": r["text_id"],
+                "title": r["title"],
+                "line": r["line_label"],
+                "transliteration": r["transliteration"],
+                "translation_paragraph": tr,
+            })
+    finally:
+        con.close()
+    return {
+        "query": query,
+        "results": results,
+        "attribution": ETCSL_ATTRIBUTION,
     }
 
 

@@ -31,6 +31,14 @@ GLOSSARY_DB = DATA_DIR / "glossary.sqlite"
 GLOSSARY_AKK_DB = DATA_DIR / "glossary_akk.sqlite"
 TEXT_INDEX_DB = DATA_DIR / "text_index.sqlite"
 COLLOCATIONS_DB = DATA_DIR / "collocations.sqlite"
+ETCSL_DB = DATA_DIR / "etcsl.sqlite"
+
+# ETCSL bulk corpus — fetched from Oxford Text Archive.
+ETCSL_ZIP = DATA_DIR / "etcsl.zip"
+ETCSL_ZIP_URL = (
+    "https://ota.bodleian.ox.ac.uk/repository/xmlui/bitstream/handle/"
+    "20.500.12024/2518/etcsl.zip?sequence=11&isAllowed=y"
+)
 
 # Logs.
 MCP_SERVER_LOG = LOG_DIR / "mcp_server.log"
