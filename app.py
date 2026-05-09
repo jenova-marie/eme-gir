@@ -19,6 +19,8 @@ from pathlib import Path
 
 from flask import Flask, abort, g, redirect, render_template, request, url_for
 
+import text_resolver
+
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "glossary.sqlite"
 
@@ -293,10 +295,21 @@ def create_app() -> Flask:
                 sense_ids,
             ):
                 sense_sigs.setdefault(row["sense_id"], []).append(row)
-        sample_instances = db.execute(
-            "SELECT word_ref FROM instances WHERE xis=? LIMIT 50",
+        # Pull a generous batch and let the resolver dedup to unique lines.
+        # We over-fetch because many word_refs point to the same line (xis is
+        # often per-form, not per-line) — this saves the user from seeing 50
+        # rows of "the same line" in the rendered output.
+        instance_rows = db.execute(
+            "SELECT word_ref FROM instances WHERE xis=? LIMIT 500",
             (entry["xis"],),
         ).fetchall() if entry["xis"] else []
+        resolved_lines = text_resolver.resolve_many(
+            [r["word_ref"] for r in instance_rows], limit=20
+        )
+        unresolved_sample = [
+            r["word_ref"] for r in instance_rows[:10]
+            if text_resolver.parse_word_ref(r["word_ref"]) is not None
+        ][:10] if not resolved_lines else []
         periods = db.execute(
             "SELECT p, icount, ipct FROM periods WHERE entry_id=? ORDER BY ord", (oid,),
         ).fetchall()
@@ -306,7 +319,10 @@ def create_app() -> Flask:
         return render_template(
             "entry.html",
             entry=entry, forms=forms, norms=norms, senses=senses,
-            sense_sigs=sense_sigs, sample_instances=sample_instances,
+            sense_sigs=sense_sigs,
+            resolved_lines=resolved_lines,
+            unresolved_sample=unresolved_sample,
+            total_instances=len(instance_rows),
             periods=periods, compounds=compounds,
         )
 

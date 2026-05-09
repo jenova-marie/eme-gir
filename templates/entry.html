@@ -104,15 +104,50 @@
     </ul>
     {% endif %}
 
-    {% if sample_instances %}
-    <h2>Sample attestations (first {{ sample_instances|length }})</h2>
-    <p style="font-size:0.85em; opacity:0.7;">
-      Each ref is <code>{project}:{P-id}.{line}.{word}</code>; future phase will join into corpusjson for full transliteration.
+    {% if resolved_lines %}
+    <h2>Attestations in context ({{ resolved_lines|length }} lines{% if total_instances %} of {{ total_instances }}+ refs{% endif %})</h2>
+    <p style="font-size:0.85em; opacity:0.6; margin-top:-0.5em;">
+      Sumerian transliteration with the target word highlighted. Pulled from
+      each text's <code>corpusjson/</code>.
     </p>
-    <ul style="font-family:monospace; font-size:0.85em; columns: 3;">
-      {% for inst in sample_instances %}
-      <li>{{ inst.word_ref }}</li>
-      {% endfor %}
+    <table style="border-collapse: collapse; width:100%;">
+      <thead><tr>
+        <th style="text-align:left; padding:0.3em 1em 0.3em 0; opacity:0.7;">text · line</th>
+        <th style="text-align:left;">transliteration</th>
+      </tr></thead>
+      <tbody>
+        {% for line in resolved_lines %}
+        <tr style="border-top:1px solid rgba(0,0,0,0.06);">
+          <td style="padding:0.4em 1em 0.4em 0; vertical-align:top; white-space:nowrap; font-family:monospace; font-size:0.85em;">
+            <strong>{{ line.text_id }}</strong>
+            <span style="opacity:0.6;">·</span>
+            <span title="{{ line.project }}">{{ line.line_label }}</span>
+          </td>
+          <td style="padding:0.4em 0; vertical-align:top;">
+            {% for w in line.words -%}
+              {%- if w.is_target -%}
+                <mark class="wr"><span class="w sux"><span class="sux"><strong>{{ w.frag }}</strong></span></span></mark>
+              {%- elif w.node == "l" -%}
+                <span class="wr"><span class="w sux"><span class="sux">{{ w.frag }}</span></span></span>
+              {%- else -%}
+                {{ w.frag }}
+              {%- endif -%}
+              {% if not loop.last %} {% endif %}
+            {%- endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% elif unresolved_sample %}
+    <h2>Attestations</h2>
+    <p style="font-size:0.85em; opacity:0.7;">
+      None of the first {{ unresolved_sample|length }} refs could be resolved to local
+      corpusjson — likely the source text is in a project zip we don't have.
+      Sample raw refs:
+    </p>
+    <ul style="font-family:monospace; font-size:0.85em;">
+      {% for r in unresolved_sample %}<li>{{ r }}</li>{% endfor %}
     </ul>
     {% endif %}
   </div>
