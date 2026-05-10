@@ -55,9 +55,13 @@ For each translation request, work in this order:
    comitative `-da`, ablative `-ta`, terminative `-še`, etc.) AND
    mirror them in the verbal prefix chain (`-na-`, `-ni-`, `-da-`,
    etc.).
-8. Build the verb form. **Before composing a new inflection**, call
-   `get_inflections(oid)` on the verb root to see which morphology
-   patterns and prefix chains are actually attested for that verb.
+8. Build the verb form. **Don't synthesize from rules** — Sumerian
+   verbal morphology is too irregular. Use `find_verb_form(cf, pos,
+   prefix=..., dimensional=[...], object_person=..., aspect=...)` to
+   pull attested forms ranked by frequency. Each result includes the
+   morpheme template, the spelling, and one cited line from the
+   corpus. If you want the broader picture (every attested pattern,
+   no feature filter), `get_inflections(oid)` dumps the full set.
 9. **Verify with attestation**: call `see_examples(oid, period='Ur III')`
    on at least one key lemma to confirm the chosen collocation appears
    in real texts. Cite the P-id in your reply.

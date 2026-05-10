@@ -94,7 +94,7 @@ server.
 
 ## Use as an MCP server (English → Sumerian translation tools for an LLM)
 
-The repo ships an MCP server exposing fourteen tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
+The repo ships an MCP server exposing fifteen tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
 
 For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
 
@@ -112,7 +112,7 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 
 > **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
 
-Fourteen tools available to the agent:
+Fifteen tools available to the agent:
 
 ePSD2 dictionary + corpus tools:
 
@@ -124,6 +124,7 @@ ePSD2 dictionary + corpus tools:
 - `find_collocations(word, length, limit)` — phrasal idioms attested with a given lemma (mined from the corpus, not the dictionary — surfaces formulas like "Šusuen lugal", year-name templates, royal titles)
 - `get_inflections(oid)` — every attested morphological breakdown of a lemma
 - `analyze_form(spelling)` — decompose an attested spelling into candidate lemmas + morphology
+- `find_verb_form(cf, pos, prefix, dimensional, object_person, aspect, …)` — attested verb forms matching a feature spec; returns the morph template + spelling + attested count + one cited line per match (attestation-first; no rule-based synthesis)
 - `lookup_sign(query)` — find a cuneiform sign by name or phonetic value
 - `cuneify(spelling)` — render Oracc transliteration as Unicode cuneiform glyphs
 
@@ -166,7 +167,7 @@ Errors get full tracebacks. The startup banner reports loaded DB sizes so you ca
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 14 tools + 1 resource for agents over stdio. Logs every call to `log/mcp_server.log`. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 15 tools + 1 resource for agents over stdio. Logs every call to `log/mcp_server.log`. |
 | `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
 | **Docs / config** | |
 | `.mcp.json` | Project-scoped MCP server config — Claude Code auto-detects when launched in this directory. |

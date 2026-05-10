@@ -9,6 +9,8 @@ Tools:
     find_collocations(word, length, limit) - phrasal n-grams attested with a word
     get_inflections(oid)                   - attested morphological inflections of a lemma
     analyze_form(spelling)                 - decompose an attested form into base+morph
+    find_verb_form(cf, pos, ...)           - attested verb forms matching a feature spec
+                                             (prefix, dimensional infixes, object agreement, …)
     lookup_sign(query)                     - find a cuneiform sign by name or phonetic value
     cuneify(spelling)                      - render transliteration as Unicode cuneiform
 
@@ -1073,6 +1075,403 @@ def lookup_sign(query: str, limit: int = 10) -> dict:
     return {
         "query": query,
         "results": deduped[:limit],
+    }
+
+
+# -----------------------------------------------------------------------------
+# find_verb_form — feature-driven attestation lookup over the morphology table
+# -----------------------------------------------------------------------------
+#
+# Slot order encoded by Oracc's morph patterns (verified against epsd2/sux):
+#   [modal] . [conj-prefix] . [dim1=na/dat] . [dim2=ni/loc] . [obj-agreement] : [base] ; [suffixes]
+#
+# Examples from du[build] V/t:
+#   mu:~          prefix=mu                                            (2,923)
+#   mu.na:~       prefix=mu, dim=dat                                     (473)
+#   mu.n:~        prefix=mu,                  obj=3sg.h                   (56)
+#   mu.na.n:~     prefix=mu, dim=dat,         obj=3sg.h                   (13)
+#   ba.b:~        prefix=ba,                  obj=3sg.nh           (3,976 verbs)
+
+_VERB_PREFIX_MAP = {
+    "mu":  "mu",  "ba": "ba", "i": "i", "bi": "bi",
+    "ga":  "ga",  "ha": "ha",
+    "imp": "",     # imperative — bare base, no prefix slot at all
+}
+_VERB_DIM_MAP = {
+    "dat":  "na",  # to/for him
+    "loc":  "ni",  # in/at
+    "com":  "da",  # with
+    "abl":  "ta",  # from
+    "term": "ši",  # toward
+    "loc2": "e",   # locative-2
+}
+_VERB_DIM_ORDER = ["dat", "loc", "com", "abl", "term", "loc2"]
+_VERB_OBJ_MAP = {
+    "3sg.h":  "n",
+    "3sg.nh": "b",
+    "3pl.h":  "neš",
+    "1sg":    "ʔ",
+}
+# marû imperfective tends to surface as one of these enclitic suffixes;
+# ḫamṭu lacks them. Heuristic only — does not catch stem-alternating verbs
+# (e.g. ŋen/du-du for "go") which are encoded as separate entries.
+_MARU_SUFFIX_GLOBS = ("*~;e", "*~;ed*", "*~;e.*", "*~;en*", "*~;eš*")
+
+
+def _morph_slots(morph_n: str) -> tuple[list[str], list[str]]:
+    """Split 'mu.na.n:~;a' into (['mu','na','n'], ['a']).
+
+    Returns (prefix_slots_in_order, suffix_slots_flat). The base is
+    implicit at the ':~' boundary and not returned. Suffix groups
+    separated by ',' (e.g. ';a,ak') are flattened.
+    """
+    if ":~" in morph_n:
+        # Standard prefix-chain + base + suffixes; rsplit so reduplication
+        # patterns like '~mu.n:~;en' use the LAST ':~' as the separator.
+        prefix_part, suffix_part = morph_n.rsplit(":~", 1)
+    elif "~" in morph_n:
+        # Bare base or base + suffix only (e.g. '~' or '~;a').
+        idx = morph_n.index("~")
+        prefix_part = morph_n[:idx]
+        suffix_part = morph_n[idx + 1:]
+    else:
+        prefix_part, suffix_part = morph_n, ""
+    pre_slots = [s for s in prefix_part.split(".") if s] if prefix_part else []
+    suf_groups = suffix_part.lstrip(";").split(";") if suffix_part else []
+    suf_flat = [s for chunk in suf_groups for s in chunk.split(",") if s]
+    return pre_slots, suf_flat
+
+
+def _matches_feature_spec(
+    morph_n: str, *,
+    polarity: str, prefix: str | None,
+    dimensional: list[str] | None,
+    object_person: str | None,
+) -> bool:
+    """Verify a morph row's slot decomposition against requested features.
+
+    Slot model (left-to-right in the prefix chain):
+        [polarity nu] . [conj-prefix] . [dim slots in canonical order]
+                      . [obj-agreement: n/b/neš/ʔ]
+    All matching is on COMPLETE slot tokens — `n` must be exactly `n`,
+    not a substring of `na`, `ne`, `neš`. This is what GLOB can't do.
+    """
+    pre_slots, _ = _morph_slots(morph_n)
+
+    cursor = 0  # walk pointer through pre_slots
+
+    if polarity == "neg":
+        if cursor >= len(pre_slots) or pre_slots[cursor] != "nu":
+            return False
+        cursor += 1
+
+    if prefix is not None:
+        wanted = _VERB_PREFIX_MAP[prefix]
+        if wanted == "":  # imperative — bare base, must have NO prefix slots left
+            return cursor == len(pre_slots) and (
+                object_person is None and not dimensional
+            )
+        if cursor >= len(pre_slots) or pre_slots[cursor] != wanted:
+            return False
+        cursor += 1
+    elif not pre_slots:
+        # No prefix requested AND row is bare base — only return it if
+        # the caller didn't ask for any other prefix-chain features.
+        return object_person is None and not dimensional and polarity == "affirm"
+
+    # The "tail" is everything from cursor to end. The object-agreement
+    # marker, if present, is always the LAST tail slot. Dimensional
+    # markers fill the slots between (in canonical order, but the user
+    # may not have requested all of them — the row may include extras).
+    tail = pre_slots[cursor:]
+
+    obj_slot = None
+    if object_person is not None:
+        wanted_obj = _VERB_OBJ_MAP[object_person]
+        if not tail or tail[-1] != wanted_obj:
+            return False
+        obj_slot = wanted_obj
+        tail = tail[:-1]
+
+    # Whatever's left in `tail` must include each requested dimensional
+    # marker, in canonical order. Extras in the row are OK (the user
+    # under-specified) — but we don't allow OUT-OF-ORDER, since the
+    # morph table itself preserves canonical order.
+    if dimensional:
+        wanted_dims = [_VERB_DIM_MAP[d] for d in _VERB_DIM_ORDER if d in dimensional]
+        i = 0
+        for slot in tail:
+            if i < len(wanted_dims) and slot == wanted_dims[i]:
+                i += 1
+        if i < len(wanted_dims):
+            return False
+
+    return True
+
+
+def _synthesize_verb_spelling(morph_n: str, base_n: str) -> str:
+    """Mechanically render a morph template into a spelling.
+
+    `~` -> base, then `.` `:` `;` `,` all become `-`.
+
+    NB: this does NOT model Sumerian phonology. Cases like agreement
+    `n` surfacing as `un` (mu.n:~ -> attested mu-un-du₃) are NOT
+    handled — the synthesized spelling for that pattern would be
+    'mu-n-du₃', which doesn't exist in forms but is unambiguous as a
+    morpheme rendering. Returned spellings are best-effort; the
+    morph row's `count` is the authoritative attestation total.
+    """
+    # Insert hyphens between adjacent base-occurrences in reduplication
+    # patterns like '~~' or '~mu' (no separator in the morph encoding)
+    # before substituting the base, so 'du₃' stays joined by '-'.
+    s = morph_n
+    for ch in ".:;,":
+        s = s.replace(ch, "-")
+    out = []
+    for i, ch in enumerate(s):
+        if ch == "~":
+            if i > 0 and s[i - 1] not in "-":
+                out.append("-")
+            out.append(base_n)
+            if i + 1 < len(s) and s[i + 1] not in "-":
+                out.append("-")
+        else:
+            out.append(ch)
+    s = "".join(out)
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-")
+
+
+@mcp.tool()
+@_log_call
+def find_verb_form(
+    cf: str,
+    pos: str = "V/t",
+    *,
+    prefix: str | None = None,
+    polarity: str = "affirm",
+    object_person: str | None = None,
+    dimensional: list[str] | None = None,
+    aspect: str | None = None,
+    suffix_a: bool | None = None,
+    reduplicated: bool | None = None,
+    min_count: int = 1,
+    limit: int = 10,
+    with_example: bool = True,
+) -> dict:
+    """Find attested verb forms matching a feature spec.
+
+    Sumerian conjugation is too irregular to synthesize confidently. This
+    tool instead RETRIEVES attested forms by querying the corpus's
+    morphology index with grammatical-feature constraints — the agent gets
+    real Ur-III-through-Old-Babylonian scribal practice, ranked by
+    frequency, ready to drop into a translation.
+
+    Each match returns BOTH the morpheme template (`mu.na:~`) and a
+    mechanically-synthesized spelling (`mu-na-du₃`), the raw attestation
+    count, the share of this verb's total uses, the cuneiform rendering,
+    and one cited example line so the agent can verify it's real.
+
+    Slot model (matches the morph patterns in `morphology.n`):
+        [polarity nu] . [prefix] . [dim slots: na, ni, da, ta, ši, e]
+                      . [obj-agreement: n=3sg.h, b=3sg.nh, neš=3pl.h]
+                      : [base]
+                      ; [suffix slots: e/ed/en/eš (marû), a (nominalizer), …]
+
+    Args:
+        cf:  citation form, e.g. 'du', 'ŋar', 'ŋen'.
+        pos: 'V/t' (transitive, default) or 'V/i' (intransitive).
+        prefix: conjugation prefix in {'mu','ba','i','bi','ga','ha','imp'}.
+                'imp' = imperative (bare base, no prefix). None = any.
+        polarity: 'affirm' (default) or 'neg' (prepends nu-).
+        object_person: object/agreement marker just before the base.
+                       One of {'3sg.h','3sg.nh','3pl.h','1sg'}. None = any.
+        dimensional: zero or more of {'dat','loc','com','abl','term','loc2'}
+                     — appear in canonical slot order regardless of input.
+        aspect: 'hamtu' (perfective) or 'maru' (imperfective). HEURISTIC
+                via suffix presence (`-e/-ed/-en/-eš`); will MISS verbs
+                with stem alternation like ŋen/du-du for "go" — those
+                are stored as separate entries, so query each cf separately.
+        suffix_a: True to require nominalizing/relative -a suffix.
+        reduplicated: True to require base reduplication (~.~ in morph).
+        min_count: drop morph rows below this attestation count (default 1).
+        limit: cap on results returned (default 10, max 50).
+        with_example: include one cited line per match (default True). Set
+                      False to skip the text_resolver lookups when you only
+                      need pattern + count (faster).
+    """
+    limit = max(1, min(50, int(limit)))
+    min_count = max(0, int(min_count))
+
+    if polarity not in ("affirm", "neg"):
+        return {"error": f"polarity must be 'affirm' or 'neg', got {polarity!r}"}
+    if aspect is not None and aspect not in ("hamtu", "maru"):
+        return {"error": f"aspect must be 'hamtu' or 'maru' or None, got {aspect!r}"}
+    if prefix is not None and prefix not in _VERB_PREFIX_MAP:
+        return {
+            "error": f"unknown prefix={prefix!r}; expected one of {sorted(_VERB_PREFIX_MAP)}"
+        }
+    if object_person is not None and object_person not in _VERB_OBJ_MAP:
+        return {
+            "error": f"unknown object_person={object_person!r}; expected one of {sorted(_VERB_OBJ_MAP)}"
+        }
+    if dimensional:
+        unknown = [d for d in dimensional if d not in _VERB_DIM_MAP]
+        if unknown:
+            return {
+                "error": f"unknown dimensional={unknown}; expected subset of {_VERB_DIM_ORDER}"
+            }
+
+    con = _connect()
+    try:
+        entry = con.execute(
+            "SELECT id, cf, gw, pos, icount FROM entries "
+            "WHERE cf=? AND pos=? ORDER BY icount DESC LIMIT 1",
+            (cf, pos),
+        ).fetchone()
+        if not entry:
+            return {
+                "error": f"no entry with cf={cf!r} and pos={pos!r}",
+                "hint": "try translate_english or analyze_form to find the right cf/pos",
+            }
+        eid = entry["id"]
+        total_attestations = entry["icount"] or 0
+
+        base = con.execute(
+            "SELECT n FROM morphology WHERE entry_id=? AND kind='base' "
+            "ORDER BY icount DESC LIMIT 1",
+            (eid,),
+        ).fetchone()
+        if not base:
+            return {
+                "error": f"entry {eid} has no morphology base; "
+                         "this verb may be irregular/unanalyzed in epsd2"
+            }
+        base_n = base["n"]
+
+        # Pull all morph rows for the entry above the count threshold
+        # (typically <500 even for the highest-attested verbs); filter
+        # in Python where slot-aware matching is straightforward.
+        all_rows = con.execute(
+            "SELECT n, icount, ipct, xis FROM morphology "
+            "WHERE entry_id=? AND kind='morph' AND icount >= ? "
+            "ORDER BY icount DESC",
+            (eid, min_count),
+        ).fetchall()
+
+        rows: list[sqlite3.Row] = []
+        for r in all_rows:
+            n = r["n"]
+            if not _matches_feature_spec(
+                n, polarity=polarity, prefix=prefix,
+                dimensional=dimensional, object_person=object_person,
+            ):
+                continue
+            # Suffix / aspect / redup filters operate on the suffix slot list.
+            _, suf_slots = _morph_slots(n)
+            has_a = "a" in suf_slots
+            is_redup = n.count("~") > 1
+            is_maru = any(s in ("e", "ed", "en", "eš") for s in suf_slots)
+            if suffix_a is True and not has_a: continue
+            if suffix_a is False and has_a: continue
+            if reduplicated is True and not is_redup: continue
+            if reduplicated is False and is_redup: continue
+            if aspect == "maru" and not is_maru: continue
+            if aspect == "hamtu" and is_maru: continue
+            rows.append(r)
+            if len(rows) >= limit:
+                break
+
+        # For each match, look up the corresponding form in `forms` so we
+        # can return BOTH the synthesized spelling AND (if the synthesis
+        # happens to match an attested form) its independent count there.
+        matches: list[dict[str, Any]] = []
+        for r in rows:
+            morph_n = r["n"]
+            count = r["icount"] or 0
+            synthesized = _synthesize_verb_spelling(morph_n, base_n)
+
+            forms_row = con.execute(
+                "SELECT n, icount FROM forms WHERE entry_id=? AND n=? LIMIT 1",
+                (eid, synthesized),
+            ).fetchone()
+            forms_n = forms_row["n"] if forms_row else None
+            forms_count = (forms_row["icount"] if forms_row else None)
+
+            example = None
+            if with_example and r["xis"]:
+                # Pull a few refs and resolve the first that has a matching line.
+                refs = [
+                    row[0] for row in con.execute(
+                        "SELECT word_ref FROM instances WHERE xis=? LIMIT ?",
+                        (r["xis"], 8),
+                    ).fetchall()
+                ]
+                resolved = text_resolver.resolve_many(refs, limit=1)
+                if resolved:
+                    line = resolved[0]
+                    target_pos = next(
+                        (i for i, w in enumerate(line["words"]) if w["is_target"]),
+                        None,
+                    )
+                    example = {
+                        "p_id": line["text_id"],
+                        "project": line["project"],
+                        "line_label": line["line_label"],
+                        "designation": line.get("designation"),
+                        "period": line.get("period"),
+                        "transliteration": " ".join(w["frag"] for w in line["words"]),
+                        "target_position": target_pos,
+                    }
+
+            matches.append({
+                "morph": morph_n,
+                "spelling": forms_n if forms_n else synthesized,
+                "synthesized_spelling": synthesized,
+                "verified_in_forms": bool(forms_row),
+                "count": count,
+                "share_pct": round(count / total_attestations * 100, 2) if total_attestations else 0,
+                "forms_table_count": forms_count,
+                "cuneiform": _cuneify.cuneify(forms_n if forms_n else synthesized),
+                "example": example,
+            })
+    finally:
+        con.close()
+
+    warnings: list[str] = []
+    if aspect is not None:
+        warnings.append(
+            "aspect filter is suffix-based heuristic; verbs with stem "
+            "alternation (e.g. ŋen/du-du for 'go') are stored as separate "
+            "entries — query each cf separately"
+        )
+    if not matches:
+        warnings.append(
+            "no attested forms match this spec; try relaxing constraints, "
+            "or check get_inflections(oid) to see which patterns this verb "
+            "actually uses"
+        )
+
+    return {
+        "cf": entry["cf"],
+        "pos": entry["pos"],
+        "gw": entry["gw"],
+        "entry_oid": eid,
+        "base": base_n,
+        "total_attestations_for_entry": total_attestations,
+        "candidates_scanned": len(all_rows),
+        "filter_spec": {
+            "prefix": prefix,
+            "polarity": polarity,
+            "object_person": object_person,
+            "dimensional": dimensional or [],
+            "aspect": aspect,
+            "suffix_a": suffix_a,
+            "reduplicated": reduplicated,
+        },
+        "matches": matches,
+        "warnings": warnings,
     }
 
 
