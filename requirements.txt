@@ -2,3 +2,4 @@ ijson
 flask
 mcp
 gunicorn
+pyjwt[crypto]

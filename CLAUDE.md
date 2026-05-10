@@ -296,9 +296,29 @@ Build details:
 
 ### Transport modes (stdio vs streamable-HTTP)
 
-`mcp_server.py` accepts `--transport {stdio,http}` (default `stdio`). HTTP mode mounts the server's `streamable_http_app` at `/mcp/` (FastMCP's default `streamable_http_path`) on `--host` (default `127.0.0.1`) and `--port` (default `5051`, sitting one above the Flask app's `5050`). Both transports wrap the IDENTICAL set of FastMCP-decorated tool functions — there's no tool-level branching by transport. The HTTP server is uvicorn under the hood (FastMCP carries it transitively) and is production-ready as a process; **there is no in-app authentication** — front it with nginx/caddy/traefik for TLS + access control when binding outside `127.0.0.1`. Port-bound endpoint URLs are normalized with the trailing slash: `http://HOST:5051/mcp/` (a request to `/mcp` returns 307 to `/mcp/`).
+`mcp_server.py` accepts `--transport {stdio,http}` (default `stdio`). HTTP mode mounts the server's `streamable_http_app` at `/mcp/` (FastMCP's default `streamable_http_path`) on `--host` (default `127.0.0.1`) and `--port` (default `5051`, sitting one above the Flask app's `5050`). Both transports wrap the IDENTICAL set of FastMCP-decorated tool functions — there's no tool-level branching by transport. The HTTP server is uvicorn under the hood (FastMCP carries it transitively) and is production-ready as a process. By default there is **no in-app authentication** — front it with nginx/caddy/traefik for TLS + access control when binding outside `127.0.0.1`. Port-bound endpoint URLs are normalized with the trailing slash: `http://HOST:5051/mcp/` (a request to `/mcp` returns 307 to `/mcp/`).
 
 The committed `.mcp.json` only describes the stdio launch (Claude Code spawns it as a subprocess). HTTP mode is for everyone else: Docker sidecars, web-hosted agents, multi-tenant deployments. Confirmed compatible with the `mcp` Python SDK's `streamablehttp_client` — initialize / list_tools / call_tool all work identically over HTTP and stdio.
+
+### OAuth 2.1 / Auth0 authorization (`auth0_verifier.py`)
+
+Optional bearer-token auth on the HTTP transport, opt-in via `EPSD2_REQUIRE_AUTH=1`. FastMCP's resource-server-only mode is the architectural fit: we implement `mcp.server.auth.provider.TokenVerifier` (single async method `verify_token(token: str) -> AccessToken | None`), pass it plus an `AuthSettings` to the FastMCP constructor, and FastMCP wires the rest:
+- `BearerAuthBackend` extracts `Authorization: Bearer ...` from incoming requests
+- `RequireAuthMiddleware` rejects unauthenticated requests with 401 + `WWW-Authenticate: Bearer error="invalid_token", error_description="...", resource_metadata="..."`
+- RFC 9728 Protected Resource Metadata is auto-served at `/.well-known/oauth-protected-resource` listing the configured Auth0 tenant as the `authorization_servers` entry and `mcp:access` as `scopes_supported`
+
+`auth0_verifier.py` is thin (~80 lines): uses `pyjwt[crypto]`'s `PyJWKClient` (built-in JWKS LRU cache, 10-min TTL) to fetch Auth0's signing keys; validates RS256 signature + `aud` + `iss` (with trailing slash, per Auth0 convention) + `exp`/`iat` + required scope. The sync `get_signing_key_from_jwt` call is wrapped in `asyncio.to_thread` so JWKS cache misses don't block the asyncio event loop.
+
+Env-var contract (consulted at module load by `_build_auth_kwargs()` in `mcp_server.py`):
+- `EPSD2_REQUIRE_AUTH` — `"1"` enables, anything else disables (default: disabled)
+- `EPSD2_AUTH0_TENANT_URL` — `https://my-tenant.auth0.com` (no trailing slash)
+- `EPSD2_AUTH0_AUDIENCE` — Auth0 API identifier, e.g. `https://epsd2.example.com`
+- `EPSD2_AUTH0_RESOURCE_SERVER_URL` — public-facing URL of THIS server (used in RFC 9728 metadata; differs from `--host`/`--port` when behind a proxy)
+- `EPSD2_AUTH0_REQUIRED_SCOPE` — defaults to `mcp:access`; set to empty string to allow any valid Auth0 token
+
+Stdio transport never enforces auth (per MCP spec stdio uses env-based credentials, not OAuth). If you set `EPSD2_REQUIRE_AUTH=1` but launch with `--transport stdio`, the verifier is constructed but sits idle, and the startup banner emits a WARN making this explicit. Verified end-to-end (2026-05-10): unauthenticated POST returns 401 with the correct `WWW-Authenticate` header; the official `mcp.client.streamable_http` client gets rejected on `initialize`; `/.well-known/oauth-protected-resource` returns the right JSON. A live valid-token test requires a real Auth0 tenant.
+
+Auth wiring uses `AnyHttpUrl` (from pydantic) for the `issuer_url` and `resource_server_url` fields per `AuthSettings` schema. `pyjwt[crypto]` is in `requirements.txt`; the `[crypto]` extra pulls in `cryptography` for RS256 signature verification. Imports are LAZY in `_build_auth_kwargs()` so the no-auth path doesn't pay the import cost and stdio dev environments without pyjwt installed don't fail to start.
 
 ### Containerization (`Dockerfile` + `docker-compose.yml` + `init.sh`)
 

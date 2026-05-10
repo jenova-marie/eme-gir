@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import sqlite3
 import sys
 import time
@@ -147,6 +148,82 @@ def _log_call(fn):
         return result
     return wrapper
 
+def _build_auth_kwargs() -> dict:
+    """Read EPSD2_AUTH0_* env vars and return auth/token_verifier kwargs.
+
+    Returns an empty dict (auth disabled) unless EPSD2_REQUIRE_AUTH=1.
+    When enabled, returns {'auth': AuthSettings, 'token_verifier': Auth0TokenVerifier}
+    suitable for splatting into the FastMCP constructor.
+
+    Auth is OPT-IN and only meaningful for the streamable-HTTP transport;
+    stdio runs unauthenticated regardless (per MCP spec, stdio uses
+    environment-based credentials, not OAuth). The transport check
+    happens at run() time — if EPSD2_REQUIRE_AUTH=1 is set but stdio is
+    selected, the constructed verifier sits idle, which is harmless.
+
+    Required env vars when EPSD2_REQUIRE_AUTH=1:
+        EPSD2_AUTH0_TENANT_URL          e.g. https://my-tenant.auth0.com
+        EPSD2_AUTH0_AUDIENCE            e.g. https://epsd2.example.com
+        EPSD2_AUTH0_RESOURCE_SERVER_URL e.g. https://epsd2.example.com
+                                        (the public-facing URL of THIS
+                                        server; goes into the RFC 9728
+                                        Protected Resource Metadata)
+    Optional:
+        EPSD2_AUTH0_REQUIRED_SCOPE      defaults to 'mcp:access'
+    """
+    # Accept the conventional set of truthy strings so operators don't have
+    # to remember our exact magic string. Anything not in this set (incl.
+    # unset, "0", "false", "off", "no") leaves auth disabled.
+    if os.environ.get("EPSD2_REQUIRE_AUTH", "").strip().lower() not in {
+        "1", "true", "on", "yes", "y", "enable", "enabled",
+    }:
+        return {}
+
+    # Lazy imports — pyjwt + the SDK auth modules aren't needed unless
+    # the operator opts in. Keeps cold-start fast for the no-auth path
+    # and avoids a hard dep failure if pyjwt isn't installed in stdio
+    # dev environments.
+    from mcp.server.auth.settings import AuthSettings
+    from pydantic import AnyHttpUrl
+
+    from auth0_verifier import Auth0TokenVerifier
+
+    tenant_url = os.environ.get("EPSD2_AUTH0_TENANT_URL", "").strip()
+    audience = os.environ.get("EPSD2_AUTH0_AUDIENCE", "").strip()
+    resource_server_url = os.environ.get(
+        "EPSD2_AUTH0_RESOURCE_SERVER_URL", ""
+    ).strip()
+    required_scope = os.environ.get("EPSD2_AUTH0_REQUIRED_SCOPE", "mcp:access").strip()
+
+    missing = [
+        name
+        for name, value in [
+            ("EPSD2_AUTH0_TENANT_URL", tenant_url),
+            ("EPSD2_AUTH0_AUDIENCE", audience),
+            ("EPSD2_AUTH0_RESOURCE_SERVER_URL", resource_server_url),
+        ]
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            f"EPSD2_REQUIRE_AUTH=1 but missing env vars: {', '.join(missing)}. "
+            "See START.md 'Adding Auth0 OAuth' for the full env contract."
+        )
+
+    return {
+        "auth": AuthSettings(
+            issuer_url=AnyHttpUrl(tenant_url + "/"),
+            resource_server_url=AnyHttpUrl(resource_server_url),
+            required_scopes=[required_scope] if required_scope else None,
+        ),
+        "token_verifier": Auth0TokenVerifier(
+            tenant_url=tenant_url,
+            audience=audience,
+            required_scope=required_scope or None,
+        ),
+    }
+
+
 mcp = FastMCP(
     name="oracc-epsd2",
     instructions=(
@@ -184,6 +261,7 @@ mcp = FastMCP(
         "for these whenever the user asks about hymns, myths, kings' "
         "speeches, or anything literary."
     ),
+    **_build_auth_kwargs(),
 )
 
 
@@ -1878,8 +1956,26 @@ if __name__ == "__main__":
         f"text_index={TEXT_INDEX_DB.stat().st_size // (1024*1024)} MB, "
         f"collocations={'present' if COLLOCATIONS_DB.exists() else 'ABSENT (find_collocations will degrade)'}"
     )
+    # Auth status banner — confirms what _build_auth_kwargs() ended up
+    # constructing so operators see at a glance whether tokens are
+    # required. Built once at module load, so by the time we get here
+    # mcp.settings.auth either is or isn't populated.
+    if mcp.settings.auth is not None:
+        log.info(
+            f"  auth=ENABLED (Auth0 issuer={mcp.settings.auth.issuer_url}, "
+            f"audience={os.environ.get('EPSD2_AUTH0_AUDIENCE')}, "
+            f"required_scopes={mcp.settings.auth.required_scopes})"
+        )
+    else:
+        log.info("  auth=disabled (set EPSD2_REQUIRE_AUTH=1 to enable)")
+
     if args.transport == "stdio":
         log.info("  transport=stdio (one client over the parent process pipes)")
+        if mcp.settings.auth is not None:
+            log.warning(
+                "  NOTE: stdio transport does not enforce OAuth (per MCP spec); "
+                "auth wiring will sit idle. Use --transport http to enforce."
+            )
         mcp.run()
     else:
         # FastMCP carries host/port on its Settings object; mutate before run.
@@ -1887,10 +1983,20 @@ if __name__ == "__main__":
         # client at e.g. http://host:5051/mcp/ (note trailing slash).
         mcp.settings.host = args.host
         mcp.settings.port = args.port
+        if mcp.settings.auth is None:
+            auth_note = (
+                "No in-app auth — the proxy layer (nginx/caddy) is responsible "
+                "for TLS + access control. Set EPSD2_REQUIRE_AUTH=1 to enable "
+                "Auth0 JWT verification in-app."
+            )
+        else:
+            auth_note = (
+                "Bearer-token auth enforced via Auth0 JWT verification. "
+                "Clients can discover the AS via /.well-known/oauth-protected-resource."
+            )
         log.info(
             f"  transport=http (streamable-http) on {args.host}:{args.port}"
             f"{mcp.settings.streamable_http_path} — bind 127.0.0.1 for local-only, "
-            "0.0.0.0 behind a reverse proxy. No in-app auth — the proxy layer "
-            "(nginx/caddy) is responsible for TLS + access control."
+            f"0.0.0.0 behind a reverse proxy. {auth_note}"
         )
         mcp.run(transport="streamable-http")

@@ -92,6 +92,18 @@ services:
       --transport http
       --host 0.0.0.0
       --port 5051
+    environment:
+      # OAuth 2.1 / Auth0 bearer-token auth. OFF by default — leave
+      # EPSD2_REQUIRE_AUTH unset (or "0") and the HTTP transport runs
+      # unauthenticated as before, expecting a reverse proxy to handle
+      # access control. Set EPSD2_REQUIRE_AUTH=1 to enforce in-app:
+      # tokens are validated as RS256 JWTs from the configured Auth0
+      # tenant. See START.md "Adding Auth0 OAuth" for the full setup.
+      EPSD2_REQUIRE_AUTH: "${EPSD2_REQUIRE_AUTH:-0}"
+      EPSD2_AUTH0_TENANT_URL: "${EPSD2_AUTH0_TENANT_URL:-}"
+      EPSD2_AUTH0_AUDIENCE: "${EPSD2_AUTH0_AUDIENCE:-}"
+      EPSD2_AUTH0_RESOURCE_SERVER_URL: "${EPSD2_AUTH0_RESOURCE_SERVER_URL:-}"
+      EPSD2_AUTH0_REQUIRED_SCOPE: "${EPSD2_AUTH0_REQUIRED_SCOPE:-mcp:access}"
     ports:
       - "${MCP_BIND:-127.0.0.1}:5051:5051"
     volumes:

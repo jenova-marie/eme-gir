@@ -174,7 +174,98 @@ python3 mcp_server.py --transport http
 python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
 ```
 
-Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). The 15 tools all work over HTTP exactly as they do over stdio. There is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`.
+Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). The 15 tools all work over HTTP exactly as they do over stdio. By default there is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. To enforce in-app auth instead (or in addition), see the next section.
+
+### Adding Auth0 OAuth (optional, HTTP transport only)
+
+The HTTP transport supports OAuth 2.1 bearer-token auth with **Auth0** as the identity provider. When enabled, every request to `/mcp/` is gated on a valid Auth0-issued RS256 JWT in the `Authorization: Bearer ...` header. The server runs as a **Resource Server** (RS) only — Auth0 issues the tokens; we just validate them.
+
+This is **opt-in** via env var. Stdio transport never authenticates regardless (per the MCP spec, stdio uses environment-based credentials).
+
+#### One-time Auth0 setup
+
+1. In the Auth0 dashboard, create an **API**:
+   - Name: anything descriptive, e.g. `epsd2-mcp`
+   - Identifier (audience): a stable URL representing your server, e.g. `https://epsd2.example.com`. Doesn't have to resolve — Auth0 just uses it as an opaque string in the `aud` JWT claim.
+   - Signing algorithm: **RS256** (the default)
+2. On the API's "Permissions" tab, add a scope: `mcp:access` (description: "Access the epsd2 MCP server"). All 15 tools sit behind this single scope; finer-grained scopes can be added later if needed.
+3. Either grab a long-lived test token from the API's "Test" tab (good for local development), or create a Machine-to-Machine application authorized to call this API and use the `client_credentials` grant.
+
+#### Server-side env vars
+
+When `EPSD2_REQUIRE_AUTH=1`:
+
+| Var | Required | Example | What it does |
+|---|---|---|---|
+| `EPSD2_REQUIRE_AUTH` | yes | `1` | Toggles auth on. Anything other than `1` keeps the legacy unauthenticated behavior. |
+| `EPSD2_AUTH0_TENANT_URL` | yes | `https://my-tenant.auth0.com` | Base URL of your Auth0 tenant (no trailing slash). The verifier fetches `${TENANT}/.well-known/jwks.json` to validate signatures. |
+| `EPSD2_AUTH0_AUDIENCE` | yes | `https://epsd2.example.com` | Must match the API identifier you set in step 1. Tokens with a different `aud` are rejected (RFC 8707 audience binding — prevents tokens for one server from being replayed against another). |
+| `EPSD2_AUTH0_RESOURCE_SERVER_URL` | yes | `https://epsd2.example.com` | The **public-facing** URL of THIS server, used in the RFC 9728 Protected Resource Metadata served at `/.well-known/oauth-protected-resource`. Differs from `--host`/`--port` when behind a reverse proxy. |
+| `EPSD2_AUTH0_REQUIRED_SCOPE` | no | `mcp:access` | A scope that must be present in the token's `scope` claim. Defaults to `mcp:access`; set to empty string to allow any valid Auth0 token. |
+
+#### Local invocation
+
+```bash
+EPSD2_REQUIRE_AUTH=1 \
+EPSD2_AUTH0_TENANT_URL=https://my-tenant.auth0.com \
+EPSD2_AUTH0_AUDIENCE=https://epsd2.example.com \
+EPSD2_AUTH0_RESOURCE_SERVER_URL=https://epsd2.example.com \
+python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
+```
+
+The startup banner will confirm the mode: `auth=ENABLED (Auth0 issuer=..., audience=..., required_scopes=['mcp:access'])`.
+
+#### Docker invocation
+
+The compose file already declares the env vars with empty defaults. Set them via `.env` file or shell:
+
+```bash
+EPSD2_REQUIRE_AUTH=1 \
+EPSD2_AUTH0_TENANT_URL=https://my-tenant.auth0.com \
+EPSD2_AUTH0_AUDIENCE=https://epsd2.example.com \
+EPSD2_AUTH0_RESOURCE_SERVER_URL=https://epsd2.example.com \
+docker compose up -d
+```
+
+Or persist them in a `.env` file alongside `docker-compose.yml`:
+
+```env
+EPSD2_REQUIRE_AUTH=1
+EPSD2_AUTH0_TENANT_URL=https://my-tenant.auth0.com
+EPSD2_AUTH0_AUDIENCE=https://epsd2.example.com
+EPSD2_AUTH0_RESOURCE_SERVER_URL=https://epsd2.example.com
+```
+
+#### Verifying
+
+```bash
+# Unauthenticated request — expect 401 with WWW-Authenticate header
+# pointing at the Protected Resource Metadata.
+curl -i -X POST http://127.0.0.1:5051/mcp -L \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+
+# Discovery endpoint — should return JSON listing your Auth0 tenant
+# as the authorization_servers entry.
+curl http://127.0.0.1:5051/.well-known/oauth-protected-resource
+
+# Authenticated request — replace $TOKEN with an Auth0-issued JWT.
+# Expect 200 + the normal initialize response.
+curl -X POST http://127.0.0.1:5051/mcp -L \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}'
+```
+
+#### Client-side notes
+
+As of this writing, **MCP clients (Claude Desktop, Claude Code) do not yet ship native OAuth/PKCE flow handling.** Practical paths today:
+
+- **Static long-lived test tokens.** Auth0's API "Test" tab generates tokens valid for hours — paste into your MCP client config as a static `Authorization: Bearer ...` header. Fine for development and for trusted single-user deployments.
+- **Reverse-proxy auth.** Run the MCP server with `EPSD2_REQUIRE_AUTH=0` and let your reverse proxy (nginx / caddy / Auth0's own proxy) inject `Authorization` headers based on whatever auth the proxy enforces (basic auth, Auth0 SSO, mTLS).
+- **Wait for native client OAuth.** The MCP spec mandates the discovery dance via Protected Resource Metadata; clients will eventually catch up. Once they do, no server-side change is needed — our server already serves the right metadata.
 
 ---
 

@@ -118,7 +118,7 @@ For the recommended end-to-end agent workflow that stitches these tools together
       └──────────────────────┘         └─────────────────────────────────┘
 ```
 
-Both servers can run as standalone Python processes, or be deployed together via an included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows.
+Both servers can run as standalone Python processes, or be deployed together via an included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows. The HTTP MCP transport optionally validates Auth0-issued OAuth 2.1 bearer tokens (RS256 JWT, RFC 9728 discovery via `/.well-known/oauth-protected-resource`); off by default, opt-in for deployments that need in-app auth instead of relying on a reverse proxy.
 
 ## Data and attributions
 
