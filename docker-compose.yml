@@ -1,0 +1,85 @@
+# Two-service layout matching README "Putting both behind one reverse
+# proxy". Build the image once; both services share it. corpus/, data/,
+# and log/ are bind-mounted from the host so:
+#   1. The 6+ GB of indexes you already built locally aren't re-baked
+#      into the image (or rebuilt inside the container);
+#   2. Logs persist across container restarts and are tailable from the
+#      host (`tail -F log/mcp_server.log`);
+#   3. Rebuilding any index (`python3 build_*.py` on the host) is
+#      immediately visible to the running services without a restart.
+#
+# Ports publish to 127.0.0.1 only by default. Front the stack with
+# nginx/caddy/traefik (sample fragment in README) for TLS + auth before
+# binding to 0.0.0.0. There is NO in-app authentication on /mcp.
+
+services:
+  web:
+    build: .
+    image: epsd2:latest
+    container_name: epsd2-web
+    # 4 gunicorn workers — Flask routes are mostly SQLite point-lookups
+    # (~5-50ms each), so workers > cores helps absorb burst traffic.
+    # Tune via the WEB_WORKERS env var.
+    command: >
+      gunicorn
+      --workers ${WEB_WORKERS:-4}
+      --bind 0.0.0.0:5050
+      --access-logfile -
+      --error-logfile -
+      'app:create_app()'
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:5050:5050"
+    volumes:
+      - ./corpus:/app/corpus
+      # Writable — Flask startup runs idempotent SQLite migrations
+      # against glossary.sqlite (sort_key + casefold _cf columns); both
+      # are version-gated so existing data only gets touched once.
+      - ./data:/app/data
+      - ./log:/app/log
+    restart: unless-stopped
+    healthcheck:
+      # Hits the glossary landing page (302 redirect to /epsd2/sux).
+      # `curl --fail` treats 3xx as success, so the redirect counts.
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5050/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 30s   # first-boot migrations can take a few seconds
+
+  mcp:
+    image: epsd2:latest
+    container_name: epsd2-mcp
+    # Ordering matters on first boot: the Flask app's `create_app()`
+    # populates meta.casefold_version, which the MCP server's startup
+    # check requires. Wait for `web` to pass its healthcheck before
+    # starting `mcp`. (After the columns exist, this dep is moot — the
+    # MCP server can boot independently — but cold starts need it.)
+    depends_on:
+      web:
+        condition: service_healthy
+    command: >
+      python3 mcp_server.py
+      --transport http
+      --host 0.0.0.0
+      --port 5051
+    ports:
+      - "${MCP_BIND:-127.0.0.1}:5051:5051"
+    volumes:
+      - ./corpus:/app/corpus:ro
+      # NOT :ro despite the MCP server only doing SELECTs — SQLite
+      # needs a writable directory next to the DB to create its
+      # `-journal` (or `-wal`) file even for read-only transactions.
+      # `:ro` here yields `sqlite3.OperationalError: unable to open
+      # database file` on the first tool call. Mark the SQLite files
+      # `chmod a-w` on the host if you really need write protection;
+      # the journal mechanism only needs the *directory* writable.
+      - ./data:/app/data
+      - ./log:/app/log
+    restart: unless-stopped
+    healthcheck:
+      # /mcp returns 307 redirect to /mcp/; --fail accepts 3xx.
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5051/mcp/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s

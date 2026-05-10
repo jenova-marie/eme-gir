@@ -80,6 +80,13 @@ python3 mcp_server.py --transport http --host 127.0.0.1 --port 5051
 # which uses the single-threaded Werkzeug dev server). create_app is the
 # Flask application factory; gunicorn picks it up via the call form.
 gunicorn -w 4 -b 127.0.0.1:5050 'app:create_app()'
+
+# Bring up both services in containers (image gets built on first invocation;
+# corpus/, data/, log/ are bind-mounted from the host — see Dockerfile and
+# docker-compose.yml). First-boot order matters: the web service runs the
+# casefold/sort migrations, and the mcp service depends on its healthcheck.
+docker compose up -d --build
+docker compose logs -f mcp
 ```
 
 Dependencies (`pip install ijson flask mcp gunicorn`):
@@ -292,6 +299,21 @@ Build details:
 `mcp_server.py` accepts `--transport {stdio,http}` (default `stdio`). HTTP mode mounts the server's `streamable_http_app` at `/mcp/` (FastMCP's default `streamable_http_path`) on `--host` (default `127.0.0.1`) and `--port` (default `5051`, sitting one above the Flask app's `5050`). Both transports wrap the IDENTICAL set of FastMCP-decorated tool functions — there's no tool-level branching by transport. The HTTP server is uvicorn under the hood (FastMCP carries it transitively) and is production-ready as a process; **there is no in-app authentication** — front it with nginx/caddy/traefik for TLS + access control when binding outside `127.0.0.1`. Port-bound endpoint URLs are normalized with the trailing slash: `http://HOST:5051/mcp/` (a request to `/mcp` returns 307 to `/mcp/`).
 
 The committed `.mcp.json` only describes the stdio launch (Claude Code spawns it as a subprocess). HTTP mode is for everyone else: Docker sidecars, web-hosted agents, multi-tenant deployments. Confirmed compatible with the `mcp` Python SDK's `streamablehttp_client` — initialize / list_tools / call_tool all work identically over HTTP and stdio.
+
+### Containerization (`Dockerfile` + `docker-compose.yml`)
+
+The repo ships a `python:3.12.11-slim`-based image and a two-service compose file. Same image runs both processes (`web` = gunicorn + Flask on 5050, `mcp` = `mcp_server.py --transport http` on 5051). corpus/, data/, log/ are bind-mounted from the host because they total ~6 GB — too big to bake in and pointless to ship (the Sumerian corpus is built locally per machine).
+
+Build-time gotchas already accounted for in the Dockerfile:
+- `WORKDIR /app` makes the dir root-owned even after `COPY --chown` chowns the contents — gunicorn (running as `epsd2`) needs to write `/app/.gunicorn` for its control file. Fix: explicit `chown epsd2:epsd2 /app` after the COPY.
+- `libyajl2` system package — `ijson`'s C backend depends on it; without it ijson silently falls back to its pure-python parser (~10x slower).
+- Non-root uid/gid 1000 matches the conventional first user on Linux hosts so bind mounts work without permission shuffling.
+
+Runtime gotchas in `docker-compose.yml`:
+- `data/` mount is RW for the `mcp` service even though MCP only does SELECTs — SQLite needs to create `-journal`/`-wal` files in the same directory as the DB even for read-only transactions. `:ro` mount → `sqlite3.OperationalError: unable to open database file` on first tool call.
+- `mcp` declares `depends_on: web: service_healthy` so the casefold/sort migrations have completed before MCP startup checks `meta.casefold_version`. After first boot the migrations are no-ops (version-gated) so the dependency is moot, but cold starts need it.
+- Healthchecks use `curl --fail` against `/` (302) and `/mcp/` (307) respectively; both 3xx counts as success.
+- Ports default to `127.0.0.1:PORT:PORT` — set `WEB_BIND=0.0.0.0` / `MCP_BIND=0.0.0.0` env vars to expose to the LAN. Anything beyond a private LAN must be fronted with a TLS-terminating proxy.
 
 ### Logging
 

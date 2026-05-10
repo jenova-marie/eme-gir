@@ -1,0 +1,32 @@
+# Bulk data + generated artifacts — bind-mounted from host at runtime,
+# never baked into the image (would be 6+ GB and uncacheable).
+corpus/
+data/
+log/
+
+# Local dev cruft
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# IDE / tooling
+.vscode/
+.idea/
+.claude/
+
+# Reference material excluded from version control
+*.pdf
+
+# Cached TLS material — regenerated on first run if needed
+.incommon_intermediate.pem
+
+# Docs that don't need to ship in the image
+README.md
+CLAUDE.md
+CONTINUATION.md
+prompt/

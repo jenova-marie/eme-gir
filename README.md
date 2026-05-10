@@ -187,6 +187,49 @@ gunicorn -w 4 -b 127.0.0.1:5050 'app:create_app()'
 
 `create_app()` is the application factory in `app.py`. It runs the one-shot SQLite migrations (sort + casefold columns) on startup, so a cold gunicorn boot is identical to `python3 app.py` for the database.
 
+### Containerized deployment (Docker)
+
+The repo ships a `Dockerfile` and `docker-compose.yml` that bake the two production processes into one image and run them as separate services. corpus/, data/, and log/ are bind-mounted from the host — too large to ship in the image (~6 GB combined) and you'll usually have built the indexes locally already.
+
+Sequence on a fresh machine:
+
+```bash
+# 1. Build the indexes on the HOST first (they go into ./data/, which the
+#    containers will bind-mount). One-time, ~5 minutes.
+pip install ijson flask mcp gunicorn
+python3 download_corpus.py        # ~3.1 GB into ./corpus/
+python3 build_text_index.py       # ./data/text_index.sqlite
+python3 build_glossary_db.py      # ./data/glossary.sqlite (~3.4 GB)
+python3 build_collocations.py     # optional
+python3 build_etcsl_db.py         # optional
+python3 app.py & sleep 5 && kill %1   # one-shot to populate casefold + sort columns
+
+# 2. Bring the stack up.
+docker compose up -d --build
+
+# 3. Verify both services healthy (~10 seconds).
+docker compose ps
+# Endpoints (default bind: 127.0.0.1 only):
+#   web → http://127.0.0.1:5050/epsd2/sux
+#   mcp → http://127.0.0.1:5051/mcp/  (note trailing slash)
+```
+
+Defaults:
+
+- Both ports bind to `127.0.0.1` on the host. To expose to a private LAN, set `WEB_BIND=0.0.0.0` or `MCP_BIND=0.0.0.0` in your shell or a `.env` file before `docker compose up`. Anything beyond a private LAN MUST be fronted by a reverse proxy with TLS + auth.
+- Image runs as a non-root user (uid/gid 1000). On Linux this matches the conventional first user, so bind-mounted host directories are readable/writable without a chown dance. On macOS Docker Desktop maps the owner through transparently.
+- `data/` is mounted read/write on both services — not because either writes to glossary.sqlite at steady state, but because SQLite needs a writable directory for `-journal`/`-wal` files even on read-only transactions. Mark the SQLite files `chmod a-w` on the host if you really need write protection.
+- gunicorn worker count defaults to 4; override with `WEB_WORKERS=8 docker compose up -d`.
+
+Watch live logs:
+
+```bash
+docker compose logs -f web   # Flask access + gunicorn lifecycle
+docker compose logs -f mcp   # MCP startup banner + uvicorn requests
+# (Tool-call timing lines also stream into ./log/mcp_server.log on the
+# host because the log dir is bind-mounted.)
+```
+
 ### Putting both behind one reverse proxy
 
 A typical production layout serves the web UI at the root and HTTP MCP at `/mcp/`:
