@@ -104,6 +104,20 @@ services:
       EPSD2_AUTH0_AUDIENCE: "${EPSD2_AUTH0_AUDIENCE:-}"
       EPSD2_AUTH0_RESOURCE_SERVER_URL: "${EPSD2_AUTH0_RESOURCE_SERVER_URL:-}"
       EPSD2_AUTH0_REQUIRED_SCOPE: "${EPSD2_AUTH0_REQUIRED_SCOPE:-mcp:access}"
+      # MCP SDK DNS-rebinding protection. Default allowlist is
+      # localhost + 127.0.0.1 only — behind a reverse proxy that
+      # passes the public Host header through, MUST add the proxy's
+      # hostname here or every request returns 421. Comma-separated.
+      # localhost / 127.0.0.1 / ::1 are added automatically — only
+      # list the public hostnames the proxy will use.
+      EPSD2_ALLOWED_HOSTS: "${EPSD2_ALLOWED_HOSTS:-}"
+      # Cross-origin Origin headers to accept (browser MCP clients).
+      # Comma-separated; no auto-additions.
+      EPSD2_ALLOWED_ORIGINS: "${EPSD2_ALLOWED_ORIGINS:-}"
+      # Escape hatch — set truthy to disable DNS-rebinding checks
+      # entirely. Only safe when the reverse proxy enforces Host
+      # validation upstream.
+      EPSD2_DISABLE_DNS_REBINDING_PROTECTION: "${EPSD2_DISABLE_DNS_REBINDING_PROTECTION:-0}"
     ports:
       - "${MCP_BIND:-127.0.0.1}:5051:5051"
     volumes:

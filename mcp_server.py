@@ -224,6 +224,77 @@ def _build_auth_kwargs() -> dict:
     }
 
 
+def _build_transport_security_kwargs() -> dict:
+    """Read EPSD2_ALLOWED_HOSTS / _ORIGINS / _DISABLE_DNS_REBINDING_PROTECTION
+    env vars and return a transport_security kwarg for FastMCP.
+
+    Why: the MCP SDK's streamable-http transport ships with DNS-rebinding
+    protection ON by default, with an empty allowlist that effectively
+    only accepts Host: localhost or 127.0.0.1. Behind a reverse proxy
+    (Caddy/nginx/traefik) that proxies the public hostname through to
+    uvicorn with the original Host header intact, every request gets
+    rejected by the SDK middleware with `421 Misdirected Request:
+    Invalid Host header`. The fix is to extend the allowlist to include
+    the proxy's hostname.
+
+    Env contract:
+        EPSD2_ALLOWED_HOSTS    comma-separated; the public hostname(s)
+                               that the reverse proxy serves us under.
+                               localhost + 127.0.0.1 are always added so
+                               in-container healthchecks keep working.
+                               e.g. "epsd2.intra.example.net,epsd2.example.com"
+        EPSD2_ALLOWED_ORIGINS  comma-separated; the Origin headers we
+                               accept on cross-origin requests (browser
+                               clients). Stricter than allowed_hosts —
+                               no auto-additions.
+                               e.g. "https://archive.example.org"
+        EPSD2_DISABLE_DNS_REBINDING_PROTECTION
+                               truthy → disable the check entirely.
+                               Only safe when the reverse proxy already
+                               enforces Host validation upstream.
+
+    Returns {} when no env vars are set (SDK uses its localhost-only
+    default — fine for local dev). When ANY of them is set, returns
+    {'transport_security': TransportSecuritySettings(...)}.
+    """
+    raw_hosts = os.environ.get("EPSD2_ALLOWED_HOSTS", "").strip()
+    raw_origins = os.environ.get("EPSD2_ALLOWED_ORIGINS", "").strip()
+    disable = os.environ.get(
+        "EPSD2_DISABLE_DNS_REBINDING_PROTECTION", ""
+    ).strip().lower() in {"1", "true", "on", "yes", "y", "enable", "enabled"}
+
+    if not (raw_hosts or raw_origins or disable):
+        return {}
+
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    if disable:
+        return {
+            "transport_security": TransportSecuritySettings(
+                enable_dns_rebinding_protection=False,
+            )
+        }
+
+    hosts = [h.strip() for h in raw_hosts.split(",") if h.strip()]
+    origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
+    # Always permit localhost + 127.0.0.1 so the in-container healthcheck
+    # `curl http://localhost:5051/...` keeps working regardless of which
+    # public hostname the operator added. De-dupe in case they listed
+    # them explicitly.
+    for default_host in ("localhost", "127.0.0.1", "::1"):
+        if default_host not in hosts:
+            hosts.append(default_host)
+
+    return {
+        "transport_security": TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=hosts,
+            allowed_origins=origins,
+        )
+    }
+
+
 mcp = FastMCP(
     name="oracc-epsd2",
     instructions=(
@@ -262,6 +333,7 @@ mcp = FastMCP(
         "speeches, or anything literary."
     ),
     **_build_auth_kwargs(),
+    **_build_transport_security_kwargs(),
 )
 
 
@@ -1968,6 +2040,27 @@ if __name__ == "__main__":
         )
     else:
         log.info("  auth=disabled (set EPSD2_REQUIRE_AUTH=1 to enable)")
+    # Transport-security (DNS-rebinding) banner — confirms which Host
+    # header values uvicorn will accept. Default (no env vars set) is
+    # the SDK's localhost-only allowlist; behind a reverse proxy this
+    # MUST be widened or every request returns 421 Invalid Host header.
+    ts = mcp.settings.transport_security
+    if ts is None:
+        log.info(
+            "  transport_security=default (SDK accepts Host: localhost / "
+            "127.0.0.1 only — set EPSD2_ALLOWED_HOSTS to add the public "
+            "hostname when deploying behind a reverse proxy)"
+        )
+    elif not ts.enable_dns_rebinding_protection:
+        log.warning(
+            "  transport_security=DISABLED (EPSD2_DISABLE_DNS_REBINDING_PROTECTION "
+            "is set — proxy MUST enforce Host validation upstream)"
+        )
+    else:
+        log.info(
+            f"  transport_security=ENABLED (allowed_hosts={ts.allowed_hosts}, "
+            f"allowed_origins={ts.allowed_origins})"
+        )
 
     if args.transport == "stdio":
         log.info("  transport=stdio (one client over the parent process pipes)")
