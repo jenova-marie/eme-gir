@@ -32,6 +32,18 @@ RUN groupadd --system --gid 1000 epsd2 \
 
 WORKDIR /app
 
+# Reserved for future use — currently every dep in requirements.txt
+# is on public PyPI, so the token isn't consumed. If/when we add a
+# private package hosted on the Forgejo PyPI registry, wire it into
+# pip via:
+#   RUN pip install --no-cache-dir \
+#         --extra-index-url "https://__token__:${FORGEJO_AUTH_TOKEN}@git.rso/api/packages/trex/pypi/simple/" \
+#         -r requirements.txt
+# Declaring the ARG here (even when unused) lets the CI workflow pass
+# --build-arg FORGEJO_AUTH_TOKEN=... without emitting a "build arg not
+# consumed" warning, and makes the extension point obvious.
+ARG FORGEJO_AUTH_TOKEN=""
+
 # Deps first so source-only changes don't bust the layer cache.
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt

@@ -1,0 +1,105 @@
+name: Build & Push Docker Image to AWS ECR
+
+# Triggers on every push (any branch) and manually via the Forgejo UI.
+# Tags pushed:
+#   - <branch-name>      always (e.g. main, dev, staging, prod)
+#   - latest             only when pushing to the default branch
+#   - sha-<short-sha>    always — pin a specific commit's image
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required for AWS OIDC role assumption
+  contents: read
+
+env:
+  ENV: ${{ github.ref_name }}
+  AWS_REGION: us-east-1   # default for prod / unmapped branches
+
+jobs:
+  docker-build-and-push:
+    runs-on: builder   # runs directly on host
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment from branch
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          echo "ENV=$BRANCH" >> $GITHUB_ENV
+
+          # Per-branch AWS region. Branches not listed here keep the
+          # workflow-level default (us-east-1).
+          case "$BRANCH" in
+            dev)     echo "AWS_REGION=us-east-2" >> $GITHUB_ENV ;;
+            staging) echo "AWS_REGION=us-west-2" >> $GITHUB_ENV ;;
+            prod)    echo "AWS_REGION=us-east-1" >> $GITHUB_ENV ;;
+          esac
+
+          echo "Branch: $BRANCH"
+
+      # OIDC role assumption. If your Forgejo instance doesn't issue
+      # OIDC tokens compatible with AWS STS, swap to access keys.
+      - name: Configure AWS Credentials via OIDC
+        uses: https://github.com/aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Buildx + QEMU let us build linux/arm64 images on whatever the
+      # builder runner happens to be (typically x86_64). Required because
+      # we deploy to ARM (Graviton).
+      - name: Set up Docker Buildx
+        uses: https://github.com/docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: https://github.com/docker/setup-qemu-action@v3
+
+      # Build the tag list:
+      #   - branch name       always
+      #   - latest            only when on the default branch (avoids dev
+      #                       pushes clobbering the prod-tracking tag)
+      #   - sha-<short>       always — every build is reproducibly
+      #                       addressable by commit
+      - name: Extract metadata
+        id: meta
+        uses: https://github.com/docker/metadata-action@v5
+        with:
+          images: ${{ secrets.AWS_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.repository.name }}
+          tags: |
+            type=raw,value=${{ env.ENV }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: https://github.com/aws-actions/amazon-ecr-login@v2
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+
+      # The image installs its own Python deps from requirements.txt
+      # inside the Dockerfile (`pip install --no-cache-dir -r ...`),
+      # so the builder needs nothing more than docker + buildx.
+      # Cache layers across builds via a registry-backed cache so
+      # subsequent builds reuse the apt + pip layers.
+      # FORGEJO_AUTH_TOKEN is reserved for future use — currently
+      # every dep in requirements.txt is on public PyPI, so the
+      # Dockerfile receives the ARG but doesn't consume it. Plumbing
+      # it through now means we can switch a private dep on later by
+      # only touching the Dockerfile, not this workflow.
+      - name: Build and Push Docker Image
+        uses: https://github.com/docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            FORGEJO_AUTH_TOKEN=${{ secrets.FORGEJO_AUTH_TOKEN }}
+          cache-from: type=registry,ref=${{ secrets.AWS_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.repository.name }}:cache
+          cache-to: type=registry,ref=${{ secrets.AWS_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.repository.name }}:cache,mode=max
+
+      - name: Deploy to AWS Service (Optional)
+        run: |
+          echo "Trigger deployment here if needed"
