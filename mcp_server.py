@@ -1834,6 +1834,31 @@ def grammar_cheatsheet() -> str:
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="mcp_server.py",
+        description=(
+            "Run the epsd2 MCP server. Default transport is stdio (used by "
+            "Claude Code's project-scoped .mcp.json auto-detection). Pass "
+            "--transport http to expose the same tools over HTTP — useful "
+            "for remote agents, Docker, or anywhere stdio isn't available."
+        ),
+    )
+    parser.add_argument(
+        "--transport", choices=["stdio", "http"], default="stdio",
+        help="stdio (default) for local Claude Code; http for networked use",
+    )
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="HTTP bind address (default 127.0.0.1; use 0.0.0.0 to expose "
+             "behind a reverse proxy on a private network)",
+    )
+    parser.add_argument(
+        "--port", type=int, default=5051,
+        help="HTTP port (default 5051; the Flask web app uses 5050)",
+    )
+    args = parser.parse_args()
+
     # Sanity-check on startup so a misconfigured run fails loudly with a hint.
     if not GLOSSARY_DB.exists():
         log.error(
@@ -1853,4 +1878,19 @@ if __name__ == "__main__":
         f"text_index={TEXT_INDEX_DB.stat().st_size // (1024*1024)} MB, "
         f"collocations={'present' if COLLOCATIONS_DB.exists() else 'ABSENT (find_collocations will degrade)'}"
     )
-    mcp.run()
+    if args.transport == "stdio":
+        log.info("  transport=stdio (one client over the parent process pipes)")
+        mcp.run()
+    else:
+        # FastMCP carries host/port on its Settings object; mutate before run.
+        # The streamable-http endpoint mounts at /mcp/ by default — point your
+        # client at e.g. http://host:5051/mcp/ (note trailing slash).
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+        log.info(
+            f"  transport=http (streamable-http) on {args.host}:{args.port}"
+            f"{mcp.settings.streamable_http_path} — bind 127.0.0.1 for local-only, "
+            "0.0.0.0 behind a reverse proxy. No in-app auth — the proxy layer "
+            "(nginx/caddy) is responsible for TLS + access control."
+        )
+        mcp.run(transport="streamable-http")

@@ -67,14 +67,26 @@ sqlite3 -header -column data/glossary.sqlite "SELECT cf, gw, pos, icount FROM en
 python3 app.py                # http://127.0.0.1:5050/epsd2/sux
 python3 app.py --port 8000 --debug
 
-# Run the MCP server (stdio; for use with Claude Desktop / Code MCP config)
+# Run the MCP server over stdio (default; for Claude Desktop / Code MCP config)
 python3 mcp_server.py
+
+# Or over HTTP (streamable-http transport) for remote agents, Docker, etc.
+# Endpoint: http://HOST:PORT/mcp/  (note trailing slash)
+# No in-app auth — bind to 127.0.0.1 for local-only, or 0.0.0.0 behind a
+# reverse proxy that handles TLS + access control.
+python3 mcp_server.py --transport http --host 127.0.0.1 --port 5051
+
+# Run the Flask web app under a production WSGI server (vs `python3 app.py`
+# which uses the single-threaded Werkzeug dev server). create_app is the
+# Flask application factory; gunicorn picks it up via the call form.
+gunicorn -w 4 -b 127.0.0.1:5050 'app:create_app()'
 ```
 
-Dependencies (`pip install ijson flask mcp`):
+Dependencies (`pip install ijson flask mcp gunicorn`):
 - `ijson` — constant-memory streaming JSON parser. Uses the `yajl2_c` backend automatically when available; required by `build_glossary_db.py`, `build_text_index.py`, `download_corpus.py`.
 - `flask` — required by `app.py` (the local glossary browser).
-- `mcp` — required by `mcp_server.py` (the MCP server).
+- `mcp` — required by `mcp_server.py` (the MCP server). The `--transport http` mode pulls in `uvicorn` + `starlette` transitively (already deps of `mcp[server]`).
+- `gunicorn` — production WSGI server for the Flask app. Optional for development (use `python3 app.py` for autoreload + Werkzeug); required for any deployment beyond localhost.
 - Everything else is stdlib.
 
 There are no tests, build, or lint steps — this is a data/scripts repo.
@@ -274,6 +286,12 @@ Build details:
 - Bracket entities map to **Unicode characters** (`⸢⸣⟨⟩`), NOT ASCII (`[]<>`), because some entities appear inside XML attribute values and `<corr sic="...[en-ki]...">` would corrupt the markup.
 - Transliteration is normalized from ETCSL's ASCII convention to ePSD2/Oracc Unicode in `normalize_translit()`: `j → ŋ`, `c → š`, ASCII digits in subscript context → Unicode subscripts. This means the same `lemma` value works as a key in both ETCSL words and ePSD2 entries.
 - The build is idempotent: re-running drops and rebuilds the SQLite. Skips download if `data/etcsl.zip` already exists.
+
+### Transport modes (stdio vs streamable-HTTP)
+
+`mcp_server.py` accepts `--transport {stdio,http}` (default `stdio`). HTTP mode mounts the server's `streamable_http_app` at `/mcp/` (FastMCP's default `streamable_http_path`) on `--host` (default `127.0.0.1`) and `--port` (default `5051`, sitting one above the Flask app's `5050`). Both transports wrap the IDENTICAL set of FastMCP-decorated tool functions — there's no tool-level branching by transport. The HTTP server is uvicorn under the hood (FastMCP carries it transitively) and is production-ready as a process; **there is no in-app authentication** — front it with nginx/caddy/traefik for TLS + access control when binding outside `127.0.0.1`. Port-bound endpoint URLs are normalized with the trailing slash: `http://HOST:5051/mcp/` (a request to `/mcp` returns 307 to `/mcp/`).
+
+The committed `.mcp.json` only describes the stdio launch (Claude Code spawns it as a subprocess). HTTP mode is for everyone else: Docker sidecars, web-hosted agents, multi-tenant deployments. Confirmed compatible with the `mcp` Python SDK's `streamablehttp_client` — initialize / list_tools / call_tool all work identically over HTTP and stdio.
 
 ### Logging
 

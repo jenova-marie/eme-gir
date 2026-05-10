@@ -19,7 +19,7 @@ All Oracc data is released under CC0 (per each project's `metadata.json`); the c
 
 ```bash
 # 1. Install dependencies
-pip install ijson flask mcp
+pip install ijson flask mcp gunicorn   # gunicorn only needed for production serving
 
 # 2. Download the entire Oracc JSON corpus (~3.1 GB, ~2 minutes on a fast link)
 python3 download_corpus.py
@@ -150,6 +150,72 @@ tail -F log/mcp_server.log
 ```
 
 Errors get full tracebacks. The startup banner reports loaded DB sizes so you can confirm the right files are mounted.
+
+### Running over HTTP (for remote agents, Docker, or non-stdio clients)
+
+The same `mcp_server.py` script also speaks the MCP **streamable-HTTP** transport — useful when the consumer can't (or shouldn't) launch the server as a subprocess: web-hosted agents, multi-tenant deployments, sidecar containers, etc.
+
+```bash
+# Local-only (default bind = 127.0.0.1, default port = 5051)
+python3 mcp_server.py --transport http
+
+# Behind a reverse proxy on a private network
+python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
+```
+
+Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). The 15 ePSD2 + 4 ETCSL tools all work over HTTP exactly as they do over stdio. There is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. Sample nginx fragment:
+
+```nginx
+location /mcp/ {
+    proxy_pass         http://127.0.0.1:5051;
+    proxy_http_version 1.1;
+    proxy_buffering    off;          # MCP streams responses, don't buffer
+    proxy_read_timeout 24h;          # long-lived SSE sessions
+    auth_basic         "epsd2 MCP";
+    auth_basic_user_file /etc/nginx/htpasswd;
+}
+```
+
+### Running the web app in production
+
+`python3 app.py` runs Flask's built-in dev server (Werkzeug — single-threaded, no concurrency, banner says "do not use in production"). For anything beyond local development, run it under **gunicorn**:
+
+```bash
+# 4 worker processes, bound to localhost; let nginx terminate TLS
+gunicorn -w 4 -b 127.0.0.1:5050 'app:create_app()'
+```
+
+`create_app()` is the application factory in `app.py`. It runs the one-shot SQLite migrations (sort + casefold columns) on startup, so a cold gunicorn boot is identical to `python3 app.py` for the database.
+
+### Putting both behind one reverse proxy
+
+A typical production layout serves the web UI at the root and HTTP MCP at `/mcp/`:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name epsd2.example.org;
+    # ssl_certificate ...
+
+    location /mcp/ {
+        proxy_pass         http://127.0.0.1:5051;
+        proxy_http_version 1.1;
+        proxy_buffering    off;
+        proxy_read_timeout 24h;
+        auth_basic         "epsd2 MCP";
+        auth_basic_user_file /etc/nginx/htpasswd;
+    }
+
+    location / {
+        proxy_pass         http://127.0.0.1:5050;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $remote_addr;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport http` for FastMCP), one public surface, TLS + auth handled centrally by the proxy. Keep `python3 app.py` for development — Werkzeug's autoreload is too useful to lose locally.
 
 ---
 
