@@ -33,11 +33,61 @@ A laptop-friendly version of the entire ePSD2 + Oracc dataset that responds in m
 
 A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
-This includes a verb-form lookup that accepts grammatical features (perfective vs imperfective, person/number agreement, dimensional case prefixes, polarity) and returns matching attested forms with their morphological decompositions; a phrasal-collocation index built from all 138,000 corpusjson texts; bilingual search over the Oxford [Electronic Text Corpus of Sumerian Literature](https://etcsl.orinst.ox.ac.uk/) — 394 hymns, myths, royal compositions, and proverbs with English translations; a complete reverse-direction (Sumerian → English) parsing pipeline that handles cuneiform sign disambiguation; and a Sumerian grammar cheat sheet served as an MCP resource so the agent can pull it once per session into its working context.
+The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the fifteen tools and the grammar resource — what they do, when an agent reaches for them, and why they exist.
 
 ### For digital humanists
 
 A reference implementation of how to take a mature scholarly digital corpus and make it consumable by modern tooling — both human (the web app) and machine (the MCP server). The data model, schema, parsing strategies, and MCP tool design are all open and documented; the licensing means no friction for derivative work.
+
+## The MCP toolbox
+
+When an LLM agent connects to the `epsd2` MCP server it gains fifteen specialized tools and one knowledge resource, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+
+### Bootstrap: the grammar resource
+
+- **`oracc://grammar/sumerian`** — a ~14 KB Sumerian grammar cheat sheet (transliteration conventions, the ten noun cases with their suffixes, ḫamṭu vs marû verbal aspect, the verbal prefix chain, conjugation patterns, common compound verbs, conjunctions). Distilled from Edzard 2003. The agent fetches this resource once at the start of a session and keeps it in working memory; without it, it can't reason about why `lugal-ra` is dative or why `mu-na-du₃` and `bi₂-in-du₃` differ in person agreement.
+
+### Translating English → Sumerian
+
+The tools an agent reaches for when going from an English meaning to a real, attested Sumerian expression.
+
+- **`translate_english(query)`** — the entry point. Returns Sumerian lemma candidates ranked by frequency, with two disambiguating numbers per candidate: `sense_count` (how often this lemma appears in the corpus overall) and `sense_pct` (what fraction of those occurrences carry this specific meaning). A high `sense_count` with a low `sense_pct` means *"this word occasionally has that meaning"* — almost never the right pick. Conversely, `lugal [king] N` with 49,818 attestations at 100% sense_pct is the unambiguous Sumerian word for *king*.
+- **`find_compound(english_phrase)`** — Sumerian frequently uses fixed multi-word compounds where English would use a single verb or a syntactic construction. *To bail water* is `a bal`; *to build a temple* is `e₂ du₃`. The agent calls this **before** composing word-by-word, because if a compound exists for the user's intent, that's what scribes actually wrote.
+- **`find_collocations(cf)`** — phrasal idioms attested with a given lemma. Mined from all 138,000 corpusjson texts as 2/3/4-grams of citation forms. Surfaces year-name templates, royal titles, administrative formulas. If the user wants a phrase containing `lugal`, this tells the agent which adjacent words actually appeared on real tablets next to *king* (and which combinations would sound invented to a native speaker).
+- **`find_verb_form(cf, pos, prefix=…, dimensional=[…], object_person=…, aspect=…)`** — the heart of attestation-first translation. The agent specifies a grammatical feature spec (perfective vs imperfective, person/number agreement, dimensional case prefixes) and gets back the attested verb forms that match, ranked by frequency, each with its morpheme template plus one cited line from the corpus. The agent does not *synthesize* `mu-na-du₃` from grammar rules — it *retrieves* it from a tablet where a Bronze Age scribe actually wrote it.
+
+### Translating Sumerian → English
+
+The reverse direction — for when an agent encounters an attested phrase, or when the user wants to read primary text.
+
+- **`translate_sumerian(transliteration)`** — parses a transliterated Sumerian phrase into per-token English glosses. Tokenizes on whitespace, hyphen, and dot; strips braced determinatives; queries the indexed forms, form-sans, and bases. Quick first pass when the agent has a phrase and needs candidate meanings.
+- **`analyze_form(spelling)`** — decomposes a single attested spelling into candidate lemmas plus their morphological role (base, prefix chain, suffix). Useful when `translate_sumerian`'s naive split mis-tokenizes a verb form like `mu-un-du₃`, which is a single inflected word, not three.
+- **`lookup_sign(query)`** — maps cuneiform signs both directions: by sign name (`LUGAL` → 𒈗 with all phonetic readings) or by phonetic value (`lugal` → which sign carries that reading). Disambiguates polyphones.
+
+### Grounding and verification
+
+A translation isn't credible without citation. These tools let the agent show its work and confirm its choices.
+
+- **`lookup_entry(oid)`** — the full structured view of a chosen lemma: every sense, the top spellings (with cuneiform glyphs), period attestations, compound expressions. The agent uses this to confirm a choice it made from `translate_english` is the right one before committing to a phrasing.
+- **`get_inflections(oid)`** — every attested morphological breakdown of a lemma — every prefix chain, every base/suffix combination, with frequency counts. Larger and noisier than `find_verb_form`; used when the agent wants the broader landscape of *"what shapes can this verb take in the actual corpus."*
+- **`see_examples(oid, limit, period)`** — real attested lines from real tablets, with the target word highlighted. Period-filterable: `period='Ur III'` (~2100 BCE), `'Old Babylonian'` (~1800 BCE), `'Neo-Sumerian'`, etc. — so the agent can match the user's intended historical register. Each line carries its publication shorthand (*YOS 14, 341*) and P-id, which the agent cites in its reply.
+
+### Rendering
+
+- **`cuneify(spelling)`** — the last step. Converts an Oracc transliteration string (`lugal-e e₂ mu-na-du₃`) into Unicode cuneiform glyphs (𒈗𒂊 𒂍 𒈬𒈾𒆕). Handles braced determinatives, hyphen-joined sign sequences, sign-list dot-compounds, and morphology tails. About 93% of glossary spellings render with full coverage; the rest flag missing signs with `□` placeholders so the agent can be honest about gaps rather than silently dropping them.
+
+### Literary corpus (bilingual via ETCSL)
+
+The four `etcsl_*` tools query the Oxford [Electronic Text Corpus of Sumerian Literature](https://etcsl.orinst.ox.ac.uk/) — 394 lemmatized literary compositions (hymns, myths, royal hymns, proverbs, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, Šulgi's praise poems) that ship with English translations alongside the Sumerian. Unlike the administrative bulk corpus, which is transliteration-only, every ETCSL hit comes back **bilingual** — invaluable for grounding translations in canonical literary style.
+
+- **`etcsl_search_english(query)`** — concept-level FTS5 search over the Oxford translations. Try `'kingship'`, `'underworld'`, `'descend*'`, `'"divine power"'`. Returns each match with the English paragraph and the Sumerian lines it covers.
+- **`etcsl_search_sumerian(query)`** — FTS5 over Sumerian transliteration in the literary corpus, returning bilingual matches. Hyphens are token separators, so quote multi-token spellings (`'lugal-bi'`).
+- **`etcsl_lines_with_lemma(lemma)`** — grounds a specific Sumerian lemma in literary use. The agent uses this when the user asks *"how would a poet phrase this"* rather than *"how would an Ur III scribe record this."*
+- **`etcsl_lookup_text(text_id, start, line_limit)`** — read a whole composition end-to-end, paginated, bilingual. Famous IDs: `c.1.4.1` (Inana's Descent), `c.1.8.1.4` (Gilgameš and the Underworld), `c.2.1.1` (Sumerian King List).
+
+Every `etcsl_*` result carries an `attribution` field with the canonical citation: *Black, J.A. et al., The Electronic Text Corpus of Sumerian Literature (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. CC BY 3.0 UK.* Attribution is required under the ETCSL license; the agent passes it through to the user verbatim.
+
+For the recommended end-to-end agent workflow that stitches these tools together (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md) — a drop-in system prompt that teaches the workflow with worked examples.
 
 ## Architecture at a glance
 
