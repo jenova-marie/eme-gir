@@ -45,8 +45,11 @@ COPY --chown=epsd2:epsd2 . /app/
 # not the parent. Without this, gunicorn (running as epsd2) can't
 # create its control file at /app/.gunicorn and crashes on boot with
 # "Control server error: [Errno 13] Permission denied".
+# init.sh needs +x (the COPY may not preserve host perms); doing it
+# here means the `init` compose service can run it directly.
 RUN install -d -o epsd2 -g epsd2 /app/data /app/log \
-    && chown epsd2:epsd2 /app
+    && chown epsd2:epsd2 /app \
+    && chmod +x /app/init.sh
 
 USER epsd2
 

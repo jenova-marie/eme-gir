@@ -300,19 +300,36 @@ Build details:
 
 The committed `.mcp.json` only describes the stdio launch (Claude Code spawns it as a subprocess). HTTP mode is for everyone else: Docker sidecars, web-hosted agents, multi-tenant deployments. Confirmed compatible with the `mcp` Python SDK's `streamablehttp_client` — initialize / list_tools / call_tool all work identically over HTTP and stdio.
 
-### Containerization (`Dockerfile` + `docker-compose.yml`)
+### Containerization (`Dockerfile` + `docker-compose.yml` + `init.sh`)
 
-The repo ships a `python:3.12.11-slim`-based image and a two-service compose file. Same image runs both processes (`web` = gunicorn + Flask on 5050, `mcp` = `mcp_server.py --transport http` on 5051). corpus/, data/, log/ are bind-mounted from the host because they total ~6 GB — too big to bake in and pointless to ship (the Sumerian corpus is built locally per machine).
+The repo ships a `python:3.12.11-slim`-based image and a **three-service** compose file:
+
+1. **`init`** — one-shot. Runs `/app/init.sh`, exits 0 when done. Web + mcp declare `depends_on: init: condition: service_completed_successfully`, so they don't start until init exits. On a fresh host this can take 5-15 minutes (downloading 3.1 GB of zips, building a 3.4 GB glossary SQLite, etc.); on subsequent starts it fast-paths via the sentinel in ~50 ms.
+2. **`web`** — gunicorn + Flask on `:5050`. Worker count via `${WEB_WORKERS:-4}`.
+3. **`mcp`** — `mcp_server.py --transport http` on `:5051`.
+
+Same image for all three services; only the `command:` differs.
+
+`init.sh` trust model: the sentinel `/app/data/.initialized` is the SOLE source of truth for "data/ is consistent with the current code." Sentinel missing OR version-stale → `find /app/data -mindepth 1 -delete` → rebuild from scratch. corpus/ is never wiped because `download_corpus.py` is resume-safe. Steps performed (in order, each gated by env vars where optional):
+1. `download_corpus.py` (skipped if `corpus/epsd2.zip` exists — proxy for "corpus directory is populated"; the script is itself resume-safe)
+2. `build_text_index.py` (~2 s)
+3. `build_glossary_db.py` (~3.5 min, the dominant cost)
+4. `build_collocations.py` (~5 min, gated by `EPSD2_BUILD_COLLOCATIONS=1`)
+5. `build_etcsl_db.py` (~10 s, gated by `EPSD2_BUILD_ETCSL=1`)
+6. Pre-warm Flask sort + casefold migrations on `glossary.sqlite` so the MCP server's startup check (which reads `meta.casefold_version`) passes immediately when mcp boots in parallel with web (otherwise mcp would race gunicorn's first worker for the migration lock).
+
+Bumping `INIT_VERSION` in init.sh forces a wipe + rebuild on the next start. Pre-built host data can be reused by manually writing `echo "init_version=2" > data/.initialized` BEFORE `docker compose up`.
 
 Build-time gotchas already accounted for in the Dockerfile:
 - `WORKDIR /app` makes the dir root-owned even after `COPY --chown` chowns the contents — gunicorn (running as `epsd2`) needs to write `/app/.gunicorn` for its control file. Fix: explicit `chown epsd2:epsd2 /app` after the COPY.
 - `libyajl2` system package — `ijson`'s C backend depends on it; without it ijson silently falls back to its pure-python parser (~10x slower).
+- `chmod +x /app/init.sh` after the COPY (host file perms aren't always preserved by `COPY --chown`).
 - Non-root uid/gid 1000 matches the conventional first user on Linux hosts so bind mounts work without permission shuffling.
 
 Runtime gotchas in `docker-compose.yml`:
 - `data/` mount is RW for the `mcp` service even though MCP only does SELECTs — SQLite needs to create `-journal`/`-wal` files in the same directory as the DB even for read-only transactions. `:ro` mount → `sqlite3.OperationalError: unable to open database file` on first tool call.
-- `mcp` declares `depends_on: web: service_healthy` so the casefold/sort migrations have completed before MCP startup checks `meta.casefold_version`. After first boot the migrations are no-ops (version-gated) so the dependency is moot, but cold starts need it.
-- Healthchecks use `curl --fail` against `/` (302) and `/mcp/` (307) respectively; both 3xx counts as success.
+- `init` is the dependency target for both web and mcp. Web no longer depends on mcp's casefold migration ordering (init pre-warms it); both servers start in parallel after init.
+- Healthchecks use `curl --fail` against `/` (302) and `/mcp/` (307) respectively; both 3xx counts as success. `start_period: 15s` is enough — the long setup work is in the init service, not in either server.
 - Ports default to `127.0.0.1:PORT:PORT` — set `WEB_BIND=0.0.0.0` / `MCP_BIND=0.0.0.0` env vars to expose to the LAN. Anything beyond a private LAN must be fronted with a TLS-terminating proxy.
 
 ### Logging

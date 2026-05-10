@@ -1,22 +1,56 @@
-# Two-service layout matching README "Putting both behind one reverse
-# proxy". Build the image once; both services share it. corpus/, data/,
-# and log/ are bind-mounted from the host so:
-#   1. The 6+ GB of indexes you already built locally aren't re-baked
-#      into the image (or rebuilt inside the container);
-#   2. Logs persist across container restarts and are tailable from the
-#      host (`tail -F log/mcp_server.log`);
-#   3. Rebuilding any index (`python3 build_*.py` on the host) is
-#      immediately visible to the running services without a restart.
+# Three-service layout: a one-shot `init` service handles first-boot
+# data setup (download Oracc corpus, build SQLite indexes), then exits.
+# `web` (gunicorn + Flask) and `mcp` (FastMCP HTTP transport) both
+# depend on `init` completing successfully and start in parallel.
+#
+# Why the dedicated init service vs an entrypoint wrapper: first-boot
+# init can take 5-15 minutes. Wrapping it inside web's startup would
+# either:
+#   (a) require a 30+ minute healthcheck start_period (ugly), or
+#   (b) make `mcp` (which depends_on web: service_healthy) wait that
+#       same 5-15 min before booting at all.
+# A separate init service lets web + mcp keep tight ~30s healthchecks,
+# and lets compose's `service_completed_successfully` condition gate
+# both servers on the same one-time setup.
+#
+# corpus/, data/, log/ are bind-mounted from the host so:
+#   1. The 6+ GB of indexes don't bake into the image;
+#   2. Logs persist across container restarts (`tail -F log/mcp_server.log`);
+#   3. Manual rebuilds (`python3 build_*.py` on the host) are visible
+#      to running services without an image rebuild — the fast path
+#      for active development.
 #
 # Ports publish to 127.0.0.1 only by default. Front the stack with
 # nginx/caddy/traefik (sample fragment in README) for TLS + auth before
 # binding to 0.0.0.0. There is NO in-app authentication on /mcp.
 
 services:
-  web:
+  # One-shot data initializer. Runs before web/mcp on every `up` —
+  # fast-paths to exit 0 in ~50ms when /app/data/.initialized exists
+  # at the current INIT_VERSION; otherwise wipes data/ and rebuilds
+  # everything from corpus zips. See init.sh for the trust model.
+  init:
     build: .
     image: epsd2:latest
+    container_name: epsd2-init
+    command: /app/init.sh
+    environment:
+      # Toggle off to skip the longer optional builds; defaults are ON
+      # because the MCP server's tool surface is incomplete without them.
+      EPSD2_BUILD_COLLOCATIONS: "${EPSD2_BUILD_COLLOCATIONS:-1}"
+      EPSD2_BUILD_ETCSL: "${EPSD2_BUILD_ETCSL:-1}"
+    volumes:
+      - ./corpus:/app/corpus     # init writes here on first boot
+      - ./data:/app/data         # init wipes + populates
+      - ./log:/app/log
+    restart: "no"                # one-shot; never restart on completion
+
+  web:
+    image: epsd2:latest
     container_name: epsd2-web
+    depends_on:
+      init:
+        condition: service_completed_successfully
     # 4 gunicorn workers — Flask routes are mostly SQLite point-lookups
     # (~5-50ms each), so workers > cores helps absorb burst traffic.
     # Tune via the WEB_WORKERS env var.
@@ -30,33 +64,29 @@ services:
     ports:
       - "${WEB_BIND:-127.0.0.1}:5050:5050"
     volumes:
-      - ./corpus:/app/corpus
-      # Writable — Flask startup runs idempotent SQLite migrations
-      # against glossary.sqlite (sort_key + casefold _cf columns); both
-      # are version-gated so existing data only gets touched once.
-      - ./data:/app/data
+      - ./corpus:/app/corpus:ro
+      - ./data:/app/data         # gunicorn worker-boot reruns the
+                                 # version-gated migrations (no-op
+                                 # after init pre-warmed them, but
+                                 # the journal needs a writable dir)
       - ./log:/app/log
     restart: unless-stopped
     healthcheck:
       # Hits the glossary landing page (302 redirect to /epsd2/sux).
-      # `curl --fail` treats 3xx as success, so the redirect counts.
+      # `curl --fail` treats 3xx as success.
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5050/"]
       interval: 30s
       timeout: 7s
       retries: 3
-      start_period: 30s   # first-boot migrations can take a few seconds
+      start_period: 15s          # init pre-warmed migrations, gunicorn
+                                 # workers come up in <5s
 
   mcp:
     image: epsd2:latest
     container_name: epsd2-mcp
-    # Ordering matters on first boot: the Flask app's `create_app()`
-    # populates meta.casefold_version, which the MCP server's startup
-    # check requires. Wait for `web` to pass its healthcheck before
-    # starting `mcp`. (After the columns exist, this dep is moot — the
-    # MCP server can boot independently — but cold starts need it.)
     depends_on:
-      web:
-        condition: service_healthy
+      init:
+        condition: service_completed_successfully
     command: >
       python3 mcp_server.py
       --transport http

@@ -5,8 +5,9 @@
 # Logs
 *.log
 
-# Generated reports under data/
+# Generated reports + runtime sentinels under data/
 data/missing_corpora.json
+data/.initialized
 
 # Python
 __pycache__/

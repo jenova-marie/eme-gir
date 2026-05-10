@@ -189,41 +189,56 @@ gunicorn -w 4 -b 127.0.0.1:5050 'app:create_app()'
 
 ### Containerized deployment (Docker)
 
-The repo ships a `Dockerfile` and `docker-compose.yml` that bake the two production processes into one image and run them as separate services. corpus/, data/, and log/ are bind-mounted from the host — too large to ship in the image (~6 GB combined) and you'll usually have built the indexes locally already.
+The repo ships a `Dockerfile` and `docker-compose.yml` that run the production stack as **three services**: a one-shot `init` that downloads + builds everything on first boot, then `web` (gunicorn + Flask) and `mcp` (FastMCP HTTP) which start in parallel after init exits 0. corpus/, data/, and log/ are bind-mounted from the host — too large to ship in the image (~6 GB combined).
 
-Sequence on a fresh machine:
+**Cold start (no host-side prep required):**
 
 ```bash
-# 1. Build the indexes on the HOST first (they go into ./data/, which the
-#    containers will bind-mount). One-time, ~5 minutes.
-pip install ijson flask mcp gunicorn
-python3 download_corpus.py        # ~3.1 GB into ./corpus/
-python3 build_text_index.py       # ./data/text_index.sqlite
-python3 build_glossary_db.py      # ./data/glossary.sqlite (~3.4 GB)
-python3 build_collocations.py     # optional
-python3 build_etcsl_db.py         # optional
-python3 app.py & sleep 5 && kill %1   # one-shot to populate casefold + sort columns
-
-# 2. Bring the stack up.
 docker compose up -d --build
 
-# 3. Verify both services healthy (~10 seconds).
-docker compose ps
+# init does the heavy lifting (5-15 minutes on a fresh host):
+docker compose logs -f init
+# After init exits, web + mcp start in parallel and reach healthy in ~6 s.
+
 # Endpoints (default bind: 127.0.0.1 only):
 #   web → http://127.0.0.1:5050/epsd2/sux
 #   mcp → http://127.0.0.1:5051/mcp/  (note trailing slash)
+docker compose ps
 ```
 
-Defaults:
+**Reusing pre-built indexes from the host** (skips the multi-minute init):
 
-- Both ports bind to `127.0.0.1` on the host. To expose to a private LAN, set `WEB_BIND=0.0.0.0` or `MCP_BIND=0.0.0.0` in your shell or a `.env` file before `docker compose up`. Anything beyond a private LAN MUST be fronted by a reverse proxy with TLS + auth.
-- Image runs as a non-root user (uid/gid 1000). On Linux this matches the conventional first user, so bind-mounted host directories are readable/writable without a chown dance. On macOS Docker Desktop maps the owner through transparently.
-- `data/` is mounted read/write on both services — not because either writes to glossary.sqlite at steady state, but because SQLite needs a writable directory for `-journal`/`-wal` files even on read-only transactions. Mark the SQLite files `chmod a-w` on the host if you really need write protection.
+```bash
+# Build everything on the host first
+pip install ijson flask mcp gunicorn
+python3 download_corpus.py
+python3 build_text_index.py
+python3 build_glossary_db.py
+python3 build_collocations.py     # optional
+python3 build_etcsl_db.py         # optional
+python3 app.py & sleep 5 && kill %1   # one-shot for casefold + sort migrations
+
+# Then drop the sentinel so the init service trusts your data:
+echo "init_version=2" > data/.initialized
+
+docker compose up -d --build
+# init fast-paths in <1 s; web + mcp healthy ~6 s later.
+```
+
+**Trust model.** The sentinel file `data/.initialized` is the single source of truth for "data is consistent with the current code." If missing or version-stale, `init` considers everything in `data/` defunct and **wipes it** before rebuilding (corpus/ is left intact — `download_corpus.py` is resume-safe). To force a re-init: `rm data/.initialized && docker compose up -d` (the init container will re-run on the next start).
+
+**Defaults & overrides:**
+
+- Both ports bind to `127.0.0.1` on the host. Override per-service: `WEB_BIND=0.0.0.0 MCP_BIND=0.0.0.0 docker compose up -d`. Anything beyond a private LAN MUST be fronted by a reverse proxy with TLS + auth.
+- Image runs as a non-root user (uid/gid 1000); matches conventional Linux first-user so bind mounts work without a chown dance. macOS Docker Desktop maps owners through transparently.
+- `data/` is mounted read/write on web and mcp — not because either writes glossary.sqlite at steady state, but because SQLite needs a writable directory for `-journal`/`-wal` files even on read-only transactions. Mark the SQLite files `chmod a-w` on the host if you really need write protection.
 - gunicorn worker count defaults to 4; override with `WEB_WORKERS=8 docker compose up -d`.
+- Skip optional builds: `EPSD2_BUILD_COLLOCATIONS=0 EPSD2_BUILD_ETCSL=0 docker compose up -d` (their MCP tools degrade gracefully or error if absent).
 
 Watch live logs:
 
 ```bash
+docker compose logs -f init  # init progress (only meaningful on first boot)
 docker compose logs -f web   # Flask access + gunicorn lifecycle
 docker compose logs -f mcp   # MCP startup banner + uvicorn requests
 # (Tool-call timing lines also stream into ./log/mcp_server.log on the
