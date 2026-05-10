@@ -49,7 +49,7 @@ from download_corpus import (  # noqa: E402
     human as _human,
 )
 
-from paths import CORPUS_DIR
+from paths import CORPUS_DIR, ROOT
 
 ORACC_HOST = "https://oracc.museum.upenn.edu"
 # /projects.json is the canonical simple list (just pathnames). The richer
@@ -130,7 +130,7 @@ def probe_project(p: dict | str) -> dict:
         "pathname": pathname,
         "name": name,
         "abbrev": abbrev,
-        "local": str(local) if local else None,
+        "local": str(local.relative_to(ROOT)) if local else None,
         "local_size": local.stat().st_size if local else None,
         "index_url": idx_url,
         "index_status": idx_status,

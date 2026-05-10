@@ -288,14 +288,14 @@ The repo ships `.mcp.json` for project-scoped auto-detection. **Both paths must 
   "mcpServers": {
     "epsd2": {
       "type": "stdio",
-      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
-      "args": ["/Users/jenova/projects/jenova-marie/epsd2/mcp_server.py"]
+      "command": "<absolute path to a python that has the `mcp` package>",
+      "args": ["<absolute path to this repo>/mcp_server.py"]
     }
   }
 }
 ```
 
-For a different machine, swap the python path to whatever has `mcp` installed (`which python3`).
+On the author's macOS+asdf setup that resolves to e.g. `/Users/<you>/.asdf/installs/python/3.12.11/bin/python3` and `/Users/<you>/projects/<...>/epsd2/mcp_server.py`. For a different machine, get the python path with `readlink -f $(which python3)` after confirming `python3 -c 'import mcp'` succeeds. The committed `.mcp.json` at the repo root currently hardcodes the author's paths — clone-and-go users will need to edit it to match their own machine.
 
 ## Cuneiform rendering (`cuneify.py`)
 
