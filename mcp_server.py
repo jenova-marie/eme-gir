@@ -278,11 +278,21 @@ def _build_transport_security_kwargs() -> dict:
     hosts = [h.strip() for h in raw_hosts.split(",") if h.strip()]
     origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
 
-    # Always permit localhost + 127.0.0.1 so the in-container healthcheck
-    # `curl http://localhost:5051/...` keeps working regardless of which
-    # public hostname the operator added. De-dupe in case they listed
-    # them explicitly.
-    for default_host in ("localhost", "127.0.0.1", "::1"):
+    # Always permit localhost + 127.0.0.1 (with AND without port suffixes)
+    # so the in-container healthcheck `curl http://localhost:5051/...`
+    # keeps working regardless of which public hostname the operator
+    # added. The MCP SDK matches Host header strings exactly; curl
+    # passes `Host: localhost:5051` (with port) for that healthcheck,
+    # so the bare `localhost` variant doesn't cover it. We mirror the
+    # SDK's own default set of localhost variants — see
+    # mcp.server.transport_security where it adds `localhost:*` etc.
+    # when bound to a loopback host. De-dupe in case the operator
+    # listed any of these explicitly.
+    for default_host in (
+        "localhost", "localhost:*",
+        "127.0.0.1", "127.0.0.1:*",
+        "::1", "[::1]:*",
+    ):
         if default_host not in hosts:
             hosts.append(default_host)
 

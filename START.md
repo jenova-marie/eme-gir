@@ -267,6 +267,40 @@ As of this writing, **MCP clients (Claude Desktop, Claude Code) do not yet ship 
 - **Reverse-proxy auth.** Run the MCP server with `EPSD2_REQUIRE_AUTH=0` and let your reverse proxy (nginx / caddy / Auth0's own proxy) inject `Authorization` headers based on whatever auth the proxy enforces (basic auth, Auth0 SSO, mTLS).
 - **Wait for native client OAuth.** The MCP spec mandates the discovery dance via Protected Resource Metadata; clients will eventually catch up. Once they do, no server-side change is needed — our server already serves the right metadata.
 
+### Allowing the public hostname through DNS-rebinding protection (REQUIRED behind a reverse proxy)
+
+The MCP Python SDK ships with **DNS-rebinding protection ON by default**, with an allowlist that only accepts `Host: localhost` or `Host: 127.0.0.1` (with port wildcards). When you put the HTTP transport behind a reverse proxy (Caddy / nginx / traefik) and the proxy passes the public hostname through to uvicorn unchanged, every request gets rejected with **`421 Misdirected Request: Invalid Host header`** — looks like a misconfiguration but is actually the SDK's middleware refusing an unallowlisted Host. Production deployments MUST opt in to their own hostname.
+
+Three env vars:
+
+| Var | Required | Example | What it does |
+|---|---|---|---|
+| `EPSD2_ALLOWED_HOSTS` | yes (when behind a proxy) | `epsd2.intra.example.net,epsd2.example.com` | Comma-separated list of public hostnames the proxy serves the MCP server under. `localhost` / `127.0.0.1` / `::1` (with and without port suffixes) are added automatically so in-container healthchecks keep working — only list the public hostnames here. |
+| `EPSD2_ALLOWED_ORIGINS` | only for browser clients | `https://archive.example.org` | Comma-separated list of `Origin` headers accepted on cross-origin requests. Stricter than allowed_hosts: no auto-additions. Skip this if no browser MCP client will hit the endpoint. |
+| `EPSD2_DISABLE_DNS_REBINDING_PROTECTION` | escape hatch | `1` | Disables the check entirely. Only safe when your reverse proxy enforces Host validation upstream. The startup banner emits a WARNING when this is on. |
+
+Example for a Caddy/nginx deployment:
+
+```env
+EPSD2_ALLOWED_HOSTS=epsd2.intra.example.net
+EPSD2_ALLOWED_ORIGINS=https://archive.example.org
+```
+
+Or in docker compose env:
+
+```bash
+EPSD2_ALLOWED_HOSTS=epsd2.intra.example.net docker compose up -d
+```
+
+The startup banner will confirm what got applied:
+
+```
+auth=ENABLED (Auth0 issuer=...)
+transport_security=ENABLED (allowed_hosts=['epsd2.intra.example.net','localhost','localhost:*','127.0.0.1','127.0.0.1:*','::1','[::1]:*'], allowed_origins=[...])
+```
+
+If you see `transport_security=default (SDK accepts Host: localhost / 127.0.0.1 only ...)` and you're behind a proxy, that's the cause of any 421 errors — set `EPSD2_ALLOWED_HOSTS` and restart.
+
 ---
 
 ## 4. Production deployment

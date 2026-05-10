@@ -320,6 +320,16 @@ Stdio transport never enforces auth (per MCP spec stdio uses env-based credentia
 
 Auth wiring uses `AnyHttpUrl` (from pydantic) for the `issuer_url` and `resource_server_url` fields per `AuthSettings` schema. `pyjwt[crypto]` is in `requirements.txt`; the `[crypto]` extra pulls in `cryptography` for RS256 signature verification. Imports are LAZY in `_build_auth_kwargs()` so the no-auth path doesn't pay the import cost and stdio dev environments without pyjwt installed don't fail to start.
 
+### Transport security / DNS-rebinding allowlist (`_build_transport_security_kwargs`)
+
+The MCP SDK's streamable-http transport ships `enable_dns_rebinding_protection=True` by default with an empty allowlist that effectively only accepts `Host: localhost` / `127.0.0.1` (with port wildcards) — see `mcp.server.transport_security.TransportSecuritySettings`. Behind a reverse proxy that passes the public Host header through, every request returns **`421 Misdirected Request: Invalid Host header`**. Symptom looks like a routing/Caddy bug; root cause is SDK middleware refusing the Host. Operators must opt in via three EPSD2 env vars:
+
+- `EPSD2_ALLOWED_HOSTS` — comma-separated public hostnames the proxy will use. `localhost`, `localhost:*`, `127.0.0.1`, `127.0.0.1:*`, `::1`, `[::1]:*` are auto-added so in-container `curl --fail http://localhost:5051/...` healthchecks keep working (curl sends `Host: localhost:5051` with the port suffix — bare `localhost` doesn't match).
+- `EPSD2_ALLOWED_ORIGINS` — comma-separated `Origin` headers for browser MCP clients. No auto-additions; stricter than allowed_hosts.
+- `EPSD2_DISABLE_DNS_REBINDING_PROTECTION` — truthy escape hatch. Banner emits a WARNING when on. Only safe when the proxy enforces Host validation upstream.
+
+When none of the three is set, FastMCP falls through to its own auto-default (localhost-only with port wildcards). When ANY is set, `_build_transport_security_kwargs()` constructs an explicit `TransportSecuritySettings` and we override the auto-default. Startup banner reports `transport_security=ENABLED (allowed_hosts=..., allowed_origins=...)` or `transport_security=DISABLED` so the operative state is visible. Verified end-to-end with `Host: <allowed>` → 200, `Host: <not-allowed>` → 421, with-port localhost healthcheck pattern → 200.
+
 ### Containerization (`Dockerfile` + `docker-compose.yml` + `init.sh`)
 
 The repo ships a `python:3.12.11-slim`-based image and a **three-service** compose file:

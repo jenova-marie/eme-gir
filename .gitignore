@@ -9,6 +9,13 @@
 data/missing_corpora.json
 data/.initialized
 
+# Per-deployment env files — Auth0 tenant URLs, audiences, allowed
+# hosts, and any client secrets. docker-compose auto-loads .env from
+# the project root; never commit it.
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.pyc
