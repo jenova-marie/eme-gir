@@ -1,351 +1,112 @@
 # Jenova's Local · ePSD2
 
-A local mirror of the [Oracc ePSD2](https://oracc.museum.upenn.edu/epsd2/sux) Sumerian dictionary that can be browsed, searched, and queried entirely offline — with Unicode cuneiform glyphs rendered next to every spelling and real attestations from the Sumerian textual corpus pulled in for every entry.
+A complete offline mirror, web browser, and AI-agent interface for the **electronic Pennsylvania Sumerian Dictionary** and the larger **Oracc cuneiform corpus** — the canonical scholarly resources for the world's oldest written language.
 
-The original ePSD2 (electronic Pennsylvania Sumerian Dictionary, 2nd edition) is a 15,940-headword Sumerian-to-English dictionary backed by 35.5 million attestations across the Oracc cuneiform text corpus. Oracc publishes it as a 1.9 GB JSON archive plus 207 sibling project zips containing the actual transliterated tablets (3.1 GB total). This project does the work of:
-
-1. **Downloading** all 208 zips from `oracc.museum.upenn.edu/json/`.
-2. **Streaming the 1.9 GB Sumerian glossary into a queryable SQLite index** (15,940 headwords, 124,649 spelling variants, 19,066 senses, 35.5 M instance refs) without ever loading the file into memory.
-3. **Indexing every text in every zip** so we can find which zip holds which tablet in O(log n).
-4. **Resolving instance references back to actual Sumerian lines** by lazy-loading the right `corpusjson/` file and walking its tree. ~92% of references resolve from local data.
-5. **Rendering Unicode cuneiform** for any transliteration string, using the OGSL (Oracc Global Sign List) sign mapping. ~93% of spellings render with full glyph coverage.
-6. **Serving it all** as a small Flask web app that recreates `oracc.museum.upenn.edu/epsd2/sux` byte-for-byte on page 1, with extras: case-insensitive Unicode-aware search across six fields, attestation lines in context with the target word highlighted, and cuneiform alongside every spelling.
-
-All Oracc data is released under CC0 (per each project's `metadata.json`); the code in this repository is also yours to do whatever you want with.
+If you're a Sumerologist who wants to query 35 million attestations without touching the network; a developer who wants their LLM agent to translate English into actual Sumerian rather than plausible-looking nonsense; or a digital humanist looking to bring four-thousand-year-old clay tablets into a modern indexed pipeline — this is for you.
 
 ---
 
-## Setup
+## What this is
 
-```bash
-# 1. Install dependencies
-pip install ijson flask mcp gunicorn   # gunicorn only needed for production serving
+The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (ePSD2), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world.
 
-# 2. Download the entire Oracc JSON corpus (~3.1 GB, ~2 minutes on a fast link)
-python3 download_corpus.py
+Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/epsd2` serves richly hyperlinked HTML pages, and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures, and is excellent for almost nothing in particular until you build infrastructure on top of it. *This project is that infrastructure.*
 
-# 3. Build the per-text location index (~2 seconds)
-python3 build_text_index.py
+Specifically, Jenova's Local · ePSD2:
 
-# 4. Build the Sumerian glossary index (~3.5 minutes)
-python3 build_glossary_db.py
+- **Pulls down all 208 Oracc project zips** and keeps them locally — no network trips during normal use, robust against the academic server's occasional slowness or downtime, friendly to a small server with limited bandwidth.
+- **Streams the 1.9 GB Sumerian glossary into a SQLite index** without ever holding the source file in memory. The index has normalized tables for headwords, spellings, senses, attestation references, periods, compound words, and morphological breakdowns — 35.5 million word-occurrences indexed for sub-10-millisecond point lookups.
+- **Resolves every attestation reference back to the actual line on the actual clay tablet**, by lazy-loading the right per-text JSON file from inside its project zip and walking the document tree. About 92% of references resolve successfully from the local data; the remainder cite projects we haven't downloaded.
+- **Renders Sumerian cuneiform script as Unicode** for any transliteration string, using the Oracc Global Sign List (OGSL). Roughly 93% of glossary spellings render with full glyph coverage; the rest are flagged with `□` placeholders so you always know what's missing.
+- **Serves it all as a small Flask web app** that recreates the look and feel of the live oracc.museum.upenn.edu/epsd2/sux page, with extras the live site doesn't offer: case-insensitive Unicode-aware search across six fields, attestation lines shown in their original sentence context with the target word highlighted, and cuneiform alongside every spelling.
+- **Exposes the same data to LLM agents over the Model Context Protocol (MCP)** with fifteen specialized tools designed to support English ↔ Sumerian translation grounded in the real attested usage of the language. This is the part most directly aimed at AI applications.
 
-# 5. (Optional) Build the collocations index for find_collocations MCP tool (~5 min)
-python3 build_collocations.py
+The whole thing runs on a laptop. The full corpus is ~3.1 GB and the indexes another ~3.5 GB; given those, every operation in the web app and every MCP tool call is a local SQLite query, typically under fifty milliseconds.
 
-# 6. (Optional) Build the ETCSL literary corpus for the etcsl_* MCP tools (~10 sec)
-python3 build_etcsl_db.py
+## What this enables
 
-# 7. Run the web app (also populates two one-shot SQLite migrations on first hit)
-python3 app.py
-# -> http://127.0.0.1:5050/epsd2/sux
-```
+### For Sumerologists and Assyriologists
 
-All generated SQLite indexes land in `data/`; logs land in `log/`. Both directories are auto-created on first run.
+A laptop-friendly version of the entire ePSD2 + Oracc dataset that responds in milliseconds, works completely offline, and gives you direct SQL access to every cross-referenceable structure in the data — period attestations, compound formations, sign frequencies, collocational n-grams. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"* — become fifty-millisecond queries against a single denormalized SQLite database.
 
-To rebuild the glossary for a different language / project (e.g. the Akkadian
-glossary, useful for bilingual workflows):
+### For LLM applications
 
-```bash
-python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite
-```
+A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
-### Building the ETCSL literary corpus (optional)
+This includes a verb-form lookup that accepts grammatical features (perfective vs imperfective, person/number agreement, dimensional case prefixes, polarity) and returns matching attested forms with their morphological decompositions; a phrasal-collocation index built from all 138,000 corpusjson texts; bilingual search over the Oxford [Electronic Text Corpus of Sumerian Literature](https://etcsl.orinst.ox.ac.uk/) — 394 hymns, myths, royal compositions, and proverbs with English translations; a complete reverse-direction (Sumerian → English) parsing pipeline that handles cuneiform sign disambiguation; and a Sumerian grammar cheat sheet served as an MCP resource so the agent can pull it once per session into its working context.
 
-ETCSL — the Oxford [Electronic Text Corpus of Sumerian Literature](https://etcsl.orinst.ox.ac.uk/) — is a curated set of 394 Sumerian *literary* texts (hymns, myths, royal hymns, proverbs, wisdom, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems, etc.) shipped as TEI XML with **per-word lemmatization AND English translations**. This is exactly the bilingual corpus the Oracc administrative-text bulk JSON lacks. The build script downloads the 4.9 MB zip from the Oxford Text Archive and ingests it to `data/etcsl.sqlite` (~31 MB) with FTS5 indexes for English and Sumerian search:
+### For digital humanists
 
-```bash
-python3 build_etcsl_db.py
-```
+A reference implementation of how to take a mature scholarly digital corpus and make it consumable by modern tooling — both human (the web app) and machine (the MCP server). The data model, schema, parsing strategies, and MCP tool design are all open and documented; the licensing means no friction for derivative work.
 
-Once built, the MCP server exposes four `etcsl_*` tools: `etcsl_search_english`, `etcsl_lines_with_lemma`, `etcsl_search_sumerian`, and `etcsl_lookup_text`. ETCSL data is **CC BY 3.0 UK** — every tool result includes an `attribution` field; preserve it when quoting.
-
-### Picking up new / missing Oracc projects
-
-`download_corpus.py` only knows about zips that are listed on the public
-[`/json/`](https://oracc.museum.upenn.edu/json/) download index. Oracc keeps
-adding new sub-projects, and a few are only reachable via the per-project
-`/{project}/json.zip` URL pattern instead of the index. To audit and pull
-anything we don't have yet:
-
-```bash
-# Just probe — list anything reachable on Oracc that's not in corpus/.
-python3 find_missing_corpora.py
-
-# Probe + download any reachable-but-missing zips, with zip-validity check
-# (Oracc occasionally returns a 200 + HTML error page when a project's
-# archive isn't built yet; bogus responses are detected and discarded).
-python3 find_missing_corpora.py --fetch
-
-# Optional: write a structured JSON report alongside the human one.
-python3 find_missing_corpora.py --json data/missing_corpora.json
-```
-
-After fetching new zips, rebuild the indexes so they pick up the new content:
-
-```bash
-python3 build_text_index.py
-python3 build_collocations.py    # only if you use the find_collocations MCP tool
-```
-
-`find_missing_corpora.py` reuses `download_corpus.py`'s SSL setup and
-resume-safe download, so the fetch is polite to Oracc's small academic
-server.
-
-## Use as an MCP server (English → Sumerian translation tools for an LLM)
-
-The repo ships an MCP server exposing fifteen tools designed for agent-driven English↔Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
-
-For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
-
-```json
-{
-  "mcpServers": {
-    "epsd2": {
-      "type": "stdio",
-      "command": "/absolute/path/to/python3-with-mcp-installed",
-      "args": ["/absolute/path/to/this/repo/mcp_server.py"]
-    }
-  }
-}
-```
-
-> **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
-
-Fifteen tools available to the agent:
-
-ePSD2 dictionary + corpus tools:
-
-- `translate_english(query, limit)` — rank Sumerian candidates for an English meaning
-- `translate_sumerian(transliteration)` — reverse: parse a Sumerian phrase into per-token glosses
-- `lookup_entry(oid)` — full structured view of a chosen lemma
-- `see_examples(oid, limit, period)` — real attested lines, target word marked, period-filterable
-- `find_compound(english_phrase)` — find idiomatic Sumerian compound expressions
-- `find_collocations(word, length, limit)` — phrasal idioms attested with a given lemma (mined from the corpus, not the dictionary — surfaces formulas like "Šusuen lugal", year-name templates, royal titles)
-- `get_inflections(oid)` — every attested morphological breakdown of a lemma
-- `analyze_form(spelling)` — decompose an attested spelling into candidate lemmas + morphology
-- `find_verb_form(cf, pos, prefix, dimensional, object_person, aspect, …)` — attested verb forms matching a feature spec; returns the morph template + spelling + attested count + one cited line per match (attestation-first; no rule-based synthesis)
-- `lookup_sign(query)` — find a cuneiform sign by name or phonetic value
-- `cuneify(spelling)` — render Oracc transliteration as Unicode cuneiform glyphs
-
-ETCSL literary-corpus tools (bilingual; require `python3 build_etcsl_db.py`):
-
-- `etcsl_search_english(query, limit)` — FTS5 over English translations; returns each match with its Sumerian lines
-- `etcsl_lines_with_lemma(lemma, limit)` — literary lines containing a given Sumerian lemma + the English paragraph
-- `etcsl_search_sumerian(query, limit)` — FTS5 over Sumerian transliterations; returns bilingual matches
-- `etcsl_lookup_text(text_id, start, line_limit)` — read a whole composition, paginated, bilingual
-
-Plus one MCP resource: `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar cheat sheet (Edzard 2003) the agent should fetch once per translation session.
-
-Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
-
-For a complete agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md). It's a drop-in for the system message of any agent connected to this server.
-
-### Watching the server live
-
-Every tool call is logged to `log/mcp_server.log` (rotating, 5 MB × 3 backups), with arguments, duration, and a one-line result summary. Tail it while chatting with the agent:
-
-```bash
-tail -F log/mcp_server.log
-```
-
-Errors get full tracebacks. The startup banner reports loaded DB sizes so you can confirm the right files are mounted.
-
-### Running over HTTP (for remote agents, Docker, or non-stdio clients)
-
-The same `mcp_server.py` script also speaks the MCP **streamable-HTTP** transport — useful when the consumer can't (or shouldn't) launch the server as a subprocess: web-hosted agents, multi-tenant deployments, sidecar containers, etc.
-
-```bash
-# Local-only (default bind = 127.0.0.1, default port = 5051)
-python3 mcp_server.py --transport http
-
-# Behind a reverse proxy on a private network
-python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
-```
-
-Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). The 15 ePSD2 + 4 ETCSL tools all work over HTTP exactly as they do over stdio. There is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. Sample nginx fragment:
-
-```nginx
-location /mcp/ {
-    proxy_pass         http://127.0.0.1:5051;
-    proxy_http_version 1.1;
-    proxy_buffering    off;          # MCP streams responses, don't buffer
-    proxy_read_timeout 24h;          # long-lived SSE sessions
-    auth_basic         "epsd2 MCP";
-    auth_basic_user_file /etc/nginx/htpasswd;
-}
-```
-
-### Running the web app in production
-
-`python3 app.py` runs Flask's built-in dev server (Werkzeug — single-threaded, no concurrency, banner says "do not use in production"). For anything beyond local development, run it under **gunicorn**:
-
-```bash
-# 4 worker processes, bound to localhost; let nginx terminate TLS
-gunicorn -w 4 -b 127.0.0.1:5050 'app:create_app()'
-```
-
-`create_app()` is the application factory in `app.py`. It runs the one-shot SQLite migrations (sort + casefold columns) on startup, so a cold gunicorn boot is identical to `python3 app.py` for the database.
-
-### Containerized deployment (Docker)
-
-The repo ships a `Dockerfile` and `docker-compose.yml` that run the production stack as **three services**: a one-shot `init` that downloads + builds everything on first boot, then `web` (gunicorn + Flask) and `mcp` (FastMCP HTTP) which start in parallel after init exits 0. corpus/, data/, and log/ are bind-mounted from the host — too large to ship in the image (~6 GB combined).
-
-**Cold start (no host-side prep required):**
-
-```bash
-docker compose up -d --build
-
-# init does the heavy lifting (5-15 minutes on a fresh host):
-docker compose logs -f init
-# After init exits, web + mcp start in parallel and reach healthy in ~6 s.
-
-# Endpoints (default bind: 127.0.0.1 only):
-#   web → http://127.0.0.1:5050/epsd2/sux
-#   mcp → http://127.0.0.1:5051/mcp/  (note trailing slash)
-docker compose ps
-```
-
-**Reusing pre-built indexes from the host** (skips the multi-minute init):
-
-```bash
-# Build everything on the host first
-pip install ijson flask mcp gunicorn
-python3 download_corpus.py
-python3 build_text_index.py
-python3 build_glossary_db.py
-python3 build_collocations.py     # optional
-python3 build_etcsl_db.py         # optional
-python3 app.py & sleep 5 && kill %1   # one-shot for casefold + sort migrations
-
-# Then drop the sentinel so the init service trusts your data:
-echo "init_version=2" > data/.initialized
-
-docker compose up -d --build
-# init fast-paths in <1 s; web + mcp healthy ~6 s later.
-```
-
-**Trust model.** The sentinel file `data/.initialized` is the single source of truth for "data is consistent with the current code." If missing or version-stale, `init` considers everything in `data/` defunct and **wipes it** before rebuilding (corpus/ is left intact — `download_corpus.py` is resume-safe). To force a re-init: `rm data/.initialized && docker compose up -d` (the init container will re-run on the next start).
-
-**Defaults & overrides:**
-
-- Both ports bind to `127.0.0.1` on the host. Override per-service: `WEB_BIND=0.0.0.0 MCP_BIND=0.0.0.0 docker compose up -d`. Anything beyond a private LAN MUST be fronted by a reverse proxy with TLS + auth.
-- Image runs as a non-root user (uid/gid 1000); matches conventional Linux first-user so bind mounts work without a chown dance. macOS Docker Desktop maps owners through transparently.
-- `data/` is mounted read/write on web and mcp — not because either writes glossary.sqlite at steady state, but because SQLite needs a writable directory for `-journal`/`-wal` files even on read-only transactions. Mark the SQLite files `chmod a-w` on the host if you really need write protection.
-- gunicorn worker count defaults to 4; override with `WEB_WORKERS=8 docker compose up -d`.
-- Skip optional builds: `EPSD2_BUILD_COLLOCATIONS=0 EPSD2_BUILD_ETCSL=0 docker compose up -d` (their MCP tools degrade gracefully or error if absent).
-
-Watch live logs:
-
-```bash
-docker compose logs -f init  # init progress (only meaningful on first boot)
-docker compose logs -f web   # Flask access + gunicorn lifecycle
-docker compose logs -f mcp   # MCP startup banner + uvicorn requests
-# (Tool-call timing lines also stream into ./log/mcp_server.log on the
-# host because the log dir is bind-mounted.)
-```
-
-### Putting both behind one reverse proxy
-
-A typical production layout serves the web UI at the root and HTTP MCP at `/mcp/`:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name epsd2.example.org;
-    # ssl_certificate ...
-
-    location /mcp/ {
-        proxy_pass         http://127.0.0.1:5051;
-        proxy_http_version 1.1;
-        proxy_buffering    off;
-        proxy_read_timeout 24h;
-        auth_basic         "epsd2 MCP";
-        auth_basic_user_file /etc/nginx/htpasswd;
-    }
-
-    location / {
-        proxy_pass         http://127.0.0.1:5050;
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Forwarded-For $remote_addr;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport http` for FastMCP), one public surface, TLS + auth handled centrally by the proxy. Keep `python3 app.py` for development — Werkzeug's autoreload is too useful to lose locally.
-
----
-
-## What lives where
-
-| | |
-|---|---|
-| **Code** | |
-| `download_corpus.py` | Stdlib-only batch downloader; resume-safe; auto-fetches the InCommon TLS intermediate that Oracc's server omits. |
-| `find_missing_corpora.py` | Audit tool: HEAD-probes every project in Oracc's `projects.json` against `corpus/`, lists what's reachable but missing. `--fetch` flag downloads them (with zip-validity check). |
-| `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, morphology, and instances. |
-| `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` and per-text catalogue metadata, builds `text_index.sqlite`. |
-| `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
-| `build_etcsl_db.py` | Downloads the ETCSL bulk zip (4.9 MB) from the Oxford Text Archive, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs), normalizes ETCSL's ASCII transliteration to ePSD2/Oracc Unicode, ingests to `etcsl.sqlite` with FTS5 indexes. Powers the `etcsl_*` MCP tools. |
-| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
-| `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
-| `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 15 tools + 1 resource for agents over stdio. Logs every call to `log/mcp_server.log`. |
-| `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
-| **Docs / config** | |
-| `.mcp.json` | Project-scoped MCP server config — Claude Code auto-detects when launched in this directory. |
-| `prompt/SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003), also served as the MCP resource `oracc://grammar/sumerian`. |
-| `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. |
-| `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, and project-prefix glossary. |
-| `static/img/jenova.png` | Header avatar / favicon. |
-| **Generated artifacts (gitignored)** | |
-| `corpus/` | 208 `.zip` files (~3.1 GB), one per Oracc project. |
-| `data/glossary.sqlite` | ~3.4 GB indexed extract of the Sumerian glossary (15,940 entries, 35.5 M attestations, 248 K morphology rows). |
-| `data/glossary_akk.sqlite` | ~114 MB Akkadian glossary built from `corpus/rinap.zip` for bilingual workflows (optional). |
-| `data/text_index.sqlite` | ~10 MB index of 139,455 `(project, text_id, period, designation)` rows. |
-| `data/collocations.sqlite` | ~22 MB index of ~178 K phrasal n-grams of citation forms mined from the corpus. |
-| `data/etcsl.sqlite` | ~31 MB ETCSL literary corpus (394 texts, 34,229 lines, 159,963 words, 5,608 translation paragraphs) with FTS5 indexes on Sumerian and English. |
-| `data/etcsl.zip` | ~4.9 MB cached download of the Oxford Text Archive ETCSL bulk zip; rebuilds skip re-downloading if present. |
-| `log/mcp_server.log` | Live tool-call log; rotates at 5 MB × 3 backups. |
-
----
-
-## How a request flows
+## Architecture at a glance
 
 ```
-GET /epsd2/o0033341 (lugal)
-       │
-       ├─> SQLite: load entry + forms + norms + senses + sense_sigs
-       │            + periods + compounds + 500 instance refs
-       │
-       ├─> text_resolver.resolve_many(refs, limit=20)
-       │       │
-       │       ├─> parse_word_ref('epsd2:P347156.34.5')
-       │       ├─> data/text_index.sqlite: lookup (project, text_id)
-       │       ├─> open corpus/epsd2.zip, parse corpusjson/P347156.json
-       │       ├─> walk cdl tree, collect words on line 34
-       │       └─> mark target word, dedupe by (text, line)
-       │       (cached LRU 512 entries)
-       │
-       ├─> cuneify(form.n) for every spelling           [Jinja filter]
-       │
-       └─> render templates/entry.html
+┌────────────────────────┐      ┌──────────────────────────┐
+│ oracc.museum.upenn.edu │      │ etcsl.orinst.ox.ac.uk    │
+│  /json/                │      │  (Oxford literary corpus) │
+│  — 208 project zips    │      │  — TEI XML, bilingual    │
+└─────────┬──────────────┘      └────────┬─────────────────┘
+          │ download_corpus.py            │ build_etcsl_db.py
+          ▼                               ▼
+      corpus/*.zip                  data/etcsl.sqlite
+          │
+          │ streaming JSON parser (ijson, constant-memory)
+          ▼
+      data/glossary.sqlite     data/text_index.sqlite     data/collocations.sqlite
+       (3.4 GB · 35.5 M         (10 MB · text → zip          (22 MB · phrasal n-grams
+        attestation refs)         lookup + period meta)        of citation forms)
+          │
+          ▼
+      ┌──────────────────────┐         ┌─────────────────────────────────┐
+      │ Flask web app        │         │ MCP server (FastMCP)             │
+      │  • /epsd2/sux        │         │  • stdio transport (Claude Code, │
+      │  • entry pages       │         │    local agents)                 │
+      │  • cuneiform render  │         │  • streamable-HTTP transport     │
+      │  • period filtering  │         │    (remote agents, Docker)       │
+      │                      │         │  • 15 tools + 1 grammar resource │
+      └──────────────────────┘         └─────────────────────────────────┘
 ```
 
----
+Both servers can run as standalone Python processes, or be deployed together via an included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows.
+
+## Data and attributions
+
+| Source | License | What we use |
+|---|---|---|
+| **Oracc / ePSD2** (Tinney, Robson, Veldhuis, et al.) | **CC0** | Sumerian glossary; ~138K corpusjson texts; OGSL sign list |
+| **ETCSL** (Black, Cunningham, Robson, Zólyomi, et al., Oxford 1998–2006) | **CC BY 3.0 UK** | 394 lemmatized literary texts with English translations |
+| **OGSL** (Tinney) | CC0, distributed inside Oracc | Cuneiform sign → Unicode mapping |
+
+The Oracc and OGSL data is dedicated to the public domain (CC0) and so requires no attribution, but cite it anyway — it represents decades of meticulous scholarship by an international team. The ETCSL license formally requires attribution; every MCP tool that returns ETCSL data carries an `attribution` field with the canonical citation string for downstream propagation.
+
+## License
+
+The code in this repository is released under the **MIT License** — see [`LICENSE`](LICENSE). Use it however you like, including commercially; the only requirement is that you carry the copyright notice forward in copies or substantial portions. The license applies to *the code*, not to the underlying linguistic data, which is governed separately by Oracc / ePSD2 (CC0) and ETCSL (CC BY 3.0 UK) as documented in the table above.
+
+## A note on the data itself
+
+Cuneiform is the world's oldest writing system, used continuously from roughly 3200 BCE to roughly 75 CE — a span of more than three thousand years. Sumerian is one of the languages it recorded, attested longest in administrative and economic texts. The bulk of the largest single zip in the corpus (`epsd2-admin-ur3`, 536 MB) is Ur III royal and temple bookkeeping from around 2100 BCE — the receipts, ration lists, work assignments, and animal counts of a Bronze Age bureaucracy.
+
+The 35.5 million word-references in this dictionary are pointers into roughly that many actual occurrences of words on actual clay tablets, mostly held today in museum collections in London, Berlin, Philadelphia, Istanbul, and Baghdad. The cuneiform glyphs you see on entry pages here are the same characters that Sumerian scribes pressed into clay four millennia ago, encoded into Unicode in 2006 (block U+12000–U+1237F). When the MCP server's `cuneify` tool turns a transliteration like `lugal-e e₂ mu-na-du₃` into the glyphs 𒈗𒂊 𒂍 𒈬𒈾𒆕, you are looking at the same writing system that recorded the Code of Ur-Nammu, the Epic of Gilgameš, the praise poems of king Šulgi, the household accounts of Sumerian temples, and (in its later Akkadian and Hittite cuneiform descendants) the diplomatic correspondence of the Late Bronze Age.
+
+This project doesn't add anything to that data; it just makes it easier to ask questions of it.
 
 ## Limitations
 
-- ~8% of glossary instance refs cite texts in projects we don't have downloaded; those fall back to raw refs.
-- ~7% of spellings contain at least one sign that's missing from OGSL and renders as a `□` placeholder.
-- The web app's entry page doesn't yet render a dedicated Bibliography section, per-sense interleaved examples, or a Period × Form cross-tab — though attestation lines DO surface the publication shorthand (e.g., "YOS 14, 341") via `text_index.sqlite`'s `designation` column.
-- The `/epsd2/sux` glossary list page matches Oracc page-1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't reverse-engineered).
-- Composite text refs (Q-ids) aren't handled by the resolver; only P-ids.
-- **English translations are not in Oracc's public JSON archive** — they exist only in the live HTML pages at `/{project}/{P-id}` and would need scraping. The metadata `formats.tr-en` list tells us *which* texts have a translation available, not the translation itself. **Workaround:** the optional ETCSL ingest above pulls in 394 literary texts that DO ship with English translations, so any literary lookup via the `etcsl_*` tools is bilingual out of the box.
+- About **8%** of glossary attestation references cite texts in projects we haven't downloaded; those fall back to raw reference strings on entry pages.
+- About **7%** of spellings contain at least one sign missing from OGSL and render with `□` placeholders. Coverage will improve as OGSL grows.
+- The web app's entry page doesn't yet render a dedicated bibliography section, per-sense interleaved examples, or a Period × Form cross-tabulation — though attestation lines do surface the publication shorthand (e.g. "YOS 14, 341") for any text with catalogue metadata.
+- The `/epsd2/sux` glossary list page matches the live Oracc page 1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't fully reverse-engineered).
+- Composite text references (Q-ids) aren't handled by the attestation resolver; only P-ids (physical objects).
+- English translations of texts are not in Oracc's public JSON archive — they exist only in the live HTML pages and would need scraping. The optional ETCSL ingest pulls in 394 literary texts that DO ship with English translations, so any literary lookup via the `etcsl_*` MCP tools is bilingual out of the box, but the administrative bulk corpus remains transliteration-only.
 
----
+## Getting started
 
-## A note on the data
+For setup, build, and deployment instructions — including the Docker compose stack, MCP server configuration for various clients, and reverse-proxy recipes — see **[START.md](START.md)**.
 
-Cuneiform is the world's oldest writing system, used continuously from ~3200 BCE to ~75 CE. Sumerian is one of the languages it recorded, attested longest in administrative and economic texts (the bulk of `epsd2-admin-ur3`, the largest single file in the corpus, is Ur III royal/temple bookkeeping from ~2100 BCE). The 35.5 million word-references in this dictionary are pointers into roughly that many actual occurrences of words on actual clay tablets, mostly held today in museum collections in London, Berlin, Philadelphia, Istanbul, and Baghdad. The cuneiform glyphs you see on entry pages here are the same characters that Sumerian scribes pressed into clay 4,000 years ago, encoded into Unicode in 2006 (range U+12000–U+1237F).
+For a complete LLM-agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md).
+
+For the Sumerian grammar cheat sheet that the MCP server also exposes as the `oracc://grammar/sumerian` resource, see [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md).
+
+For an in-depth reference aimed at AI coding assistants extending this project — schema documentation, the Oracc URL surface, the InCommon TLS gotcha, the cuneiform-rendering pipeline, the Docker layout — see [`CLAUDE.md`](CLAUDE.md).
