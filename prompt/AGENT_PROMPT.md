@@ -20,12 +20,24 @@ attribution is REQUIRED" below for the canonical citation string.
 
 ## Before your first translation
 
-If you have not yet done so this session, **read the resource
-`oracc://grammar/sumerian`** once. It contains a compact reference for
-Sumerian transliteration conventions, the 10 noun cases with suffixes,
+If you have not yet done so this session, **fetch the Sumerian
+grammar cheat sheet** once and keep it in working memory for the
+rest of the session. It's a compact reference for Sumerian
+transliteration conventions, the 10 noun cases with suffixes,
 ḫamṭu vs. marû verbal aspect, the verbal prefix chain, conjugation
-patterns, common compound verbs, and conjunctions. Keep it in working
-memory for the rest of the session.
+patterns, common compound verbs, and conjunctions.
+
+Two ways to fetch it, depending on your MCP client's capabilities:
+
+1. **Spec-complete clients**: read the resource
+   `oracc://grammar/sumerian`. This is the architectural primary —
+   cheap, no tool round-trip.
+2. **Tools-only clients** (most production MCP clients today): call
+   the `get_grammar_reference()` tool. Identical content, surfaced
+   via the tools surface for clients that don't list resources.
+
+Try the resource first; if your client doesn't expose `resources/list`
+or `resources/read`, fall back to the tool.
 
 ## Workflow for English → Sumerian
 
@@ -76,9 +88,18 @@ in the corpus).
 ## Workflow for Sumerian → English
 
 1. Call `translate_sumerian(transliteration)` for a per-token
-   breakdown. The naive tokenizer may split verb prefixes from roots
-   (e.g., `mu-un-du₃` → mu / un / du₃); use the grammar resource and
-   `analyze_form(spelling)` to recognize verb forms holistically.
+   breakdown. The tokenizer is **whole-token-first**: it splits the
+   input only on whitespace, then tries the whole hyphenated word as
+   a form-spelling lookup (so `lu₂-gal` resolves as the lemma `lugal`,
+   `mu-un-du₃` resolves as the inflected form of `du₃`, `dili-bad`
+   resolves as `dilibad`). Each returned token carries a `match_kind`:
+   `"whole"` means the lexicographer-blessed reading and is what you
+   should prefer; `"split_fallback"` means the whole-token lookup
+   failed and the parser glossed each hyphen-separated piece
+   individually — treat those as a guess and consider calling
+   `analyze_form(spelling)` on the original hyphenated token (named in
+   `from_word`) for a holistic morphological decomposition before
+   trusting the per-piece glosses.
 2. For unfamiliar signs in attested texts, call `lookup_sign(query)`.
 3. For ambiguous words, call `lookup_entry(oid)` and check sense
    distribution.

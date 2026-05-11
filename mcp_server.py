@@ -1070,11 +1070,23 @@ def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> Transl
     English glosses. Use this to verify a translation you composed, or to read
     a Sumerian phrase you encountered.
 
-    Tokenizes on whitespace then splits each token on hyphens (sign joiners)
-    and dots (sign-list compounds), strips braced determinatives, and looks
-    up each piece against the glossary forms + form-sans tables. Returns ALL
-    candidate lemmas per token (ranked by attestation count) so the agent
-    can pick the contextually right one.
+    Tokenization is **whole-token-first**: splits the input only on whitespace,
+    then for each token tries the WHOLE thing (with hyphens intact) against
+    `entries.cf`, `forms.n`, and `morphology.n` (kind in 'base','form-sans').
+    Only if the whole-token lookup yields zero candidates does the parser fall
+    back to splitting on hyphens/dots and gloss each piece individually. This
+    matches the Sumerian convention that hyphens join signs WITHIN one word —
+    so `lu₂-gal` resolves cleanly as the lemma `lugal`, `mu-un-du₃` resolves
+    as the inflected form of `du₃`, etc. — instead of shattering every
+    hyphenated word into orphan signs.
+
+    Each returned entry carries a `match_kind` signal:
+      - "whole"          : the token resolved as-is (the preferred reading)
+      - "split_fallback" : whole-token lookup failed; this is one piece of
+                            the hyphen-split fallback. `from_word` names the
+                            original hyphenated token.
+      - "unmatched"      : neither the whole token nor any split piece
+                            resolved (no candidates).
 
     Args:
         transliteration: a Sumerian phrase like "lugal-e e₂ mu-un-du₃"
@@ -1082,62 +1094,86 @@ def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> Transl
     """
     import re as _re
 
-    # Tokenize: split on whitespace, then on - and . within each word.
-    raw_tokens: list[str] = []
-    for word in transliteration.split():
-        # Strip braced determinatives — they're separate tokens
-        cleaned = _re.sub(r"\{[^}]*\}", "", word).strip()
-        if not cleaned:
-            continue
-        for piece in _re.split(r"[-.]", cleaned):
-            piece = piece.strip("⸢⸣[](),;:!?")
-            if piece and piece not in {"x", "X"}:
-                raw_tokens.append(piece)
+    def _lookup(cur: sqlite3.Cursor, needle_cf: str, limit: int) -> list[dict[str, Any]]:
+        # UNION of three indexed equality lookups against entries.cf_cf,
+        # forms.n_cf, and morphology.n_cf (kind in base/form-sans). Each
+        # branch is a single index hit; the union and ORDER BY happen at
+        # the SQLite layer. ~sub-ms per call on the glossary index.
+        rows = cur.execute(
+            """
+            SELECT * FROM (
+                SELECT e.id AS oid, e.cf, e.gw, e.pos,
+                       e.icount AS entry_total
+                FROM entries e WHERE e.cf_cf = ?
+                UNION
+                SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                FROM forms f JOIN entries e ON e.id = f.entry_id
+                WHERE f.n_cf = ?
+                UNION
+                SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                FROM morphology m JOIN entries e ON e.id = m.entry_id
+                WHERE m.kind IN ('base', 'form-sans') AND m.n_cf = ?
+            ) ORDER BY entry_total DESC NULLS LAST
+            LIMIT ?
+            """,
+            (needle_cf, needle_cf, needle_cf, limit),
+        ).fetchall()
+        return [{
+            "oid": r["oid"],
+            "cf": r["cf"],
+            "gw": r["gw"],
+            "pos": r["pos"],
+            "entry_total": r["entry_total"] or 0,
+        } for r in rows]
+
+    _STRIP_CHARS = "⸢⸣[](),;:!?"
+
+    def _clean(s: str) -> str:
+        # Strip braced determinatives, surrounding bracketing/punctuation,
+        # and obvious damage placeholders (`x`).
+        s = _re.sub(r"\{[^}]*\}", "", s).strip().strip(_STRIP_CHARS)
+        return "" if s in {"x", "X"} else s
+
+    # Tokenize on whitespace ONLY. Hyphens stay intact inside each token
+    # so we can try the whole hyphenated word as a form-spelling lookup first.
+    words = [w for w in (_clean(piece) for piece in transliteration.split()) if w]
 
     con = _connect()
     try:
+        cur = con.cursor()
         results: list[dict[str, Any]] = []
-        for tok in raw_tokens:
-            needle_cf = tok.casefold()
-            # UNION of three indexed equality lookups — much faster than
-            # joining all three tables with OR. The previous JOIN-with-OR
-            # version produced a 16K × 124K × 248K Cartesian product per
-            # miss and took ~15 s per token; this version is sub-ms per
-            # branch (each WHERE is a unique-key/index hit).
-            #
-            # The morphology branch covers attested 'base' and 'form-sans'
-            # spellings — useful for resolving inflected verbal forms whose
-            # exact surface spelling isn't in the entries.cf or forms.n
-            # tables but IS captured as a base/form-sans variant.
-            rows = con.execute(
-                """
-                SELECT * FROM (
-                    SELECT e.id AS oid, e.cf, e.gw, e.pos,
-                           e.icount AS entry_total
-                    FROM entries e WHERE e.cf_cf = ?
-                    UNION
-                    SELECT e.id, e.cf, e.gw, e.pos, e.icount
-                    FROM forms f JOIN entries e ON e.id = f.entry_id
-                    WHERE f.n_cf = ?
-                    UNION
-                    SELECT e.id, e.cf, e.gw, e.pos, e.icount
-                    FROM morphology m JOIN entries e ON e.id = m.entry_id
-                    WHERE m.kind IN ('base', 'form-sans') AND m.n_cf = ?
-                ) ORDER BY entry_total DESC NULLS LAST
-                LIMIT ?
-                """,
-                (needle_cf, needle_cf, needle_cf, limit_per_token),
-            ).fetchall()
-            results.append({
-                "token": tok,
-                "candidates": [{
-                    "oid": r["oid"],
-                    "cf": r["cf"],
-                    "gw": r["gw"],
-                    "pos": r["pos"],
-                    "entry_total": r["entry_total"] or 0,
-                } for r in rows],
-            })
+        for word in words:
+            whole = _lookup(cur, word.casefold(), limit_per_token)
+            if whole:
+                # Lexicographer-blessed whole-token reading. Prefer this.
+                results.append({
+                    "token": word,
+                    "candidates": whole,
+                    "match_kind": "whole",
+                })
+                continue
+
+            # Whole-token lookup failed. If the word has hyphens or dots,
+            # fall back to splitting and glossing each piece. If it's a
+            # single bare piece with no separators, there's nowhere to
+            # fall back to — emit an empty "unmatched" entry so the
+            # agent can see we tried and found nothing.
+            pieces = [p for p in (_clean(s) for s in _re.split(r"[-.]", word)) if p]
+            if len(pieces) <= 1:
+                results.append({
+                    "token": word,
+                    "candidates": [],
+                    "match_kind": "unmatched",
+                })
+                continue
+
+            for piece in pieces:
+                results.append({
+                    "token": piece,
+                    "candidates": _lookup(cur, piece.casefold(), limit_per_token),
+                    "match_kind": "split_fallback",
+                    "from_word": word,
+                })
     finally:
         con.close()
     return TranslateSumerianResponse(
@@ -2039,6 +2075,32 @@ _GRAMMAR_CACHE: str | None = None
 _AGENT_PROMPT_CACHE: str | None = None
 
 
+def _load_grammar() -> str:
+    """Read + cache the Sumerian grammar cheat sheet from disk."""
+    global _GRAMMAR_CACHE
+    if _GRAMMAR_CACHE is None:
+        if not GRAMMAR_DOC.exists():
+            return (
+                "# prompt/SUMERIAN_GRAMMAR.md missing\n\n"
+                f"Expected at {GRAMMAR_DOC}. Re-run the project setup."
+            )
+        _GRAMMAR_CACHE = GRAMMAR_DOC.read_text(encoding="utf-8")
+    return _GRAMMAR_CACHE
+
+
+def _load_agent_prompt() -> str:
+    """Read + cache the agent system prompt from disk."""
+    global _AGENT_PROMPT_CACHE
+    if _AGENT_PROMPT_CACHE is None:
+        if not AGENT_PROMPT_DOC.exists():
+            return (
+                "# prompt/AGENT_PROMPT.md missing\n\n"
+                f"Expected at {AGENT_PROMPT_DOC}. Re-run the project setup."
+            )
+        _AGENT_PROMPT_CACHE = AGENT_PROMPT_DOC.read_text(encoding="utf-8")
+    return _AGENT_PROMPT_CACHE
+
+
 @mcp.resource(
     "oracc://grammar/sumerian",
     name="Sumerian grammar cheat sheet",
@@ -2057,15 +2119,7 @@ _AGENT_PROMPT_CACHE: str | None = None
 )
 @_log_call
 def grammar_cheatsheet() -> str:
-    global _GRAMMAR_CACHE
-    if _GRAMMAR_CACHE is None:
-        if not GRAMMAR_DOC.exists():
-            return (
-                "# prompt/SUMERIAN_GRAMMAR.md missing\n\n"
-                f"Expected at {GRAMMAR_DOC}. Re-run the project setup."
-            )
-        _GRAMMAR_CACHE = GRAMMAR_DOC.read_text(encoding="utf-8")
-    return _GRAMMAR_CACHE
+    return _load_grammar()
 
 
 @mcp.resource(
@@ -2092,15 +2146,71 @@ def grammar_cheatsheet() -> str:
 )
 @_log_call
 def agent_prompt() -> str:
-    global _AGENT_PROMPT_CACHE
-    if _AGENT_PROMPT_CACHE is None:
-        if not AGENT_PROMPT_DOC.exists():
-            return (
-                "# prompt/AGENT_PROMPT.md missing\n\n"
-                f"Expected at {AGENT_PROMPT_DOC}. Re-run the project setup."
-            )
-        _AGENT_PROMPT_CACHE = AGENT_PROMPT_DOC.read_text(encoding="utf-8")
-    return _AGENT_PROMPT_CACHE
+    return _load_agent_prompt()
+
+
+# ─── Tool wrappers around the two bootstrap resources ─────────────
+#
+# The MCP spec exposes these as RESOURCES, which spec-complete clients
+# discover via resources/list and read via resources/read. But in
+# practice many production MCP clients only wire up tools/list (Claude
+# variants, agent runtimes, IDE integrations) — for those, the
+# bootstrap content is invisible no matter how cleanly the resource is
+# declared. These two tools are belt-and-suspenders: they expose the
+# same content via the universally-supported tools surface so the
+# resource-blind clients can still self-bootstrap. Spec-complete
+# clients should prefer the resource form (cheaper, no tool round-trip,
+# semantically the right primitive); the tools are a compatibility
+# shim, not the architectural primary.
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+@_log_call
+def start_here() -> str:
+    """⭐ CALL THIS FIRST. Returns the Sumerian translation agent's
+    system prompt as text — the bootstrap that teaches you how to use
+    the rest of the tools end-to-end.
+
+    The returned markdown covers:
+      • Recommended workflow for English → Sumerian translation
+        (decompose → translate_english → find_compound →
+        find_collocations → choose ḫamṭu vs marû aspect → apply
+        case suffixes → find_verb_form / get_inflections →
+        see_examples → cuneify)
+      • Reverse direction (Sumerian → English) tools
+      • The four etcsl_* literary tools and when to reach for them
+      • REQUIRED Oxford attribution for any ETCSL-derived data
+        (CC BY 3.0 UK)
+      • Required output format and a fully worked example
+
+    The prompt also instructs you to call `get_grammar_reference()`
+    next to fetch the Sumerian grammar cheat sheet for working
+    memory. That's the second and final bootstrap step.
+
+    (Spec-complete MCP clients can read this content from the
+    `oracc://prompt/agent` resource instead — but most production
+    clients only surface tools, so this is exposed as a tool too.)
+    """
+    return _load_agent_prompt()
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+@_log_call
+def get_grammar_reference() -> str:
+    """Return the Sumerian grammar cheat sheet (Edzard 2003) as text.
+
+    Call this after start_here(). The returned markdown covers
+    transliteration conventions, the 10 noun cases with suffixes,
+    ḫamṭu vs marû verbal aspect, the verbal prefix chain, conjugation
+    patterns, common compound verbs, and pronouns — everything you
+    need to reason about Sumerian morphology and choose well-formed
+    inflections.
+
+    (Spec-complete MCP clients can read this content from the
+    `oracc://grammar/sumerian` resource instead — but most production
+    clients only surface tools, so this is exposed as a tool too.)
+    """
+    return _load_grammar()
 
 
 # -----------------------------------------------------------------------------

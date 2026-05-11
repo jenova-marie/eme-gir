@@ -52,7 +52,9 @@ class EntryHeader(_Permissive):
 
     oid: str = Field(..., description="Entry OID, e.g. 'o0033341'. Use with lookup_entry/see_examples/get_inflections.")
     cf: str = Field(..., description="Citation form (Sumerian headword), e.g. 'lugal'.")
-    gw: str = Field(..., description="Guide-word / English gloss, e.g. 'king'.")
+    # NULL for ~7% of entries (1,123/15,940) — typically proper-noun-only
+    # entries (DN, PN, GN) where Oracc has no English gloss to give.
+    gw: str | None = Field(None, description="Guide-word / English gloss, e.g. 'king'. None for proper nouns and other entries with no gloss.")
     pos: str | None = Field(None, description="Part of speech, e.g. 'N' (noun), 'V/t' (transitive verb).")
 
 
@@ -68,8 +70,14 @@ class LemmaCandidate(EntryHeader):
 class Sense(_Permissive):
     """One sense of a polysemous entry (lookup_entry)."""
 
-    id: int | None = None
-    meaning: str
+    # Oracc sense IDs are TEXT in the source data (e.g. 'sux.x00459199'),
+    # NOT integers. The earlier int typing here rejected entries like
+    # 'dilibad' with a Pydantic ValidationError mid-tool-call.
+    id: str | None = None
+    # ~6% of senses (1,111/19,066) have NULL meaning — typically
+    # proper-noun-only entries where the sense exists but the gloss
+    # is empty in Oracc's source data.
+    meaning: str | None = None
     pos: str | None = None
     count: int | None = None
     pct: int | None = None
@@ -130,7 +138,7 @@ class AnalyzeMatch(_Permissive):
     matched_in: str = Field(..., description="Which table/index hit, e.g. 'forms', 'morphology.base'.")
     oid: str
     cf: str
-    gw: str
+    gw: str | None = None
     pos: str | None = None
     matched_text: str = Field(..., description="The literal text from the matched row.")
     count: int
@@ -139,12 +147,33 @@ class AnalyzeMatch(_Permissive):
 
 
 class TokenAnalysis(_Permissive):
-    """One token's per-candidate breakdown from translate_sumerian."""
+    """One token's per-candidate breakdown from translate_sumerian.
 
-    token: str = Field(..., description="The transliteration token analyzed (e.g. 'lugal').")
+    `match_kind` signals HOW the lookup resolved:
+      - "whole"          : the input token was found as-is in forms / morphology
+                            / entries.cf — this is the lexicographer-blessed
+                            reading and the agent should prefer it.
+      - "split_fallback" : the whole token had no match, so the parser fell
+                            back to splitting on hyphens/dots; this entry
+                            represents one PIECE of that split. `from_word`
+                            names the original hyphenated token so the agent
+                            can re-assemble context.
+      - "unmatched"      : neither whole nor any split piece resolved (no
+                            candidates returned).
+    """
+
+    token: str = Field(..., description="The transliteration token analyzed (e.g. 'lugal' or 'mu-un-du₃').")
     candidates: list[EntryHeader] = Field(
         default_factory=list,
         description="Candidate lemmas for this token, ranked by entry total. Each carries oid/cf/gw/pos plus entry_total.",
+    )
+    match_kind: str = Field(
+        default="whole",
+        description="How this entry was resolved: 'whole' (token matched as-is), 'split_fallback' (whole-token lookup failed; this is a hyphen-split piece), or 'unmatched' (no candidates anywhere).",
+    )
+    from_word: str | None = Field(
+        default=None,
+        description="When match_kind='split_fallback', the original hyphenated word this piece came from. None otherwise.",
     )
 
 
@@ -261,7 +290,7 @@ class LookupEntryResponse(_Permissive):
 
     oid: str
     cf: str
-    gw: str
+    gw: str | None = None
     pos: str | None = None
     headword: str = Field(..., description="Full headword string, e.g. 'lugal[king]N'.")
     total_count: int = Field(..., description="Total attestations of this lemma across all senses.")
@@ -303,7 +332,7 @@ class GetInflectionsResponse(_Permissive):
 
     oid: str
     cf: str
-    gw: str
+    gw: str | None = None
     pos: str | None = None
     morphology: dict[str, list[MorphRow]] = Field(
         ...,
@@ -361,7 +390,7 @@ class FindVerbFormResponse(_Permissive):
 
     cf: str
     pos: str
-    gw: str
+    gw: str | None = None
     entry_oid: str
     base: str | None = Field(None, description="The base morpheme used in the morph rows.")
     total_attestations_for_entry: int
