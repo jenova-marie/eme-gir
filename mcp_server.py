@@ -83,6 +83,7 @@ from paths import (
     ETCSL_DB,
     GLOSSARY_DB,
     GRAMMAR_DOC,
+    INFLECTED_COLLOCATIONS_DB,
     MCP_SERVER_LOG as LOG_FILE,
     ROOT,
     TEXT_INDEX_DB,
@@ -500,157 +501,18 @@ def _entry_payload(con: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-# -----------------------------------------------------------------------------
-# Grammatical pre-annotation helpers (used by translate_sumerian + parse_phrase)
-# -----------------------------------------------------------------------------
-#
-# Sumerian morphology is suffixing for nouns (case + possessive + plural,
-# stacked in that order) and prefixing for verbs (modal + conj.prefix +
-# dimensional indicators + person, then the root with optional agreement
-# suffix). For nominal tokens we can usefully peel suffixes from the right
-# to surface their grammatical role. For verbal tokens we instead expose
-# the prefix chain. The tables below capture the canonical inventory
-# documented in prompt/SUMERIAN_GRAMMAR.md §3, §5.2, and §7.2.
-#
-# Detection is heuristic, not authoritative — many surface forms are
-# genuinely ambiguous (-e is ergative-on-noun OR directive-case OR
-# 3sg verbal-agreement; -a is locative OR nominalizer; -bi is possessive
-# OR demonstrative). The peeler reports the lexicographically most-likely
-# reading and lists alternates in `ambiguous_with` so the agent can decide.
-
-# Suffix patterns, LONGEST-FIRST so multi-morpheme combos match before
-# their shorter components. Each entry is:
-#   (regex anchored at $, role, kind, ambiguous_with_list)
-# `kind` ∈ {'case', 'possessive', 'plural', 'verbal_agreement'}.
-SUMERIAN_SUFFIX_TABLE: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
-    # ─── Multi-morpheme combos (peel as a unit when possible) ──────────────
-    ("-zu-ne-ne$",   "2pl_possessive",                "possessive", ()),
-    ("-a?ne-ne$",    "3pl_h_possessive",              "possessive", ()),
-    ("-bi-ne$",      "3pl_nh_possessive",             "possessive", ()),
-    # ─── Case suffixes (longest first to disambiguate from possessives) ───
-    ("-gin₇$",       "equative",                      "case",       ()),
-    ("-šè$",         "terminative",                   "case",       ()),
-    ("-še₃$",        "terminative",                   "case",       ()),
-    ("-še$",         "terminative",                   "case",       ()),
-    ("-ta$",         "ablative_instrumental",         "case",       ()),
-    ("-da$",         "comitative",                    "case",       ()),
-    ("-ra$",         "dative",                        "case",       ()),
-    ("-ak$",         "genitive",                      "case",       ()),
-    # ─── Plural marker (person class) ─────────────────────────────────────
-    ("-e?ne$",       "plural",                        "plural",     ("3sg_h_possessive (when bare -ne)",)),
-    # ─── Single-syllable possessives (must come before single-letter cases)
-    ("-ŋu₁₀$",       "1sg_possessive",                "possessive", ()),
-    ("-zu$",         "2sg_possessive",                "possessive", ()),
-    ("-a?ni$",       "3sg_h_possessive",              "possessive", ()),
-    ("-bi$",         "3sg_nh_possessive_or_anaphoric","possessive", ("demonstrative ('this/that')",)),
-    ("-me$",         "1pl_possessive",                "possessive", ()),
-    # ─── Single-letter case suffixes (most ambiguous) ─────────────────────
-    ("-a$",          "locative",                      "case",       (
-        "nominalizer (-a on a finite verb makes it a relative/subordinate clause)",
-        "genitive (the consonantal -k often elides, leaving only -a)",
-    )),
-    ("-e$",          "ergative",                      "case",       (
-        "directive (-e 'at, to' on a non-person noun, collides with ergative)",
-        "3sg/3pl ergative verbal agreement (when attached to a verb stem in marû)",
-    )),
+# Grammatical pre-annotation helpers (suffix table, peeler, verbal-prefix
+# detector) live in sumerian_morphology.py so the same code path can be
+# reused by build_inflected_collocations.py during corpus ingest. The
+# module-level aliases below preserve the existing private names used
+# elsewhere in this file, so the refactor is import-only — no logic change.
+from sumerian_morphology import (
+    SUMERIAN_SUFFIX_TABLE,
+    VERBAL_PREFIXES,
+    detect_verbal_prefixes as _detect_verbal_prefixes,
+    peel_suffixes as _peel_suffixes,
+    strip_token as _strip_token,
 )
-
-# Verbal prefix inventory (§7.2). Used to identify a token as a verb form
-# and extract its prefix chain. Order matters less here since we match
-# anchored at the start; we just need to know which fragments are valid.
-VERBAL_PREFIXES: tuple[str, ...] = (
-    # modal
-    "ḫe₂", "na", "ga", "bara", "nu",
-    # conjugation prefixes
-    "mu", "ba", "bi₂", "al", "i₃", "i", "e",
-    # ventive / dimensional indicators (typically follow conj. prefix)
-    "na", "ni", "ši", "ta", "da", "bi",
-    # person markers (immediately before root)
-    "n", "b",
-)
-
-import re as _re_grammar  # module-level to avoid re-import on each tool call
-
-_SUFFIX_PATTERNS = tuple(
-    (_re_grammar.compile(rx, _re_grammar.UNICODE), role, kind, alts)
-    for rx, role, kind, alts in SUMERIAN_SUFFIX_TABLE
-)
-
-# Determinatives like {d}, {ŋeš}, {ki}, {mušen} are silent classifiers that
-# don't participate in grammatical role analysis. Strip them before peeling.
-_DET_PATTERN = _re_grammar.compile(r"\{[^}]*\}")
-
-# Surface punctuation to clean off the edges of a token. Half-brackets and
-# square brackets are publication markers (damaged / fully-broken signs);
-# parens/commas/etc. occasionally creep in from copied-and-pasted text.
-_TOKEN_STRIP = "⸢⸣[](),;:!?"
-
-
-def _strip_token(s: str) -> str:
-    """Strip determinatives + punctuation + whitespace from a token."""
-    s = _DET_PATTERN.sub("", s).strip().strip(_TOKEN_STRIP)
-    return s
-
-
-def _peel_suffixes(token: str) -> tuple[str, list[Suffix]]:
-    """Iteratively peel grammatical suffixes from the right of a token.
-
-    Returns (base, suffix_chain_left_to_right). When no suffix matches,
-    returns (token, []) — meaning the token is its own base.
-
-    The peeler stops at the FIRST non-match to avoid over-eager stripping
-    (e.g. it won't peel '-a' off 'ama' (mother), because after peeling we'd
-    need a base like 'am' which isn't a valid lemma surface form — but the
-    peeler doesn't validate against the dictionary, it just stops on no
-    regex match. Lemma validation happens at the caller via _lookup).
-    """
-    suffixes_right_to_left: list[Suffix] = []
-    remaining = token
-    # Guard against pathological cases (token shorter than 2 chars can't
-    # carry a suffix in the patterns we recognize, since all our suffix
-    # spellings start with '-').
-    while len(remaining) >= 2:
-        for pattern, role, kind, alts in _SUFFIX_PATTERNS:
-            m = pattern.search(remaining)
-            if m:
-                surface = m.group(0)
-                suffixes_right_to_left.append(Suffix(
-                    spelling=surface,
-                    role=role,
-                    kind=kind,
-                    ambiguous_with=list(alts),
-                ))
-                remaining = remaining[: m.start()]
-                break
-        else:
-            # No pattern matched on this iteration — stop peeling.
-            break
-    # We peeled right-to-left; reverse so the caller sees them in
-    # input order (base-first, outermost case last).
-    return remaining, list(reversed(suffixes_right_to_left))
-
-
-def _detect_verbal_prefixes(token: str) -> str | None:
-    """If the token starts with one or more verbal prefixes, return them
-    joined as the prefix chain. Returns None when no prefix matched.
-
-    Conservative: we only flag the prefix chain when at least ONE recognized
-    prefix matches at the start. The peeler is not exhaustive — many verbal
-    forms have prefix chains that the caller should also cross-check against
-    morphology.kind='prefix' entries for the matched verb's lemma. This is
-    just a coarse 'looks like a verb form' signal for parse_phrase.
-    """
-    parts = token.split("-")
-    prefix_chain: list[str] = []
-    # Sort prefixes longest-first so 'bi₂' wins over 'b' on greedy match.
-    by_length = sorted(VERBAL_PREFIXES, key=len, reverse=True)
-    for piece in parts[:-1]:  # don't consume the root (last piece)
-        # Each piece must be exactly a recognized prefix to count.
-        if piece in by_length:
-            prefix_chain.append(piece)
-        else:
-            break
-    return "-".join(prefix_chain) if prefix_chain else None
 
 
 # -----------------------------------------------------------------------------
@@ -1707,45 +1569,141 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
     )
 
 
+import re as _re_slot
+
+# Slot grammar:
+#   slot ::= TARGET ('[' GW ']')? (':' CASE)?
+#   TARGET ::= cf | POS | '*'   (POS may end in '*' for family glob)
+#   GW    ::= ('!')? freetext   (sense disambiguator)
+#   CASE  ::= ('!')? role       (case marker constraint)
+#
+# Examples:
+#   "lugal"                — cf=lugal (homographs aggregated)
+#   "lugal[king]"          — cf=lugal AND gw=king (v3 sense)
+#   "lugal[!king]"         — cf=lugal AND gw != king (negated sense)
+#   "lugal:ergative"       — cf=lugal AND case=ergative (v2 case)
+#   "lugal[king]:ergative" — cf=lugal AND gw=king AND case=ergative
+#   "N"                    — POS=N
+#   "N:locative"           — POS=N AND case=locative
+#   "N:!ergative"          — POS=N AND case != ergative
+#   "V*"                   — POS family glob (V/t, V/i, etc.)
+#   "V*:ergative"          — any verb whose agreement reads ergative
+#   "*"                    — wildcard (any cf at this slot)
+#   "*:locative"           — any cf whose case is locative
+_SLOT_RE = _re_slot.compile(
+    r"^"
+    r"(?P<target>\*|[^\[:]+)"           # cf, POS (with optional *), or *
+    r"(?:\[(?P<gw>!?[^\]]+)\])?"        # optional [gw] with optional !
+    r"(?::(?P<case>!?[^:]+))?"          # optional :case with optional !
+    r"$"
+)
+
+
+def _parse_slot(slot: str) -> dict[str, Any] | None:
+    """Parse a slot spec into a constraint dict. Returns None on syntax error."""
+    if not slot:
+        return None
+    m = _SLOT_RE.match(slot.strip())
+    if not m:
+        return None
+    target = m.group("target").strip()
+    gw_raw = m.group("gw")
+    case_raw = m.group("case")
+
+    out: dict[str, Any] = {
+        "target_kind": None,   # 'cf' | 'pos' | 'pos_family' | 'wildcard'
+        "target": None,
+        "gw": None, "gw_negate": False,
+        "case": None, "case_negate": False,
+    }
+
+    # Classify the target as cf, POS, or wildcard. POS heuristic same as
+    # the v1 implementation: uppercase-leading or contains '/' or ends '*'.
+    if target == "*":
+        out["target_kind"] = "wildcard"
+    elif target.endswith("*"):
+        out["target_kind"] = "pos_family"
+        out["target"] = target[:-1] + "%"   # 'V*' → LIKE 'V%'
+    elif "/" in target or (target.isupper() and len(target) <= 4):
+        out["target_kind"] = "pos"
+        out["target"] = target
+    else:
+        out["target_kind"] = "cf"
+        out["target"] = target
+
+    if gw_raw:
+        gw_raw = gw_raw.strip()
+        if gw_raw.startswith("!"):
+            out["gw_negate"] = True
+            out["gw"] = gw_raw[1:].strip()
+        else:
+            out["gw"] = gw_raw
+
+    if case_raw:
+        case_raw = case_raw.strip()
+        if case_raw.startswith("!"):
+            out["case_negate"] = True
+            out["case"] = case_raw[1:].strip()
+        else:
+            out["case"] = case_raw
+
+    return out
+
+
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
 def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatternResponse | ErrorResponse:
     """Retrieve corpus-attested n-grams that match a structural template.
 
     Use this to ground a candidate phrasing in real attestation. Given a
-    pattern of length 2-4 where each slot is one of:
-      - a literal citation form (e.g. 'lugal', 'du₃', 'e₂')
-      - a POS code (e.g. 'N' for noun, 'V/t' for transitive verb,
-        'V' / 'V*' for any verb, 'AJ' for adjective, 'RN' for royal name,
-        'DN' for divine name, 'PN' for personal name)
-      - '*' for any cf
+    pattern of length 2-4 where each slot uses this grammar:
 
-    …returns the most-attested n-grams from collocations.sqlite that
-    match positionally, with each slot annotated by the matching lemma's
-    POS + gloss. Useful for "do scribes actually write X next to Y?"
-    questions, attestation-grounded ambiguity resolution, year-name
-    template discovery, and idiom mining.
+        slot = TARGET (':' CASE)?
+        TARGET = cf | POS | '*'
+                 (optionally annotated with '[gw]' for sense disambig)
+        CASE   = case_role          e.g. ergative, dative, locative,
+                                    equative, terminative, comitative,
+                                    ablative_instrumental, genitive
 
-    Examples:
-      find_phrase_pattern(["lugal", "N"])
-          → "king + X" — every noun attested next to lugal, ranked.
-            Surfaces titles like 'lugal kalam' (king of the land).
-      find_phrase_pattern(["N", "du₃"])
-          → every noun attested as the object of du₃ ('build').
-            Surfaces 'e₂ du₃' (build a temple), etc.
-      find_phrase_pattern(["RN", "lugal"])
-          → every royal name attested in apposition with lugal.
-            Surfaces 'Šusuen lugal', 'Amarsuenak lugal', etc.
-      find_phrase_pattern(["*", "*", "lugal"])
-          → every trigram ending in lugal, ranked.
+        Negation: prefix the gw or case value with '!'.
 
-    CAVEAT: the underlying collocation index is keyed by citation form,
-    NOT by inflected spelling. This means the tool CANNOT filter by
-    case marker (e.g. `N-locative + V`). For that level of structural
-    analysis, call parse_phrase on a specific candidate phrase instead.
+    Slot examples:
+      "lugal"                — cf=lugal, homographs aggregated
+      "lugal[king]"          — only the king-sense lugal (v3 sense disambig)
+      "lugal[!king]"         — any lugal sense EXCEPT king
+      "lugal:ergative"       — lugal in ergative case
+      "lugal[king]:ergative" — king-sense lugal in ergative
+      "N"                    — any noun, any case
+      "N:locative"           — any locative-marked noun (v2 case)
+      "N:!ergative"          — any noun NOT in ergative
+      "V*"                   — any verb (POS family glob)
+      "*:locative"           — any cf in locative case
+      "*"                    — wildcard (any cf, any case)
+
+    Pattern examples (with sample value):
+      ["lugal","N"]
+          → king + X — every noun attested next to lugal
+      ["RN","lugal"]
+          → every royal name attested with king (year-name templates)
+      ["N:ergative","N:locative","V*"]
+          → transitive-clause skeletons with locative complement
+      ["lugal[king]:ergative","N","du"]
+          → "the king(-erg) builds a/the X" attested patterns
+      ["za-gin₃:equative","N"]
+          → "lapis-like" comparative constructions
+
+    Routing: when `data/inflected_collocations.sqlite` exists, the tool
+    queries that (sense + case aware). When it's missing, the tool falls
+    back to `data/collocations.sqlite` for v1-style queries; queries that
+    use `[gw]` or `:case` syntax error out with a hint.
+
+    Results include per-slot annotation: cf, pos, gw, case (where
+    available). Returned rows are keyed by the FULL distinct
+    (cf, gw, pos, case) tuple per slot, so homographs and case-variants
+    appear as separate rows — that's the disambiguation the agent wants.
 
     Args:
-        pattern: list of 2-4 slot specifiers (cf | POS code | '*').
+        pattern: list of 2-4 slot specifiers (see grammar above).
         limit: max number of attested n-grams to return (default 20).
     """
     if not isinstance(pattern, list) or not pattern:
@@ -1759,71 +1717,189 @@ def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatter
     n = len(pattern)
     limit = max(1, min(200, int(limit)))
 
+    parsed_slots: list[dict[str, Any]] = []
+    for raw in pattern:
+        ps = _parse_slot(raw)
+        if ps is None:
+            return ErrorResponse(
+                error=f"could not parse slot {raw!r}",
+                hint="See the docstring for slot grammar examples.",
+            )
+        parsed_slots.append(ps)
+
+    uses_v2_v3 = any(ps["gw"] or ps["case"] for ps in parsed_slots)
+
+    # Routing: prefer inflected (v2/v3) index when available.
+    if INFLECTED_COLLOCATIONS_DB.exists():
+        return _find_phrase_pattern_inflected(pattern, parsed_slots, n, limit)
+
+    # Inflected index missing — fall back to legacy cf-only index, but
+    # only if no slot uses the new gw/case syntax.
+    if uses_v2_v3:
+        return ErrorResponse(
+            error="pattern uses [gw] or :case syntax but inflected_collocations.sqlite is missing",
+            hint=("Run `python3 build_inflected_collocations.py` to build it "
+                  "(~25-40 min over the full corpus). Until then, restrict "
+                  "the pattern to v1 syntax (cf | POS | '*') and the legacy "
+                  "cf-only index will serve."),
+        )
     if not COLLOCATIONS_DB.exists():
         return ErrorResponse(
-            error=f"collocations.sqlite missing at {COLLOCATIONS_DB}",
-            hint="Run `python3 build_collocations.py` to build it (~5 min).",
+            error=f"neither inflected_collocations.sqlite nor collocations.sqlite exists at {COLLOCATIONS_DB.parent}",
+            hint="Run `python3 build_collocations.py` (cf-only, ~5 min) OR `python3 build_inflected_collocations.py` (case+sense aware, ~30 min).",
         )
 
-    # Build the WHERE clause slot-by-slot. Each pattern element becomes:
-    #   - cf_i = ?            (literal citation form)
-    #   - cf_i IN (SELECT cf FROM entries WHERE pos = ?)    (specific POS)
-    #   - cf_i IN (SELECT cf FROM entries WHERE pos LIKE ?) (POS family, e.g. V*)
-    #   - (no clause)         (wildcard '*')
-    # The collocations table has cf1..cf4 columns, NULL where unused, plus
-    # an indexed `n` column we can pre-filter on.
-    where_parts: list[str] = ["c.n = ?"]
+    return _find_phrase_pattern_legacy(pattern, parsed_slots, n, limit)
+
+
+def _find_phrase_pattern_inflected(
+    pattern: list[str],
+    parsed_slots: list[dict[str, Any]],
+    n: int,
+    limit: int,
+) -> FindPhrasePatternResponse:
+    """Query the inflected_collocations.sqlite index (v2/v3 path).
+
+    Rows in the inflected table are already keyed by the full distinct
+    (cf, gw, pos, case) tuple per slot, so the result naturally surfaces
+    homograph + case variants as separate rows. No aggregation needed at
+    query time; the row IS the answer.
+    """
+    where_parts: list[str] = ["n = ?"]
     params: list[Any] = [n]
 
-    POS_FAMILY_HEADS = {"V", "N"}   # 'V' alone is rare; 'V*' or specific 'V/t' more common
+    for i, ps in enumerate(parsed_slots, start=1):
+        # Target constraint
+        if ps["target_kind"] == "cf":
+            where_parts.append(f"cf{i} = ?")
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos":
+            where_parts.append(f"pos{i} = ?")
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos_family":
+            where_parts.append(f"pos{i} LIKE ?")
+            params.append(ps["target"])
+        # wildcard → no target constraint
 
-    for i, slot in enumerate(pattern, start=1):
-        col = f"c.cf{i}"
-        if slot == "*" or slot == "":
-            continue
-        # Heuristic: distinguish cf from POS code.
-        # POS codes in the entries table are short, uppercase-leading,
-        # contain '/', or end in '*' (our family-glob convention).
-        is_pos_code = (
-            slot.endswith("*")
-            or "/" in slot
-            or (slot.isupper() and len(slot) <= 4)
-        )
-        if is_pos_code:
-            if slot.endswith("*"):
-                pos_pred = "pos LIKE ?"
-                pos_param = slot[:-1] + "%"   # 'V*' → LIKE 'V%'
+        # Sense (gw) constraint
+        if ps["gw"]:
+            op = "!=" if ps["gw_negate"] else "="
+            where_parts.append(f"gw{i} {op} ?")
+            params.append(ps["gw"])
+
+        # Case constraint. Note: 'absolutive' (zero-marked) is stored as
+        # NULL in the table. Treat 'absolutive' and 'none' as aliases for
+        # the NULL test.
+        if ps["case"]:
+            case_value = ps["case"].lower()
+            if case_value in ("absolutive", "none", "null"):
+                op = "IS NOT" if ps["case_negate"] else "IS"
+                where_parts.append(f"case{i} {op} NULL")
             else:
-                pos_pred = "pos = ?"
-                pos_param = slot
-            # Subquery against entries.cf — finds every cf with that POS.
-            # We use a correlated EXISTS rather than IN to let SQLite use
-            # the cf1/cf2/cf3/cf4 indexes on collocations.
-            where_parts.append(
-                f"EXISTS (SELECT 1 FROM glossary.entries e WHERE e.cf = {col} AND e.{pos_pred})"
-            )
-            params.append(pos_param)
-        else:
-            # Literal cf at this slot.
-            where_parts.append(f"{col} = ?")
-            params.append(slot)
+                if ps["case_negate"]:
+                    # `case != X` is true for both other-case AND NULL.
+                    # We want "NOT this specific case," so include NULL.
+                    where_parts.append(f"(case{i} != ? OR case{i} IS NULL)")
+                    params.append(ps["case"])
+                else:
+                    where_parts.append(f"case{i} = ?")
+                    params.append(ps["case"])
 
-    # The collocations DB and the glossary DB are separate SQLite files,
-    # so we connect to collocations and ATTACH glossary for the POS join.
-    con = sqlite3.connect(str(COLLOCATIONS_DB))
+    where_clause = " AND ".join(where_parts)
+
+    con = sqlite3.connect(str(INFLECTED_COLLOCATIONS_DB))
     con.row_factory = sqlite3.Row
     try:
-        con.execute(f"ATTACH DATABASE '{GLOSSARY_DB}' AS glossary")
-        where_clause = " AND ".join(where_parts)
-
-        # Count total matches (before limit).
         total_row = con.execute(
-            f"SELECT COUNT(*) AS n FROM collocations c WHERE {where_clause}",
+            f"SELECT COUNT(*) AS n FROM inflected_ngrams WHERE {where_clause}",
             params,
         ).fetchone()
         total = total_row["n"]
 
-        # Fetch the ranked top-N.
+        rows = con.execute(
+            f"""
+            SELECT cf1, cf2, cf3, cf4, gw1, gw2, gw3, gw4,
+                   pos1, pos2, pos3, pos4, case1, case2, case3, case4,
+                   count
+            FROM inflected_ngrams
+            WHERE {where_clause}
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+        results: list[dict[str, Any]] = []
+        for r in rows:
+            tokens = []
+            for i in range(1, n + 1):
+                tokens.append({
+                    "cf": r[f"cf{i}"],
+                    "pos": r[f"pos{i}"],
+                    "gw": r[f"gw{i}"],
+                    "case": r[f"case{i}"],
+                })
+            ngram_str = " ".join(t["cf"] for t in tokens)
+            results.append({
+                "ngram": ngram_str,
+                "count": r["count"],
+                "tokens": tokens,
+            })
+    finally:
+        con.close()
+
+    return FindPhrasePatternResponse(
+        pattern=pattern,
+        n=n,
+        total_matches=total,
+        results=results,
+    )
+
+
+def _find_phrase_pattern_legacy(
+    pattern: list[str],
+    parsed_slots: list[dict[str, Any]],
+    n: int,
+    limit: int,
+) -> FindPhrasePatternResponse:
+    """Query the legacy cf-only collocations.sqlite index (v1 fallback).
+
+    Only invoked when:
+      - the inflected index is missing, AND
+      - no slot uses gw/case syntax (those would be unanswerable here).
+    """
+    where_parts: list[str] = ["c.n = ?"]
+    params: list[Any] = [n]
+
+    for i, ps in enumerate(parsed_slots, start=1):
+        col = f"c.cf{i}"
+        if ps["target_kind"] == "wildcard":
+            continue
+        if ps["target_kind"] == "cf":
+            where_parts.append(f"{col} = ?")
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos":
+            where_parts.append(
+                f"EXISTS (SELECT 1 FROM glossary.entries e WHERE e.cf = {col} AND e.pos = ?)"
+            )
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos_family":
+            where_parts.append(
+                f"EXISTS (SELECT 1 FROM glossary.entries e WHERE e.cf = {col} AND e.pos LIKE ?)"
+            )
+            params.append(ps["target"])
+
+    where_clause = " AND ".join(where_parts)
+    con = sqlite3.connect(str(COLLOCATIONS_DB))
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute(f"ATTACH DATABASE '{GLOSSARY_DB}' AS glossary")
+
+        total = con.execute(
+            f"SELECT COUNT(*) AS n FROM collocations c WHERE {where_clause}",
+            params,
+        ).fetchone()["n"]
+
         rows = con.execute(
             f"""
             SELECT c.ngram, c.count, c.cf1, c.cf2, c.cf3, c.cf4
@@ -1835,46 +1911,36 @@ def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatter
             params + [limit],
         ).fetchall()
 
-        # Per-token POS/gw annotation. Pull a small lookup for the cfs
-        # that actually appeared in the results (typically <100 distinct).
+        # Annotate cfs with POS+gw from the highest-icount entry per cf
+        # (homograph display fix, same as v1 path).
         all_cfs: set[str] = set()
         for r in rows:
             for k in ("cf1", "cf2", "cf3", "cf4"):
                 if r[k]:
                     all_cfs.add(r[k])
+        entry_lookup: dict[str, tuple[str | None, str | None]] = {}
         if all_cfs:
             placeholders = ",".join("?" * len(all_cfs))
-            # Multiple entries can share a cf (homographs — `lugal` is
-            # both "king" N and "plant" N; `kaš` is both "urine" N and
-            # a verb). For display, pick the highest-icount entry per
-            # cf so the annotation reflects the dominant lemma rather
-            # than whichever happened to be inserted first. ORDER BY +
-            # GROUP BY gives us the top row per cf in one pass.
-            entry_rows = con.execute(
+            for er in con.execute(
                 f"""
                 SELECT cf, pos, gw FROM (
                     SELECT cf, pos, gw, icount,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY cf
-                               ORDER BY icount DESC NULLS LAST
-                           ) AS rk
+                           ROW_NUMBER() OVER (PARTITION BY cf ORDER BY icount DESC NULLS LAST) AS rk
                     FROM glossary.entries
                     WHERE cf IN ({placeholders})
                 ) WHERE rk = 1
                 """,
                 list(all_cfs),
-            ).fetchall()
-            entry_lookup = {er["cf"]: (er["pos"], er["gw"]) for er in entry_rows}
-        else:
-            entry_lookup = {}
+            ):
+                entry_lookup[er["cf"]] = (er["pos"], er["gw"])
 
         results: list[dict[str, Any]] = []
         for r in rows:
-            tokens: list[dict[str, Any]] = []
+            tokens = []
             for i in range(1, n + 1):
                 cf = r[f"cf{i}"]
                 pos, gw = entry_lookup.get(cf, (None, None))
-                tokens.append({"cf": cf, "pos": pos, "gw": gw})
+                tokens.append({"cf": cf, "pos": pos, "gw": gw, "case": None})
             results.append({
                 "ngram": r["ngram"],
                 "count": r["count"],

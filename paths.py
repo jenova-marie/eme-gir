@@ -31,6 +31,7 @@ GLOSSARY_DB = DATA_DIR / "glossary.sqlite"
 GLOSSARY_AKK_DB = DATA_DIR / "glossary_akk.sqlite"
 TEXT_INDEX_DB = DATA_DIR / "text_index.sqlite"
 COLLOCATIONS_DB = DATA_DIR / "collocations.sqlite"
+INFLECTED_COLLOCATIONS_DB = DATA_DIR / "inflected_collocations.sqlite"
 ETCSL_DB = DATA_DIR / "etcsl.sqlite"
 
 # ETCSL bulk corpus — fetched from Oxford Text Archive.

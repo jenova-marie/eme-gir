@@ -489,13 +489,18 @@ class PatternToken(_Permissive):
     """One annotated token within a corpus-attested phrase pattern match.
 
     Returned as part of `PhrasePatternHit.tokens` — gives the agent each
-    n-gram slot's citation form alongside the entry-level POS + gloss so
-    the structural fit of the pattern is visible at a glance.
+    n-gram slot's citation form alongside the entry-level POS + gloss
+    + (when the inflected-collocations index is in use) the detected case
+    marker, so the structural fit of the pattern is visible at a glance.
     """
 
     cf: str = Field(..., description="The citation form at this slot in the matched n-gram.")
     pos: str | None = Field(None, description="Part of speech of the matching lemma, e.g. 'N', 'V/t', 'RN'.")
     gw: str | None = Field(None, description="English guide-word / gloss of the matching lemma.")
+    case: str | None = Field(
+        None,
+        description="Detected outermost case suffix role from the inflected-collocations index, e.g. 'ergative', 'dative', 'locative', 'equative'. None means either zero-marked (absolutive / no case marker) OR the legacy cf-only index was used (no case info available).",
+    )
 
 
 class PhrasePatternHit(_Permissive):

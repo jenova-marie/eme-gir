@@ -33,13 +33,15 @@
 set -euo pipefail
 
 INIT_FILE="/app/data/.initialized"
-INIT_VERSION="2"
+INIT_VERSION="3"
 
 # Optional builds — toggle off via env to skip. Defaults are ON because
 # the MCP server's tool surface is incomplete without them
 # (find_collocations degrades gracefully; the four etcsl_* tools error
-# if etcsl.sqlite is absent).
+# if etcsl.sqlite is absent; find_phrase_pattern errors on v2/v3 syntax
+# when inflected_collocations.sqlite is absent).
 : "${EPSD2_BUILD_COLLOCATIONS:=1}"
+: "${EPSD2_BUILD_INFLECTED_COLLOCATIONS:=1}"
 : "${EPSD2_BUILD_ETCSL:=1}"
 
 log() { printf '[init %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
@@ -86,30 +88,41 @@ log "[3/6] glossary.sqlite: building (~3.5 minutes)"
 python3 /app/build_glossary_db.py
 
 # 4. Collocations (~22 MB). Optional — find_collocations MCP tool
-#    returns a structured error if absent.
+#    returns a structured error if absent. Also used by find_phrase_pattern
+#    as a fallback when the case-aware inflected index is absent.
 if [[ "$EPSD2_BUILD_COLLOCATIONS" != "1" ]]; then
-    log "[4/6] collocations.sqlite: skipped (EPSD2_BUILD_COLLOCATIONS=$EPSD2_BUILD_COLLOCATIONS)"
+    log "[4/7] collocations.sqlite: skipped (EPSD2_BUILD_COLLOCATIONS=$EPSD2_BUILD_COLLOCATIONS)"
 else
-    log "[4/6] collocations.sqlite: building (~5 minutes)"
+    log "[4/7] collocations.sqlite: building (~5 minutes)"
     python3 /app/build_collocations.py
 fi
 
-# 5. ETCSL (~31 MB). Optional but cheap — etcsl_* MCP tools require it.
-if [[ "$EPSD2_BUILD_ETCSL" != "1" ]]; then
-    log "[5/6] etcsl.sqlite: skipped (EPSD2_BUILD_ETCSL=$EPSD2_BUILD_ETCSL)"
+# 5. Inflected collocations (~150 MB). Optional — find_phrase_pattern's
+#    case/sense-aware syntax errors out when this is absent, falling back
+#    to the legacy cf-only collocations.sqlite for v1 patterns.
+if [[ "$EPSD2_BUILD_INFLECTED_COLLOCATIONS" != "1" ]]; then
+    log "[5/7] inflected_collocations.sqlite: skipped (EPSD2_BUILD_INFLECTED_COLLOCATIONS=$EPSD2_BUILD_INFLECTED_COLLOCATIONS)"
 else
-    log "[5/6] etcsl.sqlite: building (~10 s, downloads 4.9 MB from OTA)"
+    log "[5/7] inflected_collocations.sqlite: building (~25-40 minutes — case+sense aware)"
+    python3 /app/build_inflected_collocations.py
+fi
+
+# 6. ETCSL (~31 MB). Optional but cheap — etcsl_* MCP tools require it.
+if [[ "$EPSD2_BUILD_ETCSL" != "1" ]]; then
+    log "[6/7] etcsl.sqlite: skipped (EPSD2_BUILD_ETCSL=$EPSD2_BUILD_ETCSL)"
+else
+    log "[6/7] etcsl.sqlite: building (~10 s, downloads 4.9 MB from OTA)"
     python3 /app/build_etcsl_db.py
 fi
 
-# 6. Pre-warm the Flask sort + casefold migrations on glossary.sqlite.
+# 7. Pre-warm the Flask sort + casefold migrations on glossary.sqlite.
 #    Both are version-gated and run idempotently inside Flask's
 #    create_app() during gunicorn's worker boot, but doing them HERE
 #    means the MCP server's startup check (which requires
 #    meta.casefold_version) passes immediately when mcp boots in
 #    parallel with web. Without this pre-warm, the MCP server would
 #    race gunicorn's first worker for the migration lock.
-log "[6/6] pre-warming Flask SQLite migrations (sort + casefold columns)"
+log "[7/7] pre-warming Flask SQLite migrations (sort + casefold columns)"
 python3 -c "
 import sqlite3
 from paths import GLOSSARY_DB
@@ -127,6 +140,7 @@ init_version=$INIT_VERSION
 initialized_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 hostname=$(hostname)
 collocations=$EPSD2_BUILD_COLLOCATIONS
+inflected_collocations=$EPSD2_BUILD_INFLECTED_COLLOCATIONS
 etcsl=$EPSD2_BUILD_ETCSL
 SENTINEL
 log "==== initialization complete; sentinel written to $INIT_FILE ===="

@@ -62,12 +62,18 @@ For each translation request, work in this order:
    attested phrasal idioms (royal titles, year-name templates,
    administrative formulas). Prefer attested formulas over
    syntactically-correct constructions. For STRUCTURAL queries
-   over the same corpus index — "every Royal-Name + lugal pair
-   attested," "every noun attested as object of `du₃`," "every
-   trigram ending in lugal" — call `find_phrase_pattern(pattern)`
-   instead. Each pattern slot is a literal cf, a POS code (`N`,
-   `V/t`, `RN`, `V*`), or `*`; matches over citation forms only
-   (no case-marker filtering — for that, use `parse_phrase`).
+   over the same corpus index, call `find_phrase_pattern(pattern)`.
+   Each slot is `TARGET[gw]:case` where TARGET is a literal cf, a
+   POS code (`N`, `V/t`, `RN`, `V*`), or `*`. Optional `[gw]`
+   disambiguates homographs (`"lugal[king]"` vs `"lugal[plant]"`).
+   Optional `:case` constrains the grammatical role (`"N:ergative"`,
+   `"N:locative"`, `"N:!ergative"` for negation). Examples:
+   `["RN","lugal"]` (year-name templates), `["lugal[king]:ergative","N"]`
+   (the king as agent + object), `["N:ergative","N","V*"]` (transitive
+   clause skeletons), `["zagin:equative","*"]` (literary "lapis-LIKE"
+   comparative phrases). Use this when you want to ground a candidate
+   reading in real attestation counts — empty results mean "scribes
+   didn't actually write it this way."
 5. Choose **ḫamṭu** (perfective base) for past completed actions;
    **marû** (imperfective base) for present, future, habitual,
    ongoing.
