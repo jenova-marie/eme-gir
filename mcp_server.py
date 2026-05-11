@@ -3,6 +3,10 @@
 Tools:
     translate_english(query, limit)        - rank Sumerian candidates for an English meaning
     translate_sumerian(transliteration)    - reverse: parse a Sumerian phrase into English glosses
+                                             (with detected case/possessive/plural suffixes)
+    parse_phrase(transliteration)          - case-aware grammatical chunking: per-token role
+                                             labels (ergative/dative/equative/…), compact
+                                             skeleton, ambiguous-suffix warnings
     lookup_entry(oid)                      - full structured view of a chosen lemma
     see_examples(oid, limit, period)       - real attested lines with the target marked
     find_compound(english_phrase)          - find idiomatic multi-word Sumerian
@@ -51,6 +55,7 @@ import cuneify as _cuneify
 import text_resolver
 from mcp_models import (
     AnalyzeFormResponse,
+    CaseChunk,
     CuneifyResponse,
     ETCSLLinesWithLemmaResponse,
     ETCSLLookupTextResponse,
@@ -63,7 +68,9 @@ from mcp_models import (
     GetInflectionsResponse,
     LookupEntryResponse,
     LookupSignResponse,
+    ParsePhraseResponse,
     SeeExamplesResponse,
+    Suffix,
     TranslateEnglishResponse,
     TranslateSumerianResponse,
 )
@@ -387,8 +394,15 @@ mcp = FastMCP(
         "  7. cuneify(spelling) → render the final composition in Unicode "
         "cuneiform.\n\n"
         "For Sumerian → English: translate_sumerian(transliteration) parses "
-        "a phrase into per-token candidate lemmas; analyze_form(spelling) "
-        "decomposes a single word; lookup_sign(query) maps signs ↔ values.\n\n"
+        "a phrase into per-token candidate lemmas (each carrying detected "
+        "case/possessive/plural suffixes when present); parse_phrase("
+        "transliteration) goes further and returns a case-aware grammatical "
+        "chunking with role labels (subject_ergative, oblique_dative, "
+        "comparison_equative, verb_head, …) plus a compact bracket skeleton "
+        "— use it when structural ambiguity matters (which noun does the "
+        "case suffix attach to? is this -gin₇ equative or just adjectival?). "
+        "analyze_form(spelling) decomposes a single attested word; "
+        "lookup_sign(query) maps signs ↔ values.\n\n"
         "For literary content (hymns, myths, royal hymns, proverbs, wisdom): "
         "the etcsl_* tools query the Electronic Text Corpus of Sumerian "
         "Literature (Oxford 2006, CC BY 3.0, 394 compositions / 33,698 "
@@ -477,6 +491,159 @@ def _entry_payload(con: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         "sense_pct": row["sense_pct"] or 0,
         "entry_total": row["entry_total"] or 0,
     }
+
+
+# -----------------------------------------------------------------------------
+# Grammatical pre-annotation helpers (used by translate_sumerian + parse_phrase)
+# -----------------------------------------------------------------------------
+#
+# Sumerian morphology is suffixing for nouns (case + possessive + plural,
+# stacked in that order) and prefixing for verbs (modal + conj.prefix +
+# dimensional indicators + person, then the root with optional agreement
+# suffix). For nominal tokens we can usefully peel suffixes from the right
+# to surface their grammatical role. For verbal tokens we instead expose
+# the prefix chain. The tables below capture the canonical inventory
+# documented in prompt/SUMERIAN_GRAMMAR.md §3, §5.2, and §7.2.
+#
+# Detection is heuristic, not authoritative — many surface forms are
+# genuinely ambiguous (-e is ergative-on-noun OR directive-case OR
+# 3sg verbal-agreement; -a is locative OR nominalizer; -bi is possessive
+# OR demonstrative). The peeler reports the lexicographically most-likely
+# reading and lists alternates in `ambiguous_with` so the agent can decide.
+
+# Suffix patterns, LONGEST-FIRST so multi-morpheme combos match before
+# their shorter components. Each entry is:
+#   (regex anchored at $, role, kind, ambiguous_with_list)
+# `kind` ∈ {'case', 'possessive', 'plural', 'verbal_agreement'}.
+SUMERIAN_SUFFIX_TABLE: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    # ─── Multi-morpheme combos (peel as a unit when possible) ──────────────
+    ("-zu-ne-ne$",   "2pl_possessive",                "possessive", ()),
+    ("-a?ne-ne$",    "3pl_h_possessive",              "possessive", ()),
+    ("-bi-ne$",      "3pl_nh_possessive",             "possessive", ()),
+    # ─── Case suffixes (longest first to disambiguate from possessives) ───
+    ("-gin₇$",       "equative",                      "case",       ()),
+    ("-šè$",         "terminative",                   "case",       ()),
+    ("-še₃$",        "terminative",                   "case",       ()),
+    ("-še$",         "terminative",                   "case",       ()),
+    ("-ta$",         "ablative_instrumental",         "case",       ()),
+    ("-da$",         "comitative",                    "case",       ()),
+    ("-ra$",         "dative",                        "case",       ()),
+    ("-ak$",         "genitive",                      "case",       ()),
+    # ─── Plural marker (person class) ─────────────────────────────────────
+    ("-e?ne$",       "plural",                        "plural",     ("3sg_h_possessive (when bare -ne)",)),
+    # ─── Single-syllable possessives (must come before single-letter cases)
+    ("-ŋu₁₀$",       "1sg_possessive",                "possessive", ()),
+    ("-zu$",         "2sg_possessive",                "possessive", ()),
+    ("-a?ni$",       "3sg_h_possessive",              "possessive", ()),
+    ("-bi$",         "3sg_nh_possessive_or_anaphoric","possessive", ("demonstrative ('this/that')",)),
+    ("-me$",         "1pl_possessive",                "possessive", ()),
+    # ─── Single-letter case suffixes (most ambiguous) ─────────────────────
+    ("-a$",          "locative",                      "case",       (
+        "nominalizer (-a on a finite verb makes it a relative/subordinate clause)",
+        "genitive (the consonantal -k often elides, leaving only -a)",
+    )),
+    ("-e$",          "ergative",                      "case",       (
+        "directive (-e 'at, to' on a non-person noun, collides with ergative)",
+        "3sg/3pl ergative verbal agreement (when attached to a verb stem in marû)",
+    )),
+)
+
+# Verbal prefix inventory (§7.2). Used to identify a token as a verb form
+# and extract its prefix chain. Order matters less here since we match
+# anchored at the start; we just need to know which fragments are valid.
+VERBAL_PREFIXES: tuple[str, ...] = (
+    # modal
+    "ḫe₂", "na", "ga", "bara", "nu",
+    # conjugation prefixes
+    "mu", "ba", "bi₂", "al", "i₃", "i", "e",
+    # ventive / dimensional indicators (typically follow conj. prefix)
+    "na", "ni", "ši", "ta", "da", "bi",
+    # person markers (immediately before root)
+    "n", "b",
+)
+
+import re as _re_grammar  # module-level to avoid re-import on each tool call
+
+_SUFFIX_PATTERNS = tuple(
+    (_re_grammar.compile(rx, _re_grammar.UNICODE), role, kind, alts)
+    for rx, role, kind, alts in SUMERIAN_SUFFIX_TABLE
+)
+
+# Determinatives like {d}, {ŋeš}, {ki}, {mušen} are silent classifiers that
+# don't participate in grammatical role analysis. Strip them before peeling.
+_DET_PATTERN = _re_grammar.compile(r"\{[^}]*\}")
+
+# Surface punctuation to clean off the edges of a token. Half-brackets and
+# square brackets are publication markers (damaged / fully-broken signs);
+# parens/commas/etc. occasionally creep in from copied-and-pasted text.
+_TOKEN_STRIP = "⸢⸣[](),;:!?"
+
+
+def _strip_token(s: str) -> str:
+    """Strip determinatives + punctuation + whitespace from a token."""
+    s = _DET_PATTERN.sub("", s).strip().strip(_TOKEN_STRIP)
+    return s
+
+
+def _peel_suffixes(token: str) -> tuple[str, list[Suffix]]:
+    """Iteratively peel grammatical suffixes from the right of a token.
+
+    Returns (base, suffix_chain_left_to_right). When no suffix matches,
+    returns (token, []) — meaning the token is its own base.
+
+    The peeler stops at the FIRST non-match to avoid over-eager stripping
+    (e.g. it won't peel '-a' off 'ama' (mother), because after peeling we'd
+    need a base like 'am' which isn't a valid lemma surface form — but the
+    peeler doesn't validate against the dictionary, it just stops on no
+    regex match. Lemma validation happens at the caller via _lookup).
+    """
+    suffixes_right_to_left: list[Suffix] = []
+    remaining = token
+    # Guard against pathological cases (token shorter than 2 chars can't
+    # carry a suffix in the patterns we recognize, since all our suffix
+    # spellings start with '-').
+    while len(remaining) >= 2:
+        for pattern, role, kind, alts in _SUFFIX_PATTERNS:
+            m = pattern.search(remaining)
+            if m:
+                surface = m.group(0)
+                suffixes_right_to_left.append(Suffix(
+                    spelling=surface,
+                    role=role,
+                    kind=kind,
+                    ambiguous_with=list(alts),
+                ))
+                remaining = remaining[: m.start()]
+                break
+        else:
+            # No pattern matched on this iteration — stop peeling.
+            break
+    # We peeled right-to-left; reverse so the caller sees them in
+    # input order (base-first, outermost case last).
+    return remaining, list(reversed(suffixes_right_to_left))
+
+
+def _detect_verbal_prefixes(token: str) -> str | None:
+    """If the token starts with one or more verbal prefixes, return them
+    joined as the prefix chain. Returns None when no prefix matched.
+
+    Conservative: we only flag the prefix chain when at least ONE recognized
+    prefix matches at the start. The peeler is not exhaustive — many verbal
+    forms have prefix chains that the caller should also cross-check against
+    morphology.kind='prefix' entries for the matched verb's lemma. This is
+    just a coarse 'looks like a verb form' signal for parse_phrase.
+    """
+    parts = token.split("-")
+    prefix_chain: list[str] = []
+    # Sort prefixes longest-first so 'bi₂' wins over 'b' on greedy match.
+    by_length = sorted(VERBAL_PREFIXES, key=len, reverse=True)
+    for piece in parts[:-1]:  # don't consume the root (last piece)
+        # Each piece must be exactly a recognized prefix to count.
+        if piece in by_length:
+            prefix_chain.append(piece)
+        else:
+            break
+    return "-".join(prefix_chain) if prefix_chain else None
 
 
 # -----------------------------------------------------------------------------
@@ -1146,11 +1313,19 @@ def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> Transl
             whole = _lookup(cur, word.casefold(), limit_per_token)
             if whole:
                 # Lexicographer-blessed whole-token reading. Prefer this.
-                results.append({
+                # Additionally surface the detected suffix chain so the
+                # agent has the grammatical-role signal even when the
+                # whole spelling was already in forms.n (Option 3).
+                base, suffixes = _peel_suffixes(word)
+                entry: dict[str, Any] = {
                     "token": word,
                     "candidates": whole,
                     "match_kind": "whole",
-                })
+                }
+                if suffixes:
+                    entry["base"] = base
+                    entry["suffixes"] = [s.model_dump() for s in suffixes]
+                results.append(entry)
                 continue
 
             # Whole-token lookup failed. If the word has hyphens or dots,
@@ -1179,6 +1354,254 @@ def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> Transl
     return TranslateSumerianResponse(
         transliteration=transliteration,
         tokens=results,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+@_log_call
+def parse_phrase(transliteration: str) -> ParsePhraseResponse:
+    """Case-aware grammatical pre-annotation of a Sumerian phrase.
+
+    Goes BEYOND translate_sumerian's per-token glossing by classifying each
+    token's syntactic role in the phrase based on its morphology:
+
+      - **Nominal tokens** get their case/possessive/plural suffixes peeled
+        and annotated (ergative, dative, locative, equative, etc.). The
+        base after peeling is looked up for clean lemma candidates.
+      - **Verbal tokens** are detected by the prefix chain (mu-, ba-, bi₂-,
+        i₃-, ḫe₂-, …) and reported with the prefix chain extracted; case-
+        suffix peeling is skipped (verb-final suffixes are agreement, not
+        case).
+      - Each chunk carries an inferred `role` (subject_ergative,
+        object_absolutive, oblique_dative, verb_head, …) and a
+        `phrase_boundary_after` flag the agent uses to chunk the input
+        into NP/VP/clause units.
+
+    This is **not a true syntactic parser** — it does not produce a
+    constituency or dependency tree, makes no claim about phrase
+    attachment, and cannot disambiguate genuine syntactic ambiguity. It
+    surfaces the grammatical role markers that are explicitly encoded in
+    the morphology and lets the agent build the parse on top.
+
+    The agent should call this BEFORE attempting an interlinear gloss when
+    facing structural ambiguity (e.g. "in the distant lapis-blue sky" vs.
+    "the sky, lapis-like, far away" — the difference often hinges on
+    whether `za-gin₃` carries `-gin₇` equative, which this tool detects
+    explicitly). For straightforward word-by-word lookup, translate_sumerian
+    is lighter and sufficient.
+
+    Args:
+        transliteration: a Sumerian phrase like "lugal-e e₂ mu-na-du₃"
+    """
+    words = [w for w in (_strip_token(piece) for piece in transliteration.split()) if w]
+
+    # Map outermost case suffix → inferred phrase role
+    CASE_TO_ROLE = {
+        "ergative":                "subject_ergative",
+        "dative":                  "oblique_dative",
+        "locative":                "oblique_locative",
+        "comitative":              "oblique_comitative",
+        "ablative_instrumental":   "oblique_ablative",
+        "terminative":             "oblique_terminative",
+        "equative":                "comparison_equative",
+        "genitive":                "genitive_modifier",
+    }
+    # Short labels for the skeleton string.
+    ROLE_TO_LABEL = {
+        "subject_ergative":       "ERG",
+        "object_absolutive":      "ABS",
+        "noun_head_unmarked":     "ABS",  # zero-marked absolutive
+        "oblique_dative":         "DAT",
+        "oblique_locative":       "LOC",
+        "oblique_comitative":     "COM",
+        "oblique_ablative":       "ABL",
+        "oblique_terminative":    "TERM",
+        "comparison_equative":    "EQUATIVE",
+        "genitive_modifier":      "GEN",
+        "adjective_modifier":     "ADJ",
+        "verb_head":              "V",
+        "unknown":                "?",
+    }
+
+    con = _connect()
+    try:
+        cur = con.cursor()
+
+        def _lookup(needle: str, limit: int = 3) -> list[dict[str, Any]]:
+            rows = cur.execute(
+                """
+                SELECT * FROM (
+                    SELECT e.id AS oid, e.cf, e.gw, e.pos,
+                           e.icount AS entry_total
+                    FROM entries e WHERE e.cf_cf = ?
+                    UNION
+                    SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                    FROM forms f JOIN entries e ON e.id = f.entry_id
+                    WHERE f.n_cf = ?
+                    UNION
+                    SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                    FROM morphology m JOIN entries e ON e.id = m.entry_id
+                    WHERE m.kind IN ('base', 'form-sans') AND m.n_cf = ?
+                ) ORDER BY entry_total DESC NULLS LAST
+                LIMIT ?
+                """,
+                (needle, needle, needle, limit),
+            ).fetchall()
+            return [{
+                "oid": r["oid"], "cf": r["cf"], "gw": r["gw"],
+                "pos": r["pos"], "entry_total": r["entry_total"] or 0,
+            } for r in rows]
+
+        chunks: list[CaseChunk] = []
+        skeleton_parts: list[str] = []
+        seen_roles: list[str] = []
+
+        for word in words:
+            # First check if this looks like a verb form by its prefix chain.
+            # We prefer this signal over POS-of-whole-token because verb
+            # forms often fail to whole-token-lookup if the inflected surface
+            # isn't in forms.n; we don't want to mis-treat them as nouns
+            # and start peeling case suffixes.
+            verbal_prefixes = _detect_verbal_prefixes(word)
+
+            # Whole-token lookup against the lexicon.
+            whole_candidates = _lookup(word.casefold())
+            top_pos = whole_candidates[0]["pos"] if whole_candidates else None
+            is_verb = (top_pos or "").startswith("V") or (
+                verbal_prefixes is not None and top_pos in (None, "")
+            )
+
+            if is_verb:
+                # Verbal head. Don't peel case suffixes — verb-final
+                # endings are person/aspect agreement, not nominal case.
+                # Reuse the existing whole-token candidates if any.
+                chunks.append(CaseChunk(
+                    token=word,
+                    base=word.split("-")[-1] if verbal_prefixes else None,
+                    suffixes=[],
+                    candidates=whole_candidates,
+                    pos_head=top_pos,
+                    is_verb_form=True,
+                    verbal_prefixes=verbal_prefixes,
+                    role="verb_head",
+                    phrase_boundary_after=True,
+                ))
+                skeleton_parts.append(
+                    f"[V {whole_candidates[0]['cf'] if whole_candidates else word.split('-')[-1]}"
+                    + (f" ({verbal_prefixes}-)" if verbal_prefixes else "")
+                    + "]"
+                )
+                seen_roles.append("verb_head")
+                continue
+
+            # Nominal token. Try suffix-peeling for grammatical role.
+            base, suffixes = _peel_suffixes(word)
+
+            # If peeling stripped at least one suffix and the whole-token
+            # lookup didn't succeed, re-lookup with the bare base —
+            # often the base IS in entries.cf even when the inflected
+            # surface isn't in forms.n.
+            if suffixes and not whole_candidates:
+                base_candidates = _lookup(base.casefold())
+                candidates = base_candidates
+                top_pos = base_candidates[0]["pos"] if base_candidates else None
+            else:
+                candidates = whole_candidates
+
+            # Determine the chunk's phrase role from the OUTERMOST case
+            # suffix (last in left-to-right order). Possessive/plural
+            # suffixes don't change phrase role on their own — only
+            # case does.
+            outermost_case = next(
+                (s for s in reversed(suffixes) if s.kind == "case"),
+                None,
+            )
+            if outermost_case:
+                role = CASE_TO_ROLE.get(outermost_case.role, "unknown")
+            elif top_pos == "AJ":
+                role = "adjective_modifier"
+            elif candidates:
+                # Bare noun (no case marker) → zero-marked absolutive.
+                role = "noun_head_unmarked"
+            else:
+                role = "unknown"
+
+            # Adjectives modify the preceding head and don't close the phrase.
+            # Everything else with a recognized role closes the phrase.
+            phrase_boundary_after = role != "adjective_modifier"
+
+            chunks.append(CaseChunk(
+                token=word,
+                base=base if suffixes else None,
+                suffixes=suffixes,
+                candidates=candidates,
+                pos_head=top_pos,
+                is_verb_form=False,
+                verbal_prefixes=None,
+                role=role,
+                phrase_boundary_after=phrase_boundary_after,
+            ))
+
+            # Build the skeleton chunk.
+            label = ROLE_TO_LABEL.get(role, "?")
+            head_str = (candidates[0]["cf"] if candidates else (base if suffixes else word))
+            if role == "adjective_modifier":
+                # Adjectives glue to the previous bracket — render as
+                # "+ADJ:head" inside the existing chunk if there is one.
+                if skeleton_parts and skeleton_parts[-1].endswith("]"):
+                    # Insert before the closing bracket.
+                    skeleton_parts[-1] = skeleton_parts[-1][:-1] + f" +ADJ:{head_str}]"
+                else:
+                    skeleton_parts.append(f"[ADJ {head_str}]")
+            elif outermost_case:
+                skeleton_parts.append(f"[NP {head_str}-{label}]")
+            elif role == "noun_head_unmarked":
+                skeleton_parts.append(f"[NP {head_str}-ABS]")
+            else:
+                skeleton_parts.append(f"[? {head_str}]")
+            seen_roles.append(role)
+
+        # Heuristic notes.
+        notes: list[str] = []
+        has_ergative = "subject_ergative" in seen_roles
+        has_absolutive = "noun_head_unmarked" in seen_roles or "object_absolutive" in seen_roles
+        has_verb = "verb_head" in seen_roles
+        if has_ergative and has_absolutive and has_verb:
+            notes.append(
+                "ergative subject + absolutive object + verb head: "
+                "transitive clause (canonical SOV pattern)"
+            )
+        elif has_absolutive and has_verb and not has_ergative:
+            notes.append(
+                "absolutive subject + verb head, no ergative marker: "
+                "likely INTRANSITIVE clause (or the ergative-marked subject "
+                "was elided in this fragment)"
+            )
+        if "comparison_equative" in seen_roles:
+            notes.append(
+                "equative -gin₇ detected: the marked noun is being "
+                "compared LIKE the head, not described AS the head — "
+                "rules out an attributive-adjective reading"
+            )
+        # Flag any chunks with ambiguous suffixes so the agent knows
+        # to disambiguate manually.
+        for ch in chunks:
+            for s in ch.suffixes:
+                if s.ambiguous_with:
+                    notes.append(
+                        f"token {ch.token!r}: suffix {s.spelling!r} read as "
+                        f"{s.role!r}, but ambiguous with: "
+                        f"{', '.join(s.ambiguous_with)}"
+                    )
+
+    finally:
+        con.close()
+
+    return ParsePhraseResponse(
+        transliteration=transliteration,
+        chunks=chunks,
+        skeleton=" ".join(skeleton_parts) if skeleton_parts else "(empty input)",
+        notes=notes,
     )
 
 

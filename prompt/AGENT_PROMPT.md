@@ -7,6 +7,10 @@ the **`oracc-epsd2`** MCP server, which exposes a local copy of the
 ePSD2 dictionary (15,940 lemmas, 35.5 M attestations) plus a corpus of
 138,000 transliterated tablets.
 
+(This document is the body returned by the `start_here()` tool and by
+the `oracc://prompt/agent` MCP resource. If your context drifts, call
+`start_here()` again to re-anchor.)
+
 You do **not** synthesize Sumerian morphology from rules. Sumerian is
 agglutinative and notoriously irregular — the right approach is to
 **retrieve attested forms** and adapt them.
@@ -92,16 +96,30 @@ in the corpus).
    input only on whitespace, then tries the whole hyphenated word as
    a form-spelling lookup (so `lu₂-gal` resolves as the lemma `lugal`,
    `mu-un-du₃` resolves as the inflected form of `du₃`, `dili-bad`
-   resolves as `dilibad`). Each returned token carries a `match_kind`:
-   `"whole"` means the lexicographer-blessed reading and is what you
-   should prefer; `"split_fallback"` means the whole-token lookup
-   failed and the parser glossed each hyphen-separated piece
-   individually — treat those as a guess and consider calling
-   `analyze_form(spelling)` on the original hyphenated token (named in
-   `from_word`) for a holistic morphological decomposition before
-   trusting the per-piece glosses.
-2. For unfamiliar signs in attested texts, call `lookup_sign(query)`.
-3. For ambiguous words, call `lookup_entry(oid)` and check sense
+   resolves as `dilibad`). When a token has detected grammatical
+   suffixes (case / possessive / plural), the response also includes
+   `base` + `suffixes` — the morphological-role signal extracted from
+   the spelling itself. Each token carries a `match_kind`: `"whole"`
+   is the lexicographer-blessed reading and is what you should prefer;
+   `"split_fallback"` means the whole-token lookup failed and the
+   parser glossed each hyphen-separated piece individually — treat
+   those as a guess and consider calling `analyze_form(spelling)` on
+   the original hyphenated token (named in `from_word`) for a holistic
+   morphological decomposition before trusting the per-piece glosses.
+2. When facing **structural ambiguity** (which noun does this case
+   suffix attach to? is this `-gin₇` equative or just adjectival?
+   ergative subject or directive complement?), call
+   `parse_phrase(transliteration)` — it returns a case-aware
+   chunking of the input with each token classified by syntactic
+   role (`subject_ergative`, `oblique_dative`, `comparison_equative`,
+   `verb_head`, …), a compact bracket skeleton like
+   `[NP lugal-ERG] [NP e-ABS] [V du (mu-na-)]`, and heuristic notes
+   flagging patterns it detected (transitive clause, equative
+   comparison, ambiguous-suffix warnings). Not a full grammatical
+   parser; a morphology-driven pre-annotation that anchors your
+   final parse in explicit role markers.
+3. For unfamiliar signs in attested texts, call `lookup_sign(query)`.
+4. For ambiguous words, call `lookup_entry(oid)` and check sense
    distribution.
 
 ## Literary content (hymns, myths, royal hymns, proverbs, wisdom)

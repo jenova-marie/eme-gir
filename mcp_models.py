@@ -146,6 +146,31 @@ class AnalyzeMatch(_Permissive):
     xis: str | None = None
 
 
+class Suffix(_Permissive):
+    """One detected grammatical suffix on a Sumerian token.
+
+    Shared sub-shape used by both translate_sumerian (per-token annotation)
+    and parse_phrase (per-chunk role labeling). The suffix table that
+    produces these is documented in mcp_server.py SUMERIAN_SUFFIX_TABLE
+    and mirrors §3 + §5.2 of prompt/SUMERIAN_GRAMMAR.md.
+
+    Some suffixes are AMBIGUOUS by surface form alone — most famously `-e`
+    (ergative on a noun OR directive case OR 3sg ergative verbal agreement)
+    and `-a` (locative on a noun OR nominalizer on a verb). The `role` field
+    reports the lexicographically most-likely interpretation given the head
+    POS, and `ambiguous_with` lists the other plausible readings the agent
+    should consider before committing.
+    """
+
+    spelling: str = Field(..., description="The surface form of the suffix, e.g. '-e', '-ra', '-gin₇'.")
+    role: str = Field(..., description="Grammatical role: 'ergative', 'dative', 'locative', 'comitative', 'ablative_instrumental', 'terminative', 'directive', 'equative', 'genitive', 'plural', '1sg_possessive', '3sg_h_possessive', '3sg_nh_possessive_or_anaphoric', etc.")
+    kind: str = Field(..., description="Suffix family: 'case', 'possessive', 'plural', or 'verbal_agreement'.")
+    ambiguous_with: list[str] = Field(
+        default_factory=list,
+        description="Other roles this surface form could carry. Empty for unambiguous suffixes.",
+    )
+
+
 class TokenAnalysis(_Permissive):
     """One token's per-candidate breakdown from translate_sumerian.
 
@@ -160,6 +185,13 @@ class TokenAnalysis(_Permissive):
                             can re-assemble context.
       - "unmatched"      : neither whole nor any split piece resolved (no
                             candidates returned).
+
+    `base` and `suffixes` are produced by the suffix-peeling pass. They're
+    omitted when no suffix was detected (the token is its own base, like
+    'e₂' or 'lugal'). When present, `base` is the head morpheme (which the
+    `candidates` list now reflects) and `suffixes` is the LEFT-TO-RIGHT
+    chain of attached grammatical morphemes, e.g. for 'lugal-ŋu₁₀-ra':
+        base='lugal', suffixes=[1sg_possessive, dative].
     """
 
     token: str = Field(..., description="The transliteration token analyzed (e.g. 'lugal' or 'mu-un-du₃').")
@@ -174,6 +206,81 @@ class TokenAnalysis(_Permissive):
     from_word: str | None = Field(
         default=None,
         description="When match_kind='split_fallback', the original hyphenated word this piece came from. None otherwise.",
+    )
+    base: str | None = Field(
+        default=None,
+        description="The base morpheme after stripping any detected case/possessive/plural suffixes. None when no suffix was detected (the token IS its own base).",
+    )
+    suffixes: list[Suffix] = Field(
+        default_factory=list,
+        description="Left-to-right chain of grammatical morphemes peeled off the token's right edge. Empty when no suffixes detected.",
+    )
+
+
+class CaseChunk(_Permissive):
+    """One token chunked by the case-aware phrase parser (parse_phrase).
+
+    Goes beyond TokenAnalysis by classifying the token's syntactic role
+    in a phrase: noun (potentially case-bearing) vs adjective (modifier
+    of preceding head) vs verb form (with prefix chain, clause-closing).
+    This isn't a true syntactic parse — it's a morphology-driven
+    pre-annotation that gives the LLM clear anchor points for the actual
+    parsing reasoning.
+    """
+
+    token: str = Field(..., description="The transliteration token as it appeared in the input (e.g. 'lugal-e').")
+    base: str | None = Field(None, description="Base morpheme after suffix-peeling. None when no suffix was detected.")
+    suffixes: list[Suffix] = Field(
+        default_factory=list,
+        description="Detected suffix chain, left-to-right. Empty when no suffixes detected (e.g. an absolutive noun or a bare verb).",
+    )
+    candidates: list[EntryHeader] = Field(
+        default_factory=list,
+        description="Lemma candidates for the base, ranked by entry total.",
+    )
+    pos_head: str | None = Field(
+        None,
+        description="POS of the top-ranked candidate, e.g. 'N', 'V/t', 'AJ'. Drives phrase-boundary inference.",
+    )
+    is_verb_form: bool = Field(
+        default=False,
+        description="True when the top candidate is a verb (V/t, V/i, V) — signals this token is a verbal head, not a nominal phrase, and case-suffix peeling was skipped.",
+    )
+    verbal_prefixes: str | None = Field(
+        None,
+        description="When is_verb_form=True, the prefix chain detected before the verb root (e.g. 'mu-na' in 'mu-na-du₃'). None otherwise.",
+    )
+    role: str = Field(
+        ...,
+        description="Inferred phrase role: 'subject_ergative', 'object_absolutive', 'oblique_dative', 'oblique_locative', 'oblique_comitative', 'oblique_ablative', 'oblique_terminative', 'comparison_equative', 'genitive_modifier', 'adjective_modifier', 'verb_head', 'noun_head_unmarked', or 'unknown'.",
+    )
+    phrase_boundary_after: bool = Field(
+        ...,
+        description="Heuristic flag: a case-bearing noun, an absolutive object, or a verb head typically closes a phrase. The agent uses this to chunk the input into clause/phrase units.",
+    )
+
+
+class ParsePhraseResponse(_Permissive):
+    """Response shape for parse_phrase.
+
+    Provides a case-aware, morphology-driven pre-annotation of a Sumerian
+    phrase so the LLM can do final syntactic reasoning with explicit anchor
+    points instead of inferring everything from raw token glosses. NOT a
+    true parser — it does not produce a constituency or dependency tree
+    and makes no claim about phrase-attachment. It surfaces the grammatical
+    role-markers that ARE in the morphology and lets the agent build the
+    parse on top.
+    """
+
+    transliteration: str = Field(..., description="The input phrase, echoed back.")
+    chunks: list[CaseChunk] = Field(..., description="Per-token chunks in input order.")
+    skeleton: str = Field(
+        ...,
+        description="Compact bracket notation summarizing the phrase, e.g. '[NP lugal-ERG] [NP e₂-ABS] [V du₃ (mu-na-)]'. Read this first for an at-a-glance structural overview.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Heuristic remarks the parser noticed, e.g. 'ergative subject + absolutive object + transitive verb → transitive clause'. Empty when no patterns matched.",
     )
 
 

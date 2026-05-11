@@ -16,7 +16,7 @@ Jenova's Local · ePSD2 is **two projects in one repository**, sharing the same 
 
 ### 1. An MCP server backed by Oracc + ETCSL, optimized for LLM-agent queries
 
-The primary surface of this project. Fifteen specialized tools and two knowledge resources, all backed by local SQLite indexes built from the Oracc bulk JSON archive **and** the ETCSL TEI XML bundle. Every operation is sub-50-millisecond — a local SQLite query, never a network round-trip. The MCP server is designed for agents doing English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
+The primary surface of this project. Sixteen specialized translation tools, two knowledge resources, and a pair of bootstrap-wrapper tools for resource-blind clients, all backed by local SQLite indexes built from the Oracc bulk JSON archive **and** the ETCSL TEI XML bundle. Every operation is sub-50-millisecond — a local SQLite query, never a network round-trip. The MCP server is designed for agents doing English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
 
 ### 2. A local Oracc front-end — for portability AND for 1:1 comparison with the canonical site
 
@@ -47,7 +47,7 @@ A laptop-friendly version of the entire ePSD2 + Oracc dataset plus the ETCSL lit
 
 A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
-The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the fifteen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
+The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the sixteen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
 
 ### For digital humanists
 
@@ -55,7 +55,7 @@ A reference implementation of how to take a mature scholarly digital corpus and 
 
 ## The MCP toolbox
 
-When an LLM agent connects to the `epsd2` MCP server it gains fifteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+When an LLM agent connects to the `epsd2` MCP server it gains sixteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
 
 ### Bootstrap: the knowledge resources
 
@@ -63,6 +63,8 @@ Both resources are designed to be fetched once at session start so the agent can
 
 - **`oracc://prompt/agent`** — a drop-in system prompt teaching the end-to-end workflow over these tools: how to decompose English into content words, when to reach for `find_compound` vs `find_collocations`, how to pick ḫamṭu vs marû aspect, the required output format (transliteration + cuneiform + interlinear gloss + lexical justification + cited attestation), the ETCSL attribution requirement, and a fully worked example. Pairs with the grammar reference below; the prompt teaches *how to use the tools*, the grammar teaches *what Sumerian is*.
 - **`oracc://grammar/sumerian`** — a ~14 KB Sumerian grammar cheat sheet (transliteration conventions, the ten noun cases with their suffixes, ḫamṭu vs marû verbal aspect, the verbal prefix chain, conjugation patterns, common compound verbs, conjunctions). Distilled from Edzard 2003. Without this in working memory, the agent can't reason about why `lugal-ra` is dative or why `mu-na-du₃` and `bi₂-in-du₃` differ in person agreement.
+
+**For clients that only surface tools and not MCP resources** (the majority of production MCP clients as of writing), the same two bodies of content are also exposed as ordinary tools — call **`start_here()`** to get the agent system prompt and **`get_grammar_reference()`** to get the grammar cheat sheet. The agent prompt's docstring is prefixed with "⭐ CALL THIS FIRST" so a tools-list scan naturally surfaces it as the entry point. Spec-complete clients should prefer the resource form (cheaper, no tool round-trip, semantically right); the tool wrappers are a compatibility shim.
 
 ### Translating English → Sumerian
 
@@ -77,8 +79,9 @@ The tools an agent reaches for when going from an English meaning to a real, att
 
 The reverse direction — for when an agent encounters an attested phrase, or when the user wants to read primary text.
 
-- **`translate_sumerian(transliteration)`** — parses a transliterated Sumerian phrase into per-token English glosses. Tokenizes on whitespace, hyphen, and dot; strips braced determinatives; queries the indexed forms, form-sans, and bases. Quick first pass when the agent has a phrase and needs candidate meanings.
-- **`analyze_form(spelling)`** — decomposes a single attested spelling into candidate lemmas plus their morphological role (base, prefix chain, suffix). Useful when `translate_sumerian`'s naive split mis-tokenizes a verb form like `mu-un-du₃`, which is a single inflected word, not three.
+- **`translate_sumerian(transliteration)`** — parses a transliterated Sumerian phrase into per-token English glosses. Whole-token-first: splits the input only on whitespace, then tries the full hyphenated word as a form-spelling lookup (so `lu₂-gal` resolves cleanly as `lugal`, `mu-un-du₃` as the inflected form of `du₃`), falling back to per-piece splitting only when the whole token has no match. Each token additionally carries its detected case/possessive/plural suffix chain when present, so the agent gets the grammatical-role signal from the morphology itself.
+- **`parse_phrase(transliteration)`** — case-aware grammatical pre-annotation. Beyond glossing, each token is classified by its syntactic role from the morphology — `subject_ergative`, `oblique_dative`, `comparison_equative`, `verb_head`, etc. — and the response includes a compact bracket skeleton like `[NP lugal-ERG] [NP e-ABS] [V du (mu-na-)]` plus heuristic notes flagging detected patterns (transitive clause, equative comparison) and any ambiguous suffixes the agent should resolve manually. Not a full syntactic parser; a morphology-driven anchor for the LLM's parse. Useful when structural ambiguity matters — e.g. is `za-gin₃-gin₇` "the lapis-blue (attributive) sky" or "the sky, lapis-like (equative)"? The presence of `-gin₇` makes the answer mechanical.
+- **`analyze_form(spelling)`** — decomposes a single attested spelling into candidate lemmas plus their morphological role (base, prefix chain, suffix). The deepest single-word lookup; called by the agent when `parse_phrase`'s pre-annotation flags an ambiguous form that needs holistic analysis.
 - **`lookup_sign(query)`** — maps cuneiform signs both directions: by sign name (`LUGAL` → 𒈗 with all phonetic readings) or by phonetic value (`lugal` → which sign carries that reading). Disambiguates polyphones.
 
 ### Grounding and verification
@@ -131,7 +134,9 @@ For the recommended end-to-end agent workflow that stitches these tools together
       │  • entry pages       │         │    local agents)                 │
       │  • cuneiform render  │         │  • streamable-HTTP transport     │
       │  • period filtering  │         │    (remote agents, Docker)       │
-      │                      │         │  • 15 tools + 2 resources        │
+      │                      │         │  • 16 translation tools +        │
+      │                      │         │    2 resources +                 │
+      │                      │         │    2 bootstrap tool wrappers     │
       └──────────────────────┘         └─────────────────────────────────┘
 ```
 

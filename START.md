@@ -105,7 +105,7 @@ The web app routes:
 
 ## 3. Run as an MCP server (for LLM agents)
 
-The repo ships an MCP server exposing fifteen tools designed for agent-driven English ↔ Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
+The repo ships an MCP server exposing sixteen tools designed for agent-driven English ↔ Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
 
 For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
 
@@ -123,12 +123,13 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 
 > **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
 
-### The fifteen tools
+### The sixteen tools
 
 **ePSD2 dictionary + corpus tools:**
 
 - `translate_english(query, limit)` — rank Sumerian candidates for an English meaning
-- `translate_sumerian(transliteration)` — reverse direction: parse a Sumerian phrase into per-token glosses
+- `translate_sumerian(transliteration)` — reverse direction: parse a Sumerian phrase into per-token glosses; surfaces detected case/possessive/plural suffixes on each token
+- `parse_phrase(transliteration)` — case-aware grammatical pre-annotation; per-token phrase-role labels (ergative, dative, equative, verb_head, …), compact bracket skeleton, ambiguous-suffix warnings. Reach for this when structural ambiguity matters.
 - `lookup_entry(oid)` — full structured view of a chosen lemma
 - `see_examples(oid, limit, period)` — real attested lines, target word marked, period-filterable
 - `find_compound(english_phrase)` — find idiomatic Sumerian compound expressions
@@ -177,7 +178,7 @@ python3 mcp_server.py --transport http
 python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
 ```
 
-Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). The 15 tools all work over HTTP exactly as they do over stdio. By default there is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. To enforce in-app auth instead (or in addition), see the next section.
+Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). All 18 tools (the 16 translation tools plus the two `start_here` / `get_grammar_reference` resource-wrapper tools) work over HTTP exactly as they do over stdio. By default there is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. To enforce in-app auth instead (or in addition), see the next section.
 
 ### Adding Auth0 OAuth (optional, HTTP transport only)
 
@@ -191,7 +192,7 @@ This is **opt-in** via env var. Stdio transport never authenticates regardless (
    - Name: anything descriptive, e.g. `epsd2-mcp`
    - Identifier (audience): a stable URL representing your server, e.g. `https://epsd2.example.com`. Doesn't have to resolve — Auth0 just uses it as an opaque string in the `aud` JWT claim.
    - Signing algorithm: **RS256** (the default)
-2. On the API's "Permissions" tab, add a scope: `mcp:access` (description: "Access the epsd2 MCP server"). All 15 tools sit behind this single scope; finer-grained scopes can be added later if needed.
+2. On the API's "Permissions" tab, add a scope: `mcp:access` (description: "Access the epsd2 MCP server"). All 18 tools sit behind this single scope; finer-grained scopes can be added later if needed.
 3. Either grab a long-lived test token from the API's "Test" tab (good for local development), or create a Machine-to-Machine application authorized to call this API and use the `client_credentials` grant.
 
 #### Server-side env vars
@@ -422,7 +423,7 @@ Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport 
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 15 tools + 2 resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) for agents over stdio or streamable-HTTP. Logs every call to `log/mcp_server.log`. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 16 tools + 2 resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) for agents over stdio or streamable-HTTP. Logs every call to `log/mcp_server.log`. |
 | `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
 | `init.sh` | One-shot data initialization script for the Docker `init` service. Downloads corpus + builds indexes if the `data/.initialized` sentinel is missing. |
 | **Docs / config** | |
