@@ -118,6 +118,16 @@ services:
       # entirely. Only safe when the reverse proxy enforces Host
       # validation upstream.
       EPSD2_DISABLE_DNS_REBINDING_PROTECTION: "${EPSD2_DISABLE_DNS_REBINDING_PROTECTION:-0}"
+      # Umami analytics — fire-and-forget per-tool-call telemetry.
+      # Off when EPSD2_UMAMI_URL or EPSD2_UMAMI_WEBSITE_ID is unset.
+      # When enabled, every tool invocation produces one event with
+      # tool name + duration + success/error + arg-key names + result
+      # count. Tool argument VALUES are never sent — see
+      # umami_analytics.py for the privacy boundary.
+      EPSD2_UMAMI_URL: "${EPSD2_UMAMI_URL:-}"
+      EPSD2_UMAMI_WEBSITE_ID: "${EPSD2_UMAMI_WEBSITE_ID:-}"
+      EPSD2_UMAMI_HOSTNAME: "${EPSD2_UMAMI_HOSTNAME:-epsd2-mcp}"
+      EPSD2_UMAMI_API_KEY: "${EPSD2_UMAMI_API_KEY:-}"
     ports:
       - "${MCP_BIND:-127.0.0.1}:5051:5051"
     volumes:

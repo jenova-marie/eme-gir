@@ -55,6 +55,7 @@ from mcp.types import ToolAnnotations
 
 import cuneify as _cuneify
 import text_resolver
+import umami_analytics
 from mcp_models import (
     AnalyzeFormResponse,
     CaseChunk,
@@ -134,6 +135,11 @@ def _log_call(fn):
                 r = r[:57] + "..."
             arg_bits.append(f"{k}={r}")
         log.info(f"→ {fn.__name__}({', '.join(arg_bits)})")
+        # arg_keys ships only the NAMES (sorted) — never the values —
+        # so the analytics dashboard can answer "are agents passing
+        # `period=...` to see_examples?" without leaking which period
+        # any specific user queried.
+        arg_keys = sorted(kwargs.keys())
         t0 = time.monotonic()
         try:
             result = fn(*args, **kwargs)
@@ -143,6 +149,12 @@ def _log_call(fn):
                 f"  ✗ {fn.__name__} ({elapsed:.0f}ms) raised "
                 f"{type(e).__name__}: {e}"
             )
+            umami_analytics.emit(fn.__name__, {
+                "duration_ms": round(elapsed, 1),
+                "outcome": "error",
+                "error_kind": type(e).__name__,
+                "arg_keys": arg_keys,
+            })
             raise
         elapsed = (time.monotonic() - t0) * 1000
         # Summarize the result shape concisely so logs stay scannable.
@@ -178,6 +190,22 @@ def _log_call(fn):
                     f"{len(result.get('senses', []))} senses"
                 )
         log.info(f"  ← {fn.__name__} ({elapsed:.0f}ms){summary}")
+        # Outcome is "error" when the result is a structured ErrorResponse
+        # (tool returned cleanly but the operation failed — bad oid,
+        # missing scope, etc.) and "ok" otherwise. Distinct from raised
+        # exceptions, which take the except branch above.
+        is_error = isinstance(result, dict) and "error" in result
+        if not is_error and hasattr(result, "model_dump"):
+            try:
+                is_error = "error" in result.model_dump(exclude_none=True)
+            except Exception:
+                is_error = False
+        umami_analytics.emit(fn.__name__, {
+            "duration_ms": round(elapsed, 1),
+            "outcome": "error" if is_error else "ok",
+            "result_count": umami_analytics._count_result_items(result),
+            "arg_keys": arg_keys,
+        })
         return result
     return wrapper
 
@@ -2974,6 +3002,21 @@ if __name__ == "__main__":
         log.info(
             f"  transport_security=ENABLED (allowed_hosts={ts.allowed_hosts}, "
             f"allowed_origins={ts.allowed_origins})"
+        )
+    # Umami analytics — fire-and-forget tool-call telemetry. Off unless
+    # EPSD2_UMAMI_URL + EPSD2_UMAMI_WEBSITE_ID are both set. See
+    # umami_analytics.init_from_env() for the env-var contract.
+    _umami = umami_analytics.init_from_env()
+    if _umami is not None:
+        log.info(
+            f"  analytics=ENABLED (Umami endpoint={_umami.endpoint}, "
+            f"website={_umami.website_id}, hostname={_umami.hostname!r}, "
+            f"api_key={'set' if _umami.api_key else 'unset'})"
+        )
+    else:
+        log.info(
+            "  analytics=disabled (set EPSD2_UMAMI_URL + "
+            "EPSD2_UMAMI_WEBSITE_ID to enable)"
         )
 
     if args.transport == "stdio":
