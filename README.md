@@ -8,18 +8,32 @@ If you're a Sumerologist who wants to query 35 million attestations without touc
 
 ## What this is
 
-The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (ePSD2), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world.
+The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (ePSD2), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world. Alongside Oracc, the Oxford **Electronic Text Corpus of Sumerian Literature (ETCSL)** — 394 hand-lemmatized literary compositions (hymns, myths, royal hymns, proverbs, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems) shipped with English translations — supplies the bilingual half of the Sumerian textual record that Oracc itself doesn't yet publish in machine-readable form.
 
-Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/epsd2` serves richly hyperlinked HTML pages, and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures, and is excellent for almost nothing in particular until you build infrastructure on top of it. *This project is that infrastructure.*
+Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/epsd2` serves richly hyperlinked HTML pages, and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures, and is excellent for almost nothing in particular until you build infrastructure on top of it. ETCSL is similarly stranded: its 4.9 MB TEI XML bundle from the Oxford Text Archive is rigorously lemmatized and translated, but the format is academic-archival, not query-ready. *This project is the infrastructure that turns both into queryable, performant, agent-accessible Sumerian.*
 
-Specifically, Jenova's Local · ePSD2:
+Jenova's Local · ePSD2 is **two projects in one repository**, sharing the same underlying SQLite layer, cuneiform renderer, and attestation resolver:
 
-- **Pulls down all 208 Oracc project zips** and keeps them locally — no network trips during normal use, robust against the academic server's occasional slowness or downtime, friendly to a small server with limited bandwidth.
+### 1. An MCP server backed by Oracc + ETCSL, optimized for LLM-agent queries
+
+The primary surface of this project. Fifteen specialized tools and two knowledge resources, all backed by local SQLite indexes built from the Oracc bulk JSON archive **and** the ETCSL TEI XML bundle. Every operation is sub-50-millisecond — a local SQLite query, never a network round-trip. The MCP server is designed for agents doing English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
+
+### 2. A local Oracc front-end — for portability AND for 1:1 comparison with the canonical site
+
+A small Flask web app that recreates the look and feel of `oracc.museum.upenn.edu/epsd2/sux` page-by-page, byte-for-byte where possible. The motivation is twofold:
+
+- **Local portability.** The full corpus and indexes (~6.5 GB combined) sit on your laptop. Run the web app offline — on a plane, on a dig site, in a library carrel — and get the same browsing experience you'd get from the live site, with extras the live site doesn't offer: case-insensitive Unicode-aware search across six fields, attestation lines shown in their original sentence context with the target word highlighted, and cuneiform glyphs alongside every spelling.
+- **1:1 comparison with the canonical site.** Because the local pages render from the same source data Oracc uses, you can diff a local entry against the canonical Oracc entry to validate the parsing pipeline and catch corpus drift. Page 1 of the glossary matches byte-for-byte; pages 2+ have occasional one-off reorderings due to a sub-sort tiebreaker we haven't fully reverse-engineered.
+
+### Underneath both: the data pipeline
+
+To make those two surfaces possible, this project also:
+
+- **Pulls down all 208 Oracc project zips and the ETCSL bulk XML** — no network trips during normal use, robust against the academic servers' occasional slowness or downtime, friendly to small bandwidth budgets.
 - **Streams the 1.9 GB Sumerian glossary into a SQLite index** without ever holding the source file in memory. The index has normalized tables for headwords, spellings, senses, attestation references, periods, compound words, and morphological breakdowns — 35.5 million word-occurrences indexed for sub-10-millisecond point lookups.
+- **Ingests the 394 ETCSL literary texts** into a separate SQLite with FTS5 indexes on Sumerian transliteration AND English translation, ~160K lemmatized words and ~5,600 translation paragraphs queryable in either direction.
 - **Resolves every attestation reference back to the actual line on the actual clay tablet**, by lazy-loading the right per-text JSON file from inside its project zip and walking the document tree. About 92% of references resolve successfully from the local data; the remainder cite projects we haven't downloaded.
 - **Renders Sumerian cuneiform script as Unicode** for any transliteration string, using the Oracc Global Sign List (OGSL). Roughly 93% of glossary spellings render with full glyph coverage; the rest are flagged with `□` placeholders so you always know what's missing.
-- **Serves it all as a small Flask web app** that recreates the look and feel of the live oracc.museum.upenn.edu/epsd2/sux page, with extras the live site doesn't offer: case-insensitive Unicode-aware search across six fields, attestation lines shown in their original sentence context with the target word highlighted, and cuneiform alongside every spelling.
-- **Exposes the same data to LLM agents over the Model Context Protocol (MCP)** with fifteen specialized tools designed to support English ↔ Sumerian translation grounded in the real attested usage of the language. This is the part most directly aimed at AI applications.
 
 The whole thing runs on a laptop. The full corpus is ~3.1 GB and the indexes another ~3.5 GB; given those, every operation in the web app and every MCP tool call is a local SQLite query, typically under fifty milliseconds.
 
@@ -27,7 +41,7 @@ The whole thing runs on a laptop. The full corpus is ~3.1 GB and the indexes ano
 
 ### For Sumerologists and Assyriologists
 
-A laptop-friendly version of the entire ePSD2 + Oracc dataset that responds in milliseconds, works completely offline, and gives you direct SQL access to every cross-referenceable structure in the data — period attestations, compound formations, sign frequencies, collocational n-grams. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"* — become fifty-millisecond queries against a single denormalized SQLite database.
+A laptop-friendly version of the entire ePSD2 + Oracc dataset plus the ETCSL literary corpus, all responding in milliseconds, working completely offline, and giving you direct SQL access to every cross-referenceable structure — period attestations, compound formations, sign frequencies, collocational n-grams, bilingual line-by-line literary readings. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"*, or *"show me every literary line where `inana` is the subject of a marû verb"* — become fifty-millisecond queries against denormalized SQLite. And because the local pages render from the same source data Oracc uses, you can diff an entry against the canonical oracc.museum.upenn.edu page when you need to verify a parse.
 
 ### For LLM applications
 
