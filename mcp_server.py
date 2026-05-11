@@ -275,19 +275,43 @@ def _build_transport_security_kwargs() -> dict:
             )
         }
 
-    hosts = [h.strip() for h in raw_hosts.split(",") if h.strip()]
-    origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+    user_hosts = [h.strip() for h in raw_hosts.split(",") if h.strip()]
+    user_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
 
-    # Always permit localhost + 127.0.0.1 (with AND without port suffixes)
-    # so the in-container healthcheck `curl http://localhost:5051/...`
-    # keeps working regardless of which public hostname the operator
-    # added. The MCP SDK matches Host header strings exactly; curl
-    # passes `Host: localhost:5051` (with port) for that healthcheck,
-    # so the bare `localhost` variant doesn't cover it. We mirror the
-    # SDK's own default set of localhost variants — see
-    # mcp.server.transport_security where it adds `localhost:*` etc.
-    # when bound to a loopback host. De-dupe in case the operator
-    # listed any of these explicitly.
+    # For each user-supplied host, also add the port-wildcard variant
+    # `host:*`. The MCP SDK matches Host headers via exact-match first,
+    # then wildcard-port patterns (see mcp.server.transport_security
+    # _is_host_allowed: `if allowed.endswith(":*"): ... host.startswith(
+    # base_host + ":")`). Reverse proxies VARY in whether they preserve
+    # the port suffix on the inward Host header — Caddy chains can
+    # produce `Host: example.com:443` even though the client sent
+    # `Host: example.com`. Adding the `:*` variant for every operator-
+    # supplied host catches both cases without forcing the operator to
+    # know about it. Same treatment for origins (the SDK's
+    # _is_origin_allowed also supports `origin:*` patterns).
+    hosts: list[str] = []
+    for h in user_hosts:
+        hosts.append(h)
+        if not h.endswith(":*") and ":" not in h.split("]")[-1]:
+            # Skip if operator already gave a port-bound entry like
+            # `host:443` or `host:*` — the second clause sidesteps the
+            # `[::1]` IPv6 form where ':' lives inside brackets.
+            hosts.append(h + ":*")
+
+    origins: list[str] = []
+    for o in user_origins:
+        origins.append(o)
+        if not o.endswith(":*"):
+            # Origins are URLs (scheme://host[:port]). The SDK's port-
+            # wildcard match works on the same trailing-`:*` convention.
+            origins.append(o + ":*")
+
+    # Always permit localhost variants so the in-container healthcheck
+    # `curl http://localhost:5051/...` keeps working regardless of which
+    # public hostname the operator added. Mirror the SDK's own default
+    # set of localhost variants (see mcp.server.transport_security where
+    # it adds `localhost:*` etc. when bound to a loopback host). De-dupe
+    # in case the operator listed any of these explicitly.
     for default_host in (
         "localhost", "localhost:*",
         "127.0.0.1", "127.0.0.1:*",
