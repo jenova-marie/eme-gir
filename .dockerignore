@@ -26,7 +26,14 @@ __pycache__/
 .incommon_intermediate.pem
 
 # Docs that don't need to ship in the image
+# (prompt/ is INTENTIONALLY NOT in this list: prompt/AGENT_PROMPT.md
+# and prompt/SUMERIAN_GRAMMAR.md are read at runtime by the
+# oracc://prompt/agent + oracc://grammar/sumerian MCP resources AND
+# by the start_here() / get_grammar_reference() tool wrappers.
+# Excluding them produces silent bootstrap failures: the tools return
+# a "# prompt/AGENT_PROMPT.md missing" placeholder instead of the real
+# system prompt, and the agent never gets its workflow guidance.
+# Two markdown files total ~26 KB — trivial image-size impact.)
 README.md
 CLAUDE.md
 CONTINUATION.md
-prompt/
