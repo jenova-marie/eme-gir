@@ -61,7 +61,13 @@ For each translation request, work in this order:
 4. Call `find_collocations(cf)` on each chosen lemma to discover
    attested phrasal idioms (royal titles, year-name templates,
    administrative formulas). Prefer attested formulas over
-   syntactically-correct constructions.
+   syntactically-correct constructions. For STRUCTURAL queries
+   over the same corpus index — "every Royal-Name + lugal pair
+   attested," "every noun attested as object of `du₃`," "every
+   trigram ending in lugal" — call `find_phrase_pattern(pattern)`
+   instead. Each pattern slot is a literal cf, a POS code (`N`,
+   `V/t`, `RN`, `V*`), or `*`; matches over citation forms only
+   (no case-marker filtering — for that, use `parse_phrase`).
 5. Choose **ḫamṭu** (perfective base) for past completed actions;
    **marû** (imperfective base) for present, future, habitual,
    ongoing.

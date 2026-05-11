@@ -485,6 +485,53 @@ class FindCollocationsResponse(_Permissive):
     )
 
 
+class PatternToken(_Permissive):
+    """One annotated token within a corpus-attested phrase pattern match.
+
+    Returned as part of `PhrasePatternHit.tokens` — gives the agent each
+    n-gram slot's citation form alongside the entry-level POS + gloss so
+    the structural fit of the pattern is visible at a glance.
+    """
+
+    cf: str = Field(..., description="The citation form at this slot in the matched n-gram.")
+    pos: str | None = Field(None, description="Part of speech of the matching lemma, e.g. 'N', 'V/t', 'RN'.")
+    gw: str | None = Field(None, description="English guide-word / gloss of the matching lemma.")
+
+
+class PhrasePatternHit(_Permissive):
+    """One attested n-gram match from find_phrase_pattern."""
+
+    ngram: str = Field(..., description="Space-joined citation forms forming the n-gram, e.g. 'Šusuen lugal'.")
+    count: int = Field(..., description="Times this exact n-gram was attested in the corpus.")
+    tokens: list[PatternToken] = Field(
+        ..., description="Per-slot annotation matching the input pattern positionally."
+    )
+
+
+class FindPhrasePatternResponse(_Permissive):
+    """Response shape for find_phrase_pattern.
+
+    Filters the corpus-mined collocation index by a structural template
+    where each slot is either a specific citation form, a POS code (e.g.
+    'N', 'V/t', 'V*' for any verb), or '*' for any cf. Results are
+    attested n-grams that match positionally, ranked by corpus frequency.
+
+    Caveat: the underlying index is keyed by CITATION FORM, not by
+    inflected form, so this tool cannot filter by case marker (e.g.
+    'N-locative + V'). For that level of structural detail use
+    parse_phrase on a specific input phrase instead.
+    """
+
+    pattern: list[str] = Field(..., description="The pattern the caller supplied, echoed back.")
+    n: int = Field(..., description="Length of the pattern: 2, 3, or 4.")
+    total_matches: int = Field(
+        ..., description="Total n-grams in the index that matched the pattern (may exceed len(results) if limit clipped)."
+    )
+    results: list[PhrasePatternHit] = Field(
+        ..., description="Attested n-grams matching the pattern, ranked by corpus frequency."
+    )
+
+
 class LookupSignResponse(_Permissive):
     """Response shape for lookup_sign."""
 

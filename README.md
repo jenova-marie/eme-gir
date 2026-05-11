@@ -16,7 +16,7 @@ Jenova's Local · ePSD2 is **two projects in one repository**, sharing the same 
 
 ### 1. An MCP server backed by Oracc + ETCSL, optimized for LLM-agent queries
 
-The primary surface of this project. Sixteen specialized translation tools, two knowledge resources, and a pair of bootstrap-wrapper tools for resource-blind clients, all backed by local SQLite indexes built from the Oracc bulk JSON archive **and** the ETCSL TEI XML bundle. Every operation is sub-50-millisecond — a local SQLite query, never a network round-trip. The MCP server is designed for agents doing English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
+The primary surface of this project. Seventeen specialized translation tools, two knowledge resources, and a pair of bootstrap-wrapper tools for resource-blind clients, all backed by local SQLite indexes built from the Oracc bulk JSON archive **and** the ETCSL TEI XML bundle. Every operation is sub-50-millisecond — a local SQLite query, never a network round-trip. The MCP server is designed for agents doing English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
 
 ### 2. A local Oracc front-end — for portability AND for 1:1 comparison with the canonical site
 
@@ -47,7 +47,7 @@ A laptop-friendly version of the entire ePSD2 + Oracc dataset plus the ETCSL lit
 
 A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
-The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the sixteen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
+The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the seventeen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
 
 ### For digital humanists
 
@@ -55,7 +55,7 @@ A reference implementation of how to take a mature scholarly digital corpus and 
 
 ## The MCP toolbox
 
-When an LLM agent connects to the `epsd2` MCP server it gains sixteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+When an LLM agent connects to the `epsd2` MCP server it gains seventeen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
 
 ### Bootstrap: the knowledge resources
 
@@ -73,6 +73,7 @@ The tools an agent reaches for when going from an English meaning to a real, att
 - **`translate_english(query)`** — the entry point. Returns Sumerian lemma candidates ranked by frequency, with two disambiguating numbers per candidate: `sense_count` (how often this lemma appears in the corpus overall) and `sense_pct` (what fraction of those occurrences carry this specific meaning). A high `sense_count` with a low `sense_pct` means *"this word occasionally has that meaning"* — almost never the right pick. Conversely, `lugal [king] N` with 49,818 attestations at 100% sense_pct is the unambiguous Sumerian word for *king*.
 - **`find_compound(english_phrase)`** — Sumerian frequently uses fixed multi-word compounds where English would use a single verb or a syntactic construction. *To bail water* is `a bal`; *to build a temple* is `e₂ du₃`. The agent calls this **before** composing word-by-word, because if a compound exists for the user's intent, that's what scribes actually wrote.
 - **`find_collocations(cf)`** — phrasal idioms attested with a given lemma. Mined from all 138,000 corpusjson texts as 2/3/4-grams of citation forms. Surfaces year-name templates, royal titles, administrative formulas. If the user wants a phrase containing `lugal`, this tells the agent which adjacent words actually appeared on real tablets next to *king* (and which combinations would sound invented to a native speaker).
+- **`find_phrase_pattern(pattern)`** — the same corpus index as `find_collocations`, queried by **structural template**. Each slot in the pattern is a citation form (`"lugal"`), a POS code (`"N"`, `"V/t"`, `"RN"` for royal name, `"V*"` for any verb), or `"*"` for any cf — the tool returns attested n-grams that match the pattern positionally, ranked by corpus frequency. Use this when the question is *"what general SHAPE did scribes write?"* rather than *"what specifically appeared near this lemma?"*: e.g. `["RN","lugal"]` surfaces every royal name attested in apposition with *king*; `["N","du"]` surfaces every object of the verb *build*. Note: matches over **citation forms**, not inflected forms, so it can't filter by case marker — for case-aware structural analysis, use `parse_phrase` on a specific candidate phrase.
 - **`find_verb_form(cf, pos, prefix=…, dimensional=[…], object_person=…, aspect=…)`** — the heart of attestation-first translation. The agent specifies a grammatical feature spec (perfective vs imperfective, person/number agreement, dimensional case prefixes) and gets back the attested verb forms that match, ranked by frequency, each with its morpheme template plus one cited line from the corpus. The agent does not *synthesize* `mu-na-du₃` from grammar rules — it *retrieves* it from a tablet where a Bronze Age scribe actually wrote it.
 
 ### Translating Sumerian → English
@@ -134,7 +135,7 @@ For the recommended end-to-end agent workflow that stitches these tools together
       │  • entry pages       │         │    local agents)                 │
       │  • cuneiform render  │         │  • streamable-HTTP transport     │
       │  • period filtering  │         │    (remote agents, Docker)       │
-      │                      │         │  • 16 translation tools +        │
+      │                      │         │  • 17 translation tools +        │
       │                      │         │    2 resources +                 │
       │                      │         │    2 bootstrap tool wrappers     │
       └──────────────────────┘         └─────────────────────────────────┘

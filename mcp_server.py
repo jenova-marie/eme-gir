@@ -11,6 +11,8 @@ Tools:
     see_examples(oid, limit, period)       - real attested lines with the target marked
     find_compound(english_phrase)          - find idiomatic multi-word Sumerian
     find_collocations(word, length, limit) - phrasal n-grams attested with a word
+    find_phrase_pattern(pattern, limit)    - retrieve corpus-attested n-grams matching a
+                                             structural template (each slot = cf | POS | '*')
     get_inflections(oid)                   - attested morphological inflections of a lemma
     analyze_form(spelling)                 - decompose an attested form into base+morph
     find_verb_form(cf, pos, ...)           - attested verb forms matching a feature spec
@@ -64,6 +66,7 @@ from mcp_models import (
     ErrorResponse,
     FindCollocationsResponse,
     FindCompoundResponse,
+    FindPhrasePatternResponse,
     FindVerbFormResponse,
     GetInflectionsResponse,
     LookupEntryResponse,
@@ -385,7 +388,11 @@ mcp = FastMCP(
         "  2. find_compound(phrase) → look for fixed multi-word expressions "
         "before composing word-by-word; Sumerian has many.\n"
         "  3. find_collocations(cf) → discover phrasal idioms (year-name "
-        "templates, royal titles, formulas) attested in the corpus.\n"
+        "templates, royal titles, formulas) attested in the corpus near "
+        "a given lemma. For structural-pattern queries (e.g. 'every "
+        "N+lugal pair' or 'every X attested as object of du₃'), call "
+        "find_phrase_pattern(pattern) instead — same corpus, different "
+        "query shape.\n"
         "  4. lookup_entry(oid) → drill into a chosen lemma for full senses, "
         "spellings, periods, compounds.\n"
         "  5. get_inflections(oid) → see real attested morphology before "
@@ -1697,6 +1704,190 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
         results=results,
         resolved_from=resolved_from,
         note=note,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+@_log_call
+def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatternResponse | ErrorResponse:
+    """Retrieve corpus-attested n-grams that match a structural template.
+
+    Use this to ground a candidate phrasing in real attestation. Given a
+    pattern of length 2-4 where each slot is one of:
+      - a literal citation form (e.g. 'lugal', 'du₃', 'e₂')
+      - a POS code (e.g. 'N' for noun, 'V/t' for transitive verb,
+        'V' / 'V*' for any verb, 'AJ' for adjective, 'RN' for royal name,
+        'DN' for divine name, 'PN' for personal name)
+      - '*' for any cf
+
+    …returns the most-attested n-grams from collocations.sqlite that
+    match positionally, with each slot annotated by the matching lemma's
+    POS + gloss. Useful for "do scribes actually write X next to Y?"
+    questions, attestation-grounded ambiguity resolution, year-name
+    template discovery, and idiom mining.
+
+    Examples:
+      find_phrase_pattern(["lugal", "N"])
+          → "king + X" — every noun attested next to lugal, ranked.
+            Surfaces titles like 'lugal kalam' (king of the land).
+      find_phrase_pattern(["N", "du₃"])
+          → every noun attested as the object of du₃ ('build').
+            Surfaces 'e₂ du₃' (build a temple), etc.
+      find_phrase_pattern(["RN", "lugal"])
+          → every royal name attested in apposition with lugal.
+            Surfaces 'Šusuen lugal', 'Amarsuenak lugal', etc.
+      find_phrase_pattern(["*", "*", "lugal"])
+          → every trigram ending in lugal, ranked.
+
+    CAVEAT: the underlying collocation index is keyed by citation form,
+    NOT by inflected spelling. This means the tool CANNOT filter by
+    case marker (e.g. `N-locative + V`). For that level of structural
+    analysis, call parse_phrase on a specific candidate phrase instead.
+
+    Args:
+        pattern: list of 2-4 slot specifiers (cf | POS code | '*').
+        limit: max number of attested n-grams to return (default 20).
+    """
+    if not isinstance(pattern, list) or not pattern:
+        return ErrorResponse(error="pattern must be a non-empty list of slot specifiers")
+    if len(pattern) < 2 or len(pattern) > 4:
+        return ErrorResponse(
+            error=f"pattern length must be 2, 3, or 4 (got {len(pattern)})",
+            hint="The collocation index only stores 2/3/4-grams.",
+        )
+    pattern = [p.strip() for p in pattern]
+    n = len(pattern)
+    limit = max(1, min(200, int(limit)))
+
+    if not COLLOCATIONS_DB.exists():
+        return ErrorResponse(
+            error=f"collocations.sqlite missing at {COLLOCATIONS_DB}",
+            hint="Run `python3 build_collocations.py` to build it (~5 min).",
+        )
+
+    # Build the WHERE clause slot-by-slot. Each pattern element becomes:
+    #   - cf_i = ?            (literal citation form)
+    #   - cf_i IN (SELECT cf FROM entries WHERE pos = ?)    (specific POS)
+    #   - cf_i IN (SELECT cf FROM entries WHERE pos LIKE ?) (POS family, e.g. V*)
+    #   - (no clause)         (wildcard '*')
+    # The collocations table has cf1..cf4 columns, NULL where unused, plus
+    # an indexed `n` column we can pre-filter on.
+    where_parts: list[str] = ["c.n = ?"]
+    params: list[Any] = [n]
+
+    POS_FAMILY_HEADS = {"V", "N"}   # 'V' alone is rare; 'V*' or specific 'V/t' more common
+
+    for i, slot in enumerate(pattern, start=1):
+        col = f"c.cf{i}"
+        if slot == "*" or slot == "":
+            continue
+        # Heuristic: distinguish cf from POS code.
+        # POS codes in the entries table are short, uppercase-leading,
+        # contain '/', or end in '*' (our family-glob convention).
+        is_pos_code = (
+            slot.endswith("*")
+            or "/" in slot
+            or (slot.isupper() and len(slot) <= 4)
+        )
+        if is_pos_code:
+            if slot.endswith("*"):
+                pos_pred = "pos LIKE ?"
+                pos_param = slot[:-1] + "%"   # 'V*' → LIKE 'V%'
+            else:
+                pos_pred = "pos = ?"
+                pos_param = slot
+            # Subquery against entries.cf — finds every cf with that POS.
+            # We use a correlated EXISTS rather than IN to let SQLite use
+            # the cf1/cf2/cf3/cf4 indexes on collocations.
+            where_parts.append(
+                f"EXISTS (SELECT 1 FROM glossary.entries e WHERE e.cf = {col} AND e.{pos_pred})"
+            )
+            params.append(pos_param)
+        else:
+            # Literal cf at this slot.
+            where_parts.append(f"{col} = ?")
+            params.append(slot)
+
+    # The collocations DB and the glossary DB are separate SQLite files,
+    # so we connect to collocations and ATTACH glossary for the POS join.
+    con = sqlite3.connect(str(COLLOCATIONS_DB))
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute(f"ATTACH DATABASE '{GLOSSARY_DB}' AS glossary")
+        where_clause = " AND ".join(where_parts)
+
+        # Count total matches (before limit).
+        total_row = con.execute(
+            f"SELECT COUNT(*) AS n FROM collocations c WHERE {where_clause}",
+            params,
+        ).fetchone()
+        total = total_row["n"]
+
+        # Fetch the ranked top-N.
+        rows = con.execute(
+            f"""
+            SELECT c.ngram, c.count, c.cf1, c.cf2, c.cf3, c.cf4
+            FROM collocations c
+            WHERE {where_clause}
+            ORDER BY c.count DESC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+        # Per-token POS/gw annotation. Pull a small lookup for the cfs
+        # that actually appeared in the results (typically <100 distinct).
+        all_cfs: set[str] = set()
+        for r in rows:
+            for k in ("cf1", "cf2", "cf3", "cf4"):
+                if r[k]:
+                    all_cfs.add(r[k])
+        if all_cfs:
+            placeholders = ",".join("?" * len(all_cfs))
+            # Multiple entries can share a cf (homographs — `lugal` is
+            # both "king" N and "plant" N; `kaš` is both "urine" N and
+            # a verb). For display, pick the highest-icount entry per
+            # cf so the annotation reflects the dominant lemma rather
+            # than whichever happened to be inserted first. ORDER BY +
+            # GROUP BY gives us the top row per cf in one pass.
+            entry_rows = con.execute(
+                f"""
+                SELECT cf, pos, gw FROM (
+                    SELECT cf, pos, gw, icount,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY cf
+                               ORDER BY icount DESC NULLS LAST
+                           ) AS rk
+                    FROM glossary.entries
+                    WHERE cf IN ({placeholders})
+                ) WHERE rk = 1
+                """,
+                list(all_cfs),
+            ).fetchall()
+            entry_lookup = {er["cf"]: (er["pos"], er["gw"]) for er in entry_rows}
+        else:
+            entry_lookup = {}
+
+        results: list[dict[str, Any]] = []
+        for r in rows:
+            tokens: list[dict[str, Any]] = []
+            for i in range(1, n + 1):
+                cf = r[f"cf{i}"]
+                pos, gw = entry_lookup.get(cf, (None, None))
+                tokens.append({"cf": cf, "pos": pos, "gw": gw})
+            results.append({
+                "ngram": r["ngram"],
+                "count": r["count"],
+                "tokens": tokens,
+            })
+    finally:
+        con.close()
+
+    return FindPhrasePatternResponse(
+        pattern=pattern,
+        n=n,
+        total_matches=total,
+        results=results,
     )
 
 
