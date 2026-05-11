@@ -33,7 +33,7 @@ A laptop-friendly version of the entire ePSD2 + Oracc dataset that responds in m
 
 A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
-The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the fifteen tools and the grammar resource — what they do, when an agent reaches for them, and why they exist.
+The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the fifteen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
 
 ### For digital humanists
 
@@ -41,11 +41,14 @@ A reference implementation of how to take a mature scholarly digital corpus and 
 
 ## The MCP toolbox
 
-When an LLM agent connects to the `epsd2` MCP server it gains fifteen specialized tools and one knowledge resource, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+When an LLM agent connects to the `epsd2` MCP server it gains fifteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
 
-### Bootstrap: the grammar resource
+### Bootstrap: the knowledge resources
 
-- **`oracc://grammar/sumerian`** — a ~14 KB Sumerian grammar cheat sheet (transliteration conventions, the ten noun cases with their suffixes, ḫamṭu vs marû verbal aspect, the verbal prefix chain, conjugation patterns, common compound verbs, conjunctions). Distilled from Edzard 2003. The agent fetches this resource once at the start of a session and keeps it in working memory; without it, it can't reason about why `lugal-ra` is dative or why `mu-na-du₃` and `bi₂-in-du₃` differ in person agreement.
+Both resources are designed to be fetched once at session start so the agent can self-bootstrap on first connection — no operator-side prompt copy-paste required.
+
+- **`oracc://prompt/agent`** — a drop-in system prompt teaching the end-to-end workflow over these tools: how to decompose English into content words, when to reach for `find_compound` vs `find_collocations`, how to pick ḫamṭu vs marû aspect, the required output format (transliteration + cuneiform + interlinear gloss + lexical justification + cited attestation), the ETCSL attribution requirement, and a fully worked example. Pairs with the grammar reference below; the prompt teaches *how to use the tools*, the grammar teaches *what Sumerian is*.
+- **`oracc://grammar/sumerian`** — a ~14 KB Sumerian grammar cheat sheet (transliteration conventions, the ten noun cases with their suffixes, ḫamṭu vs marû verbal aspect, the verbal prefix chain, conjugation patterns, common compound verbs, conjunctions). Distilled from Edzard 2003. Without this in working memory, the agent can't reason about why `lugal-ra` is dative or why `mu-na-du₃` and `bi₂-in-du₃` differ in person agreement.
 
 ### Translating English → Sumerian
 
@@ -87,7 +90,7 @@ The four `etcsl_*` tools query the Oxford [Electronic Text Corpus of Sumerian Li
 
 Every `etcsl_*` result carries an `attribution` field with the canonical citation: *Black, J.A. et al., The Electronic Text Corpus of Sumerian Literature (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. CC BY 3.0 UK.* Attribution is required under the ETCSL license; the agent passes it through to the user verbatim.
 
-For the recommended end-to-end agent workflow that stitches these tools together (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md) — a drop-in system prompt that teaches the workflow with worked examples.
+For the recommended end-to-end agent workflow that stitches these tools together (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md) — a drop-in system prompt that teaches the workflow with worked examples. The same content is also served by the MCP server itself as `oracc://prompt/agent` so a connecting agent can self-bootstrap without operator-side configuration.
 
 ## Architecture at a glance
 
@@ -114,7 +117,7 @@ For the recommended end-to-end agent workflow that stitches these tools together
       │  • entry pages       │         │    local agents)                 │
       │  • cuneiform render  │         │  • streamable-HTTP transport     │
       │  • period filtering  │         │    (remote agents, Docker)       │
-      │                      │         │  • 15 tools + 1 grammar resource │
+      │                      │         │  • 15 tools + 2 resources        │
       └──────────────────────┘         └─────────────────────────────────┘
 ```
 
@@ -155,7 +158,7 @@ This project doesn't add anything to that data; it just makes it easier to ask q
 
 For setup, build, and deployment instructions — including the Docker compose stack, MCP server configuration for various clients, and reverse-proxy recipes — see **[START.md](START.md)**.
 
-For a complete LLM-agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md).
+For a complete LLM-agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md). The MCP server also exposes it as the `oracc://prompt/agent` resource so a connecting agent can self-bootstrap.
 
 For the Sumerian grammar cheat sheet that the MCP server also exposes as the `oracc://grammar/sumerian` resource, see [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md).
 

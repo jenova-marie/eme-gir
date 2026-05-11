@@ -20,9 +20,11 @@ ETCSL (Sumerian literary corpus + English translations) — Oxford 2006:
     etcsl_lookup_text(text_id, line_range) - read a whole composition (e.g. c.1.4.1 = Inana's Descent)
     etcsl_search_sumerian(query, limit)    - FTS over Sumerian transliteration; returns bilingual lines
 
-One resource:
+Two resources (fetch both once per session):
     oracc://grammar/sumerian               - compact Sumerian grammar cheat sheet
-                                             (Edzard 2003); fetch once per session
+                                             (Edzard 2003)
+    oracc://prompt/agent                   - drop-in agent system prompt teaching
+                                             the end-to-end workflow over these tools
 
 Bias: every tool that returns lemma candidates returns BOTH icount (raw frequency
 of *this sense*) and ipct (what % of the entry's total uses are this sense), so
@@ -43,10 +45,30 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 import cuneify as _cuneify
 import text_resolver
+from mcp_models import (
+    AnalyzeFormResponse,
+    CuneifyResponse,
+    ETCSLLinesWithLemmaResponse,
+    ETCSLLookupTextResponse,
+    ETCSLSearchEnglishResponse,
+    ETCSLSearchSumerianResponse,
+    ErrorResponse,
+    FindCollocationsResponse,
+    FindCompoundResponse,
+    FindVerbFormResponse,
+    GetInflectionsResponse,
+    LookupEntryResponse,
+    LookupSignResponse,
+    SeeExamplesResponse,
+    TranslateEnglishResponse,
+    TranslateSumerianResponse,
+)
 from paths import (
+    AGENT_PROMPT_DOC,
     COLLOCATIONS_DB,
     ETCSL_DB,
     GLOSSARY_DB,
@@ -336,22 +358,33 @@ mcp = FastMCP(
         "translation, grounded in the Oracc / ePSD2 dataset (15,940 headwords, "
         "35.5 M attestations, 178K phrasal collocations, 138K corpusjson texts). "
         "All data is CC0; no network calls.\n\n"
-        "Recommended workflow for English → Sumerian translation:\n"
-        "  1. Fetch the resource oracc://grammar/sumerian once for the session "
-        "to load grammar rules (case suffixes, ḫamṭu/marû aspect, prefix chain, "
-        "compound verbs) into working memory.\n"
-        "  2. translate_english(word) → rank Sumerian candidates. Prefer high "
+        "════════════════════════════════════════════════════════════════════\n"
+        "FIRST STEP, BEFORE ANY TOOL CALL: read these two resources via the "
+        "MCP `resources/read` request. They are your bootstrap context — "
+        "without them, tool calls will be uninformed.\n"
+        "  • oracc://prompt/agent      — your full system prompt: the workflow, "
+        "the required output format, the ETCSL attribution rule, and a worked "
+        "example. Read this FIRST so the rest of the instructions make sense.\n"
+        "  • oracc://grammar/sumerian  — compact Sumerian grammar reference "
+        "(case suffixes, ḫamṭu/marû aspect, verbal prefix chain, conjugation "
+        "patterns, compound verbs). Read this SECOND so you can reason about "
+        "morphology when tool results return inflected forms.\n"
+        "Both resources are markdown, ~10–15 KB each, and only need to be "
+        "fetched ONCE per session — keep them in working memory thereafter.\n"
+        "════════════════════════════════════════════════════════════════════\n\n"
+        "Workflow for English → Sumerian translation (AFTER bootstrap):\n"
+        "  1. translate_english(word) → rank Sumerian candidates. Prefer high "
         "sense_count + high sense_pct (the word for X, not a tangential meaning).\n"
-        "  3. find_compound(phrase) → look for fixed multi-word expressions "
+        "  2. find_compound(phrase) → look for fixed multi-word expressions "
         "before composing word-by-word; Sumerian has many.\n"
-        "  4. find_collocations(cf) → discover phrasal idioms (year-name "
+        "  3. find_collocations(cf) → discover phrasal idioms (year-name "
         "templates, royal titles, formulas) attested in the corpus.\n"
-        "  5. lookup_entry(oid) → drill into a chosen lemma for full senses, "
+        "  4. lookup_entry(oid) → drill into a chosen lemma for full senses, "
         "spellings, periods, compounds.\n"
-        "  6. get_inflections(oid) → see real attested morphology before "
+        "  5. get_inflections(oid) → see real attested morphology before "
         "constructing a new form.\n"
-        "  7. see_examples(oid, period='Ur III') → cite primary-source lines.\n"
-        "  8. cuneify(spelling) → render the final composition in Unicode "
+        "  6. see_examples(oid, period='Ur III') → cite primary-source lines.\n"
+        "  7. cuneify(spelling) → render the final composition in Unicode "
         "cuneiform.\n\n"
         "For Sumerian → English: translate_sumerian(transliteration) parses "
         "a phrase into per-token candidate lemmas; analyze_form(spelling) "
@@ -449,10 +482,30 @@ def _entry_payload(con: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 # Tools
 # -----------------------------------------------------------------------------
+#
+# All tools are read-only point-lookups against local SQLite indexes built
+# from the CC0 Oracc / ETCSL corpora. No network calls. No writes. Same
+# inputs always return the same outputs (modulo the corpus being rebuilt
+# between sessions, but the data is treated as immutable). So every tool
+# advertises:
+#   readOnlyHint=True       — no mutations
+#   destructiveHint=False   — nothing to destroy
+#   idempotentHint=True     — safe to call repeatedly
+#   openWorldHint=False     — closed world (no external systems queried)
+# This corrects the MCP client UI badges, which otherwise default to the
+# pessimistic case (PUBLIC WRITE / DESTRUCTIVE / OPEN WORLD).
 
-@mcp.tool()
+READ_ONLY_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def translate_english(query: str, limit: int = 10) -> dict:
+def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
     """Find Sumerian lemmas that mean a given English word or phrase.
 
     Returns ranked candidates with the matching SENSE inline (not just the
@@ -541,16 +594,16 @@ def translate_english(query: str, limit: int = 10) -> dict:
     finally:
         con.close()
 
-    return {
-        "query": query,
-        "total_matches": total,
-        "results": [_entry_payload(con, r) for r in rows],
-    }
+    return TranslateEnglishResponse(
+        query=query,
+        total_matches=total,
+        results=[_entry_payload(con, r) for r in rows],
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def lookup_entry(oid: str) -> dict:
+def lookup_entry(oid: str) -> LookupEntryResponse | ErrorResponse:
     """Get the full structured view of a single dictionary entry.
 
     Use after translate_english to drill into a chosen candidate. Returns:
@@ -570,7 +623,7 @@ def lookup_entry(oid: str) -> dict:
             (oid,),
         ).fetchone()
         if not entry:
-            return {"error": f"no entry with oid={oid!r}"}
+            return ErrorResponse(error=f"no entry with oid={oid!r}")
 
         senses = [dict(r) for r in con.execute(
             "SELECT id, mng AS meaning, pos, icount AS count, ipct AS pct "
@@ -605,23 +658,23 @@ def lookup_entry(oid: str) -> dict:
     finally:
         con.close()
 
-    return {
-        "oid": entry["id"],
-        "cf": entry["cf"],
-        "gw": entry["gw"],
-        "pos": entry["pos"],
-        "headword": entry["headword"],
-        "total_count": entry["icount"] or 0,
-        "senses": senses,
-        "spellings": forms,
-        "periods": periods,
-        "compounds": compounds,
-    }
+    return LookupEntryResponse(
+        oid=entry["id"],
+        cf=entry["cf"],
+        gw=entry["gw"],
+        pos=entry["pos"],
+        headword=entry["headword"],
+        total_count=entry["icount"] or 0,
+        senses=senses,
+        spellings=forms,
+        periods=periods,
+        compounds=compounds,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
+def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExamplesResponse | ErrorResponse:
     """Show real attested Sumerian lines containing this lemma, with the
     target word highlighted. Use this to verify a translation choice or
     to cite primary-source evidence.
@@ -667,9 +720,9 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
             "SELECT cf, gw, xis FROM entries WHERE id=?", (oid,)
         ).fetchone()
         if not entry:
-            return {"error": f"no entry with oid={oid!r}"}
+            return ErrorResponse(error=f"no entry with oid={oid!r}")
         if not entry["xis"]:
-            return {"oid": oid, "lines": [], "note": "entry has no instance refs"}
+            return SeeExamplesResponse(oid=oid, lines=[], note="entry has no instance refs")
         # Pull all refs upfront when filtering — small DB op, lets us slim
         # the resolve pass to only candidates from period-matching texts.
         # No-filter case bumped to 5000 (was 500) because for heavily
@@ -697,11 +750,11 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
         # (~20s for lugal); this version stays under 100ms.
         period_names = _resolve_period_filter(period_needle)
         if not period_names:
-            return {
-                "oid": oid, "cf": entry["cf"], "gw": entry["gw"],
-                "period_filter": period, "lines": [],
-                "note": f"no periods matched filter {period!r}",
-            }
+            return SeeExamplesResponse(
+                oid=oid, cf=entry["cf"], gw=entry["gw"],
+                period_filter=period, lines=[],
+                note=f"no periods matched filter {period!r}",
+            )
         ti = sqlite3.connect(TEXT_INDEX_DB)
         try:
             placeholders = ",".join("?" * len(period_names))
@@ -746,14 +799,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
         })
         if len(lines) >= limit:
             break
-    payload: dict[str, Any] = {
-        "oid": oid,
-        "cf": entry["cf"],
-        "gw": entry["gw"],
-        "period_filter": period,
-        "lines": lines,
-    }
-
+    diagnostic: str | None = None
     # When we returned nothing despite having refs, give the caller a
     # diagnostic so they understand WHY (most common cause: the lemma's
     # attestations live in projects we don't have downloaded locally,
@@ -774,7 +820,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
         kind_breakdown = ", ".join(
             f"{n} {k}-id" for k, n in text_id_kind.most_common()
         )
-        payload["diagnostic"] = (
+        diagnostic = (
             f"Tried {len(word_refs):,} refs ({kind_breakdown}); "
             f"top source projects: {top_projects}. "
             f"Empty result usually means those projects' corpusjson files "
@@ -782,12 +828,19 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> dict:
             f"composite-edition placeholders. Try a higher-attested lemma, "
             f"a different period, or download the missing project zips."
         )
-    return payload
+    return SeeExamplesResponse(
+        oid=oid,
+        cf=entry["cf"],
+        gw=entry["gw"],
+        period_filter=period,
+        lines=lines,
+        diagnostic=diagnostic,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def find_compound(english_phrase: str, limit: int = 10) -> dict:
+def find_compound(english_phrase: str, limit: int = 10) -> FindCompoundResponse:
     """Find Sumerian compound expressions matching an English phrase.
 
     Critical for translation because Sumerian uses fixed multi-word compounds
@@ -831,18 +884,18 @@ def find_compound(english_phrase: str, limit: int = 10) -> dict:
         con.close()
 
     results = [dict(r) for r in rows]
-    return {
-        "query": english_phrase,
-        "total_matches": len(results),
-        "results": results,
-    }
+    return FindCompoundResponse(
+        query=english_phrase,
+        total_matches=len(results),
+        results=results,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
 def get_inflections(
     oid: str, min_count: int = 2, limit_per_kind: int = 25,
-) -> dict:
+) -> GetInflectionsResponse | ErrorResponse:
     """Show attested morphological breakdowns of a lemma.
 
     For each kind of morphological data, returns the most-frequent patterns
@@ -897,7 +950,7 @@ def get_inflections(
             "SELECT cf, gw, pos FROM entries WHERE id=?", (oid,)
         ).fetchone()
         if not entry:
-            return {"error": f"no entry with oid={oid!r}"}
+            return ErrorResponse(error=f"no entry with oid={oid!r}")
         rows = con.execute(
             "SELECT kind, n, icount, ipct, xis FROM morphology "
             "WHERE entry_id=? ORDER BY kind, icount DESC NULLS LAST",
@@ -930,21 +983,21 @@ def get_inflections(
                 + ")"
             )
 
-    return {
-        "oid": oid,
-        "cf": entry["cf"],
-        "gw": entry["gw"],
-        "pos": entry["pos"],
-        "morphology": by_kind,
-        "kinds": sorted(by_kind.keys()),
-        "truncated": truncated,
-        "filters": {"min_count": min_count, "limit_per_kind": limit_per_kind},
-    }
+    return GetInflectionsResponse(
+        oid=oid,
+        cf=entry["cf"],
+        gw=entry["gw"],
+        pos=entry["pos"],
+        morphology=by_kind,
+        kinds=sorted(by_kind.keys()),
+        truncated=truncated,
+        filters={"min_count": min_count, "limit_per_kind": limit_per_kind},
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def analyze_form(spelling: str, limit: int = 20) -> dict:
+def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
     """Decompose an attested Sumerian spelling into its lemma and morphology.
 
     Searches across forms, form-sans (sandhi-resolved spellings), and bases
@@ -994,9 +1047,9 @@ def analyze_form(spelling: str, limit: int = 20) -> dict:
         ).fetchall()
     finally:
         con.close()
-    return {
-        "spelling": spelling,
-        "matches": [{
+    return AnalyzeFormResponse(
+        spelling=spelling,
+        matches=[{
             "matched_in": r["source"],
             "oid": r["oid"],
             "cf": r["cf"],
@@ -1007,12 +1060,12 @@ def analyze_form(spelling: str, limit: int = 20) -> dict:
             "pct": r["pct"] or 0,
             "xis": r["xis"],
         } for r in rows],
-    }
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> dict:
+def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> TranslateSumerianResponse:
     """Reverse-direction lookup: parse a Sumerian transliteration into per-token
     English glosses. Use this to verify a translation you composed, or to read
     a Sumerian phrase you encountered.
@@ -1087,15 +1140,15 @@ def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> dict:
             })
     finally:
         con.close()
-    return {
-        "transliteration": transliteration,
-        "tokens": results,
-    }
+    return TranslateSumerianResponse(
+        transliteration=transliteration,
+        tokens=results,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def find_collocations(word: str, length: int | None = None, limit: int = 20) -> dict:
+def find_collocations(word: str, length: int | None = None, limit: int = 20) -> FindCollocationsResponse | ErrorResponse:
     """Find multi-word Sumerian collocations (idiomatic phrases) containing
     a given lemma. Mined from every corpusjson text in our local Oracc zips.
 
@@ -1112,9 +1165,9 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
         limit: max results (default 20, cap 50)
     """
     if not COLLOCATIONS_DB.exists():
-        return {
-            "error": "collocations.sqlite not built; run `python3 build_collocations.py` first",
-        }
+        return ErrorResponse(
+            error="collocations.sqlite not built; run `python3 build_collocations.py` first",
+        )
     limit = max(1, min(50, int(limit)))
 
     def _query(con: sqlite3.Connection, term: str) -> tuple[list[dict], int]:
@@ -1172,24 +1225,25 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
     finally:
         con.close()
 
-    payload: dict[str, Any] = {
-        "word": word,
-        "word_unigram_count": unigram,
-        "results": results,
-    }
+    note: str | None = None
     if resolved_from:
-        payload["resolved_from"] = resolved_from
-        payload["note"] = (
+        note = (
             f"input {resolved_from!r} appears to be a spelling/form; "
             f"resolved to citation form {word!r} for the lookup. The "
             "collocations index is keyed by cf, not by spelling."
         )
-    return payload
+    return FindCollocationsResponse(
+        word=word,
+        word_unigram_count=unigram,
+        results=results,
+        resolved_from=resolved_from,
+        note=note,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def lookup_sign(query: str, limit: int = 10) -> dict:
+def lookup_sign(query: str, limit: int = 10) -> LookupSignResponse | ErrorResponse:
     """Look up a cuneiform sign by name (e.g. 'LUGAL') or phonetic value
     (e.g. 'lugal', 'lu₂', 'gal'), returning the Unicode glyph, sign name,
     and all phonetic values that map to that sign.
@@ -1211,7 +1265,7 @@ def lookup_sign(query: str, limit: int = 10) -> dict:
     import zipfile
     import json
     if not _cuneify.OGSL_ZIP.exists():
-        return {"error": "OGSL data missing — corpus/ogsl.zip not present"}
+        return ErrorResponse(error="OGSL data missing — corpus/ogsl.zip not present")
     with zipfile.ZipFile(_cuneify.OGSL_ZIP) as z, z.open(_cuneify.OGSL_MEMBER) as f:
         signs = json.load(f).get("signs", {})
 
@@ -1256,10 +1310,10 @@ def lookup_sign(query: str, limit: int = 10) -> dict:
             seen.add(key)
             deduped.append(r)
 
-    return {
-        "query": query,
-        "results": deduped[:limit],
-    }
+    return LookupSignResponse(
+        query=query,
+        results=deduped[:limit],
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -1427,7 +1481,7 @@ def _synthesize_verb_spelling(morph_n: str, base_n: str) -> str:
     return s.strip("-")
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
 def find_verb_form(
     cf: str,
@@ -1443,7 +1497,7 @@ def find_verb_form(
     min_count: int = 1,
     limit: int = 10,
     with_example: bool = True,
-) -> dict:
+) -> FindVerbFormResponse | ErrorResponse:
     """Find attested verb forms matching a feature spec.
 
     Sumerian conjugation is too irregular to synthesize confidently. This
@@ -1489,23 +1543,23 @@ def find_verb_form(
     min_count = max(0, int(min_count))
 
     if polarity not in ("affirm", "neg"):
-        return {"error": f"polarity must be 'affirm' or 'neg', got {polarity!r}"}
+        return ErrorResponse(error=f"polarity must be 'affirm' or 'neg', got {polarity!r}")
     if aspect is not None and aspect not in ("hamtu", "maru"):
-        return {"error": f"aspect must be 'hamtu' or 'maru' or None, got {aspect!r}"}
+        return ErrorResponse(error=f"aspect must be 'hamtu' or 'maru' or None, got {aspect!r}")
     if prefix is not None and prefix not in _VERB_PREFIX_MAP:
-        return {
-            "error": f"unknown prefix={prefix!r}; expected one of {sorted(_VERB_PREFIX_MAP)}"
-        }
+        return ErrorResponse(
+            error=f"unknown prefix={prefix!r}; expected one of {sorted(_VERB_PREFIX_MAP)}"
+        )
     if object_person is not None and object_person not in _VERB_OBJ_MAP:
-        return {
-            "error": f"unknown object_person={object_person!r}; expected one of {sorted(_VERB_OBJ_MAP)}"
-        }
+        return ErrorResponse(
+            error=f"unknown object_person={object_person!r}; expected one of {sorted(_VERB_OBJ_MAP)}"
+        )
     if dimensional:
         unknown = [d for d in dimensional if d not in _VERB_DIM_MAP]
         if unknown:
-            return {
-                "error": f"unknown dimensional={unknown}; expected subset of {_VERB_DIM_ORDER}"
-            }
+            return ErrorResponse(
+                error=f"unknown dimensional={unknown}; expected subset of {_VERB_DIM_ORDER}"
+            )
 
     con = _connect()
     try:
@@ -1515,10 +1569,10 @@ def find_verb_form(
             (cf, pos),
         ).fetchone()
         if not entry:
-            return {
-                "error": f"no entry with cf={cf!r} and pos={pos!r}",
-                "hint": "try translate_english or analyze_form to find the right cf/pos",
-            }
+            return ErrorResponse(
+                error=f"no entry with cf={cf!r} and pos={pos!r}",
+                hint="try translate_english or analyze_form to find the right cf/pos",
+            )
         eid = entry["id"]
         total_attestations = entry["icount"] or 0
 
@@ -1528,10 +1582,10 @@ def find_verb_form(
             (eid,),
         ).fetchone()
         if not base:
-            return {
-                "error": f"entry {eid} has no morphology base; "
-                         "this verb may be irregular/unanalyzed in epsd2"
-            }
+            return ErrorResponse(
+                error=f"entry {eid} has no morphology base; "
+                       "this verb may be irregular/unanalyzed in epsd2"
+            )
         base_n = base["n"]
 
         # Pull all morph rows for the entry above the count threshold
@@ -1637,15 +1691,15 @@ def find_verb_form(
             "actually uses"
         )
 
-    return {
-        "cf": entry["cf"],
-        "pos": entry["pos"],
-        "gw": entry["gw"],
-        "entry_oid": eid,
-        "base": base_n,
-        "total_attestations_for_entry": total_attestations,
-        "candidates_scanned": len(all_rows),
-        "filter_spec": {
+    return FindVerbFormResponse(
+        cf=entry["cf"],
+        pos=entry["pos"],
+        gw=entry["gw"],
+        entry_oid=eid,
+        base=base_n,
+        total_attestations_for_entry=total_attestations,
+        candidates_scanned=len(all_rows),
+        filter_spec={
             "prefix": prefix,
             "polarity": polarity,
             "object_person": object_person,
@@ -1654,14 +1708,14 @@ def find_verb_form(
             "suffix_a": suffix_a,
             "reduplicated": reduplicated,
         },
-        "matches": matches,
-        "warnings": warnings,
-    }
+        matches=matches,
+        warnings=warnings,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def cuneify(spelling: str) -> dict:
+def cuneify(spelling: str) -> CuneifyResponse:
     """Convert an Oracc-style Sumerian transliteration into Unicode cuneiform.
 
     Handles every spelling pattern in the corpus:
@@ -1682,12 +1736,12 @@ def cuneify(spelling: str) -> dict:
     """
     glyphs = _cuneify.cuneify(spelling)
     has_placeholder = "□" in glyphs
-    return {
-        "spelling": spelling,
-        "cuneiform": glyphs,
-        "complete": not has_placeholder,
-        "placeholder_count": glyphs.count("□"),
-    }
+    return CuneifyResponse(
+        spelling=spelling,
+        cuneiform=glyphs,
+        complete=not has_placeholder,
+        placeholder_count=glyphs.count("□"),
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -1715,9 +1769,9 @@ def _etcsl_lines_for_paragraph(con: sqlite3.Connection, text_id: str, para_id: s
     return [{"line": r["line_label"], "transliteration": r["transliteration"]} for r in rows]
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def etcsl_search_english(query: str, limit: int = 10) -> dict:
+def etcsl_search_english(query: str, limit: int = 10) -> ETCSLSearchEnglishResponse:
     """Full-text search across English translations of Sumerian literary
     texts. Returns bilingual matches: each hit includes the English
     paragraph plus the Sumerian lines that produced it.
@@ -1763,16 +1817,16 @@ def etcsl_search_english(query: str, limit: int = 10) -> dict:
             })
     finally:
         con.close()
-    return {
-        "query": query,
-        "results": results,
-        "attribution": ETCSL_ATTRIBUTION,
-    }
+    return ETCSLSearchEnglishResponse(
+        query=query,
+        results=results,
+        attribution=ETCSL_ATTRIBUTION,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> dict:
+def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaResponse:
     """Find Sumerian literary lines containing the given lemma (cf), with
     each line's English translation paragraph alongside.
 
@@ -1824,16 +1878,16 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> dict:
             })
     finally:
         con.close()
-    return {
-        "lemma": lemma,
-        "results": results,
-        "attribution": ETCSL_ATTRIBUTION,
-    }
+    return ETCSLLinesWithLemmaResponse(
+        lemma=lemma,
+        results=results,
+        attribution=ETCSL_ATTRIBUTION,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def etcsl_lookup_text(text_id: str, start: int = 1, line_limit: int = 50) -> dict:
+def etcsl_lookup_text(text_id: str, start: int = 1, line_limit: int = 50) -> ETCSLLookupTextResponse | ErrorResponse:
     """Read a Sumerian literary composition with line-by-line transliteration
     and the corresponding English translation paragraphs.
 
@@ -1863,7 +1917,7 @@ def etcsl_lookup_text(text_id: str, start: int = 1, line_limit: int = 50) -> dic
             (text_id,),
         ).fetchone()
         if not text:
-            return {"error": f"no ETCSL text with id={text_id!r}"}
+            return ErrorResponse(error=f"no ETCSL text with id={text_id!r}")
         total_lines = con.execute(
             "SELECT COUNT(*) FROM lines WHERE text_id=?", (text_id,)
         ).fetchone()[0]
@@ -1904,23 +1958,23 @@ def etcsl_lookup_text(text_id: str, start: int = 1, line_limit: int = 50) -> dic
             })
     finally:
         con.close()
-    return {
-        "text_id": text_id,
-        "title": text["title"],
-        "total_lines": total_lines,
-        "returned_lines": len(line_rows),
-        "start": start,
-        "last_ord": line_rows[-1]["ord"] if line_rows else None,
-        "next_start": (line_rows[-1]["ord"] + 1) if line_rows and (line_rows[-1]["ord"] < total_lines) else None,
-        "has_translation": bool(text["has_translation"]),
-        "blocks": blocks,
-        "attribution": ETCSL_ATTRIBUTION,
-    }
+    return ETCSLLookupTextResponse(
+        text_id=text_id,
+        title=text["title"],
+        total_lines=total_lines,
+        returned_lines=len(line_rows),
+        start=start,
+        last_ord=line_rows[-1]["ord"] if line_rows else None,
+        next_start=(line_rows[-1]["ord"] + 1) if line_rows and (line_rows[-1]["ord"] < total_lines) else None,
+        has_translation=bool(text["has_translation"]),
+        blocks=blocks,
+        attribution=ETCSL_ATTRIBUTION,
+    )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def etcsl_search_sumerian(query: str, limit: int = 10) -> dict:
+def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianResponse:
     """Full-text search across Sumerian transliterations of literary texts.
     Returns each matching line with its English translation paragraph.
 
@@ -1970,11 +2024,11 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> dict:
             })
     finally:
         con.close()
-    return {
-        "query": query,
-        "results": results,
-        "attribution": ETCSL_ATTRIBUTION,
-    }
+    return ETCSLSearchSumerianResponse(
+        query=query,
+        results=results,
+        attribution=ETCSL_ATTRIBUTION,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -1982,6 +2036,7 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> dict:
 # -----------------------------------------------------------------------------
 
 _GRAMMAR_CACHE: str | None = None
+_AGENT_PROMPT_CACHE: str | None = None
 
 
 @mcp.resource(
@@ -2011,6 +2066,41 @@ def grammar_cheatsheet() -> str:
             )
         _GRAMMAR_CACHE = GRAMMAR_DOC.read_text(encoding="utf-8")
     return _GRAMMAR_CACHE
+
+
+@mcp.resource(
+    "oracc://prompt/agent",
+    name="Sumerian translation agent — system prompt",
+    title="Agent system prompt: how to use these tools end-to-end",
+    description=(
+        "A drop-in system prompt teaching an LLM agent the recommended "
+        "workflow for using this server's tools: decompose English → rank "
+        "candidates with translate_english → check find_compound + "
+        "find_collocations for fixed idioms → choose ḫamṭu vs marû aspect "
+        "→ apply case suffixes mirrored in the verbal prefix chain → use "
+        "find_verb_form / get_inflections to pull attested morphology → "
+        "verify with see_examples → render with cuneify. Also covers the "
+        "reverse direction (Sumerian → English), the four etcsl_* "
+        "literary tools, the CC BY 3.0 UK Oxford-attribution requirement "
+        "for any ETCSL-derived data, the required output format "
+        "(transliteration + cuneiform + interlinear gloss + lexical "
+        "justification + cited attestation + caveats), and a fully "
+        "worked example. Fetch once at session start alongside "
+        "oracc://grammar/sumerian to bootstrap the agent's working memory."
+    ),
+    mime_type="text/markdown",
+)
+@_log_call
+def agent_prompt() -> str:
+    global _AGENT_PROMPT_CACHE
+    if _AGENT_PROMPT_CACHE is None:
+        if not AGENT_PROMPT_DOC.exists():
+            return (
+                "# prompt/AGENT_PROMPT.md missing\n\n"
+                f"Expected at {AGENT_PROMPT_DOC}. Re-run the project setup."
+            )
+        _AGENT_PROMPT_CACHE = AGENT_PROMPT_DOC.read_text(encoding="utf-8")
+    return _AGENT_PROMPT_CACHE
 
 
 # -----------------------------------------------------------------------------

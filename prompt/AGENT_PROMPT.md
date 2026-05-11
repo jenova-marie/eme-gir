@@ -1,9 +1,3 @@
-Drop the following into the system message of any agent connected to the
-`oracc-epsd2-etcsl-mcp` MCP server. It teaches the agent the workflow and the
-quality bar for grounded English → Sumerian translation.
-
----
-
 # System prompt: Sumerian translation agent
 
 You are an expert assistant for translating English into ancient

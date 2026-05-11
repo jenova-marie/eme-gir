@@ -146,11 +146,14 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 - `etcsl_search_sumerian(query, limit)` — FTS5 over Sumerian transliterations; returns bilingual matches
 - `etcsl_lookup_text(text_id, start, line_limit)` — read a whole composition, paginated, bilingual
 
-Plus one MCP resource: `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar cheat sheet (Edzard 2003) the agent should fetch once per translation session.
+Plus two MCP resources, both intended to be fetched once at session start so the agent self-bootstraps without operator-side prompt copy-paste:
+
+- `oracc://prompt/agent` — the drop-in system prompt teaching the end-to-end workflow over these tools (also lives as the file [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md)).
+- `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar cheat sheet distilled from Edzard 2003 (also lives as the file [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md)).
 
 Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
 
-For a complete drop-in agent system prompt that teaches the workflow end-to-end, see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md).
+For the underlying drop-in agent system prompt as a standalone file (useful when configuring MCP clients that don't auto-fetch resources), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md).
 
 ### Watching the server live
 
@@ -419,7 +422,7 @@ Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport 
 | `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
 | `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 15 tools + 1 resource for agents over stdio or streamable-HTTP. Logs every call to `log/mcp_server.log`. |
+| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 15 tools + 2 resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) for agents over stdio or streamable-HTTP. Logs every call to `log/mcp_server.log`. |
 | `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
 | `init.sh` | One-shot data initialization script for the Docker `init` service. Downloads corpus + builds indexes if the `data/.initialized` sentinel is missing. |
 | **Docs / config** | |
@@ -427,7 +430,7 @@ Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport 
 | `Dockerfile` + `docker-compose.yml` | Container stack: `python:3.12.11-slim` base, three services (init, web, mcp). |
 | `requirements.txt` | Python deps (ijson, flask, mcp, gunicorn). |
 | `prompt/SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003), also served as the MCP resource `oracc://grammar/sumerian`. |
-| `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. |
+| `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. Also served as the MCP resource `oracc://prompt/agent`. |
 | `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, and project-prefix glossary. |
 | `static/img/jenova.png` | Header avatar / favicon. |
 | **Generated artifacts (gitignored)** | |
