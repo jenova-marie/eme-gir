@@ -402,15 +402,15 @@ find_verb_form = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_find_verb_form_imp
 
 
 
-# lookup_sign now lives in eme_gir.tools.signs and is registered with
+# lookup_sign now lives in eme_gir.tools.ogsl and is registered with
 # this server's FastMCP instance below the cuneify tool (we keep them
 # together since both belong to the same domain).
 
 
-# cuneify + lookup_sign are now defined in eme_gir.tools.signs.
+# cuneify + lookup_sign are now defined in eme_gir.tools.ogsl.
 # Registration shim:
-from eme_gir.tools.signs import cuneify as _cuneify_tool_impl
-from eme_gir.tools.signs import lookup_sign as _lookup_sign_impl
+from eme_gir.tools.ogsl import cuneify as _cuneify_tool_impl
+from eme_gir.tools.ogsl import lookup_sign as _lookup_sign_impl
 
 cuneify = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_cuneify_tool_impl)
 lookup_sign = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_lookup_sign_impl)

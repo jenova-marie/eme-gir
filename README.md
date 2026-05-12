@@ -14,9 +14,20 @@ Oracc publishes its data in two ways. The **live web interface** at `oracc.museu
 
 Jenova's Local · Eme-gir is **two projects in one repository**, sharing the same underlying SQLite layer, cuneiform renderer, and attestation resolver:
 
-### 1. An MCP server backed by Oracc + ETCSL, optimized for LLM-agent queries
+### 1. Five MCP servers backed by Oracc + ETCSL + CDLI, optimized for LLM-agent queries
 
-The primary surface of this project. Nineteen specialized translation + catalogue tools, two knowledge resources, and a pair of bootstrap-wrapper tools for resource-blind clients, all backed by local SQLite indexes built from the Oracc bulk JSON archive, the ETCSL TEI XML bundle, **and** the CDLI artifact catalogue. Every operation is sub-50-millisecond — a local SQLite query, never a network round-trip. The MCP server is designed for agents doing English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources, and every cited tablet links straight to its CDLI photograph. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
+The primary surface of this project. Nineteen specialized translation + catalogue tools and two knowledge resources, organized into **five MCP servers along clean data-source boundaries** so an LLM client can choose its exposure: connect to all five for a full agent workflow, or just the raw-data servers (ePSD2 + ETCSL + CDLI + OGSL) and let the model discover the translation pattern itself.
+
+| Server | Tools | Default HTTP port |
+|---|---:|---:|
+| **eme-gir-epsd2** | 11 ePSD2 dictionary + corpus tools (translate_english, lookup_entry, find_verb_form, …) | 5052 |
+| **eme-gir-etcsl** | 4 ETCSL literary corpus tools — every result bilingual | 5053 |
+| **eme-gir-cdli** | 2 CDLI artifact catalogue tools (provenience, museum, image links) | 5054 |
+| **eme-gir-ogsl** | 2 cuneiform sign rendering tools (cuneify, lookup_sign) — useful for Akkadian/Hittite too | 5055 |
+| **eme-gir-translator** | 2 bootstrap wrapper tools + the agent prompt and dual-grammar resources | 5056 |
+| `mcp_server.py` (legacy all-in-one) | All 21 tools + 2 resources, for backwards compat | 5051 |
+
+All of them share the same `eme_gir/` Python package — same SQLite indexes, same OGSL sign renderer, same attestation resolver, same auth wiring — but each is an independent process you can run + scale + secure separately. Every operation is sub-50-millisecond, a local SQLite query, never a network round-trip. The servers are designed for English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources, and every cited tablet links straight to its CDLI photograph. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
 
 ### 2. A local Oracc front-end — for portability AND for 1:1 comparison with the canonical site
 
@@ -55,7 +66,9 @@ A reference implementation of how to take a mature scholarly digital corpus and 
 
 ## The MCP toolbox
 
-When an LLM agent connects to the `eme-gir` MCP server it gains nineteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, link to museum-hosted photographs of the cited tablets, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, link to museum-hosted photographs of the cited tablets, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+
+Tools are grouped below by **data source**, which also matches the five-server split: ePSD2 dictionary tools, ETCSL literary tools, CDLI artifact tools, OGSL sign tools, and the two bootstrap resources/wrappers. An agent that connects to `eme-gir-epsd2 + eme-gir-etcsl + eme-gir-cdli + eme-gir-ogsl` (skipping the Translator server) gets the raw data surfaces with no opinionated workflow guidance attached; an agent that connects to `eme-gir-translator` as well receives the agent prompt + grammar references as bootstrap resources. The legacy all-in-one `mcp_server.py` exposes everything in one process for backwards compatibility.
 
 ### Bootstrap: the knowledge resources
 
@@ -122,37 +135,40 @@ For the recommended end-to-end agent workflow that stitches these tools together
 ## Architecture at a glance
 
 ```
-┌────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐
-│ oracc.museum.upenn.edu │  │ etcsl.orinst.ox.ac.uk    │  │ cdli-gh @ githubuserc...  │
-│  /json/                │  │  (Oxford literary corpus)│  │  cdli_cat.csv (LFS-direct)│
-│  — 208 project zips    │  │  — TEI XML, bilingual    │  │  — 353K artifact records  │
-└─────────┬──────────────┘  └────────┬─────────────────┘  └────────┬─────────────────┘
-          │ download_corpus.py       │ build_etcsl_db.py           │ build_cdli_db.py
-          ▼                          ▼                             ▼
-      corpus/*.zip              data/etcsl.sqlite             data/cdli.sqlite
-          │                                                       (provenience,
-          │ streaming JSON parser (ijson, constant-memory)         museum, period,
-          ▼                                                        image URLs)
-      data/glossary.sqlite     data/text_index.sqlite     data/collocations.sqlite
-       (3.4 GB · 35.5 M         (10 MB · text → zip          (22 MB · phrasal n-grams
-        attestation refs)         lookup + period meta)        of citation forms)
-          │
-          ▼
-      ┌──────────────────────┐         ┌─────────────────────────────────┐
-      │ Flask web app        │         │ MCP server (FastMCP)             │
-      │  • /eme-gir/sux      │         │  • stdio transport (Claude Code, │
-      │  • entry pages       │         │    local agents)                 │
-      │  • cuneiform render  │         │  • streamable-HTTP transport     │
-      │  • period filtering  │         │    (remote agents, Docker)       │
-      │                      │         │  • 19 translation/catalogue      │
-      │                      │         │    tools (13 Eme-gir + 4 ETCSL   │
-      │                      │         │    + 2 CDLI) +                   │
-      │                      │         │    2 resources +                 │
-      │                      │         │    2 bootstrap tool wrappers     │
-      └──────────────────────┘         └─────────────────────────────────┘
+  ┌────────────────────────┐ ┌──────────────────────────┐ ┌──────────────────────────┐
+  │ oracc.museum.upenn.edu │ │ etcsl.orinst.ox.ac.uk    │ │ cdli-gh @ githubuserc... │
+  │  /json/  — 208 zips    │ │  TEI XML — bilingual     │ │  cdli_cat.csv (LFS)      │
+  └─────────┬──────────────┘ └─────────┬────────────────┘ └─────────┬────────────────┘
+            │ download_corpus.py       │ build_etcsl_db.py          │ build_cdli_db.py
+            ▼                          ▼                            ▼
+        corpus/*.zip               data/etcsl.sqlite            data/cdli.sqlite
+            │
+            │ streaming JSON parser (ijson, constant-memory)
+            ▼
+      data/glossary.sqlite + text_index.sqlite + collocations.sqlite + inflected_collocations.sqlite
+
+  ═══════════════════════════════════════════════════════════════════════════════════
+   eme_gir/  ←  shared Python package (paths, log, cuneify, text_resolver, cdli,
+                models/, sumerian_morphology, server, auth0_verifier, umami_analytics)
+              ↑                            ↑                           ↑
+              │                            │                           │
+  ┌───────────┴───────────┐   ┌────────────┴──────────┐   ┌────────────┴───────────┐
+  │  Flask web app        │   │  Five MCP servers     │   │  Legacy mcp_server.py   │
+  │  port 5050            │   │  (per-domain)         │   │  port 5051 — all 21    │
+  │  • /eme-gir/sux       │   │                       │   │  tools in one process  │
+  │  • entry pages        │   │  eme-gir-epsd2 :5052  │   │  (backwards compat)    │
+  │  • cuneiform render   │   │  eme-gir-etcsl :5053  │   └────────────────────────┘
+  │  • period filtering   │   │  eme-gir-cdli  :5054  │
+  └───────────────────────┘   │  eme-gir-ogsl :5055  │
+                              │  eme-gir-trans :5056  │
+                              │                       │
+                              │  stdio + HTTP, opt-in │
+                              │  Auth0 OAuth, DNS-    │
+                              │  rebinding allowlist  │
+                              └───────────────────────┘
 ```
 
-Both servers can run as standalone Python processes, or be deployed together via an included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows. The HTTP MCP transport optionally validates Auth0-issued OAuth 2.1 bearer tokens (RS256 JWT, RFC 9728 discovery via `/.well-known/oauth-protected-resource`); off by default, opt-in for deployments that need in-app auth instead of relying on a reverse proxy.
+The five per-domain MCP servers + the Flask web app share the same `eme_gir/` Python package — same SQLite indexes, same OGSL renderer, same attestation resolver, same auth wiring. Each MCP server is a thin (~30-40 line) entry point under `servers/<domain>/__main__.py` that registers only its domain's tools. They can be started independently (`python -m servers.epsd2`), or deployed together via the included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows. The HTTP MCP transport optionally validates Auth0-issued OAuth 2.1 bearer tokens (RS256 JWT, RFC 9728 discovery via `/.well-known/oauth-protected-resource`); off by default, opt-in via global `EME_GIR_REQUIRE_AUTH=1` for deployments that need in-app auth instead of relying on a reverse proxy.
 
 ## Data and attributions
 

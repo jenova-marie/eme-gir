@@ -1,4 +1,4 @@
-"""MCP tools for cuneiform sign rendering (signs / OGSL domain).
+"""MCP tools for cuneiform sign rendering (OGSL domain).
 
 Two tool functions:
 - `lookup_sign(query, limit)` — sign name ↔ phonetic value ↔ Unicode glyph
@@ -24,7 +24,7 @@ from typing import Any
 from .. import cuneify as _cuneify
 from ..log import log_call
 from ..models.common import ErrorResponse
-from ..models.signs import CuneifyResponse, LookupSignResponse
+from ..models.ogsl import CuneifyResponse, LookupSignResponse
 
 
 @log_call

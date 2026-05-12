@@ -109,9 +109,14 @@ The web app routes:
 
 ## 3. Run as an MCP server (for LLM agents)
 
-The repo ships an MCP server exposing nineteen tools designed for agent-driven English ↔ Sumerian translation + CDLI artifact lookup, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
+Two deployment modes:
 
-For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
+1. **All-in-one** (legacy, simple): `mcp_server.py` registers all 21 tools and 2 resources in one process. Use this for quick local agent work where one MCP connection is enough.
+2. **Five per-domain servers** (Phase 5, preferred for new deployments): each domain (ePSD2, ETCSL, CDLI, OGSL, Translator) runs as its own MCP server. Lets you scale/secure/version each independently, and — most importantly — lets an LLM client connect to just the **raw data servers** (ePSD2 + ETCSL + CDLI + OGSL) without the Translator's opinionated workflow guidance, so the model discovers the translation pattern itself rather than being told.
+
+Both modes are configured in the repo's `.mcp.json` so **Claude Code auto-detects the servers** when launched in this directory — six entries total. Comment out the entries you don't want.
+
+For other MCP clients (Claude Desktop, Cline, etc.), add the subset you want to the client's `mcpServers` config. Examples:
 
 ```json
 {
@@ -120,16 +125,48 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
       "type": "stdio",
       "command": "/absolute/path/to/python3-with-mcp-installed",
       "args": ["/absolute/path/to/this/repo/mcp_server.py"]
+    },
+    "eme-gir-epsd2": {
+      "type": "stdio",
+      "command": "/absolute/path/to/python3-with-mcp-installed",
+      "args": ["-m", "servers.epsd2"],
+      "cwd": "/absolute/path/to/this/repo"
+    },
+    "eme-gir-etcsl": {
+      "type": "stdio",
+      "command": "/absolute/path/to/python3-with-mcp-installed",
+      "args": ["-m", "servers.etcsl"],
+      "cwd": "/absolute/path/to/this/repo"
+    },
+    "eme-gir-cdli": {
+      "type": "stdio",
+      "command": "/absolute/path/to/python3-with-mcp-installed",
+      "args": ["-m", "servers.cdli"],
+      "cwd": "/absolute/path/to/this/repo"
+    },
+    "eme-gir-ogsl": {
+      "type": "stdio",
+      "command": "/absolute/path/to/python3-with-mcp-installed",
+      "args": ["-m", "servers.ogsl"],
+      "cwd": "/absolute/path/to/this/repo"
+    },
+    "eme-gir-translator": {
+      "type": "stdio",
+      "command": "/absolute/path/to/python3-with-mcp-installed",
+      "args": ["-m", "servers.translator"],
+      "cwd": "/absolute/path/to/this/repo"
     }
   }
 }
 ```
 
-> **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
+> **Paths must be absolute** and the per-domain entries need `cwd` set so `python -m servers.<domain>` resolves the package. MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
 
 ### The nineteen tools
 
-**Eme-gir dictionary + corpus tools:**
+Tools are listed below by domain — which is also the post-Phase-5 per-server grouping. Each tool's enclosing server is shown in parentheses; the legacy `mcp_server.py` exposes all of them.
+
+**Eme-gir dictionary + corpus tools** (server: `eme-gir-epsd2`):
 
 - `translate_english(query, limit)` — rank Sumerian candidates for an English meaning
 - `translate_sumerian(transliteration)` — reverse direction: parse a Sumerian phrase into per-token glosses; surfaces detected case/possessive/plural suffixes on each token
@@ -142,55 +179,81 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 - `get_inflections(oid)` — every attested morphological breakdown of a lemma
 - `analyze_form(spelling)` — decompose an attested spelling into candidate lemmas + morphology
 - `find_verb_form(cf, pos, prefix, dimensional, object_person, aspect, …)` — attested verb forms matching a feature spec; returns the morph template + spelling + attested count + one cited line per match (attestation-first; no rule-based synthesis)
-- `lookup_sign(query)` — find a cuneiform sign by name or phonetic value
-- `cuneify(spelling)` — render Oracc transliteration as Unicode cuneiform glyphs
 
-**ETCSL literary-corpus tools** (bilingual; require `python3 build_etcsl_db.py`):
+**ETCSL literary-corpus tools** (server: `eme-gir-etcsl`; bilingual; require `python3 build_etcsl_db.py`):
 
 - `etcsl_search_english(query, limit)` — FTS5 over English translations; returns each match with its Sumerian lines
 - `etcsl_lines_with_lemma(lemma, limit)` — literary lines containing a given Sumerian lemma + the English paragraph
 - `etcsl_search_sumerian(query, limit)` — FTS5 over Sumerian transliterations; returns bilingual matches
 - `etcsl_lookup_text(text_id, start, line_limit)` — read a whole composition, paginated, bilingual
 
-**CDLI artifact catalogue tools** (require `python3 build_cdli_db.py`):
+**CDLI artifact catalogue tools** (server: `eme-gir-cdli`; require `python3 build_cdli_db.py`):
 
 - `lookup_artifact(p_id)` — full per-artifact metadata for one P-id: provenience (find spot), period, museum custody (collection + accession number), dimensions, citations, plus URLs to CDLI-hosted photographs and line drawings when available.
 - `find_artifacts(provenience, period, museum_collection, genre, language, limit)` — filter the 353K-row catalogue. All filters are case-insensitive substring matches (`provenience='Drehem'` matches `'Drehem (mod. Puzriš-Dagan)'`); AND together when multiple supplied. Useful for "every Ur III tablet from Drehem in the British Museum" style questions.
 
 `see_examples` and `find_verb_form` automatically splat the same CDLI image URLs + museum metadata onto every cited line they return when `cdli.sqlite` is built — so an agent calling `see_examples('o0033341')` for the lemma `lugal` gets each attested line with a clickable link to its CDLI photograph for free.
 
-Plus two MCP resources, both intended to be fetched once at session start so the agent self-bootstraps without operator-side prompt copy-paste:
+**Signs / cuneiform rendering tools** (server: `eme-gir-ogsl`; require `corpus/ogsl.zip` from the standard corpus download):
 
-- `oracc://prompt/agent` — the drop-in system prompt teaching the end-to-end workflow over these tools (also lives as the file [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md)).
-- `oracc://grammar/sumerian` — a ~14 KB Sumerian grammar cheat sheet distilled from Edzard 2003 (also lives as the file [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md)).
+- `lookup_sign(query)` — find a cuneiform sign by name (`LUGAL`) or phonetic value (`lugal`); returns the Unicode glyph + all known phonetic readings.
+- `cuneify(spelling)` — render Oracc transliteration as Unicode cuneiform glyphs. Handles braced determinatives, hyphen-joined sign sequences, sign-list dot-compounds, morphology tails.
+
+**Translator / bootstrap surface** (server: `eme-gir-translator`; no data dependencies — markdown only):
+
+Two MCP resources, both intended to be fetched once at session start so the agent self-bootstraps without operator-side prompt copy-paste:
+
+- `oracc://prompt/agent` — the drop-in system prompt teaching the end-to-end workflow (also lives as the file [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md)).
+- `oracc://grammar/sumerian` — TWO grammar references concatenated (~80 KB): Jagersma 2010 academic + Meadow/Siri Nin temple companion. Lives as [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md) + [`prompt/MEADOW_GRAMMAR.md`](prompt/MEADOW_GRAMMAR.md).
+
+Plus two MCP tool wrappers for tools-only clients that don't surface resources:
+
+- `start_here()` — returns the agent prompt body
+- `get_grammar_reference()` — returns the dual-register grammar as a structured response (`academic`, `temple`, `combined`, `temple_available` fields)
 
 Every result returned by `translate_english` includes both raw sense frequency *and* what % of the lemma's uses are in that sense — so the agent can pick "the word for X" rather than "a word that occasionally means X".
 
 For the underlying drop-in agent system prompt as a standalone file (useful when configuring MCP clients that don't auto-fetch resources), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md).
 
-### Watching the server live
+### Watching the servers live
 
-Every tool call is logged to `log/mcp_server.log` (rotating, 5 MB × 3 backups), with arguments, duration, and a one-line result summary. Tail it while chatting with the agent:
+Every tool call is logged to a per-server file under `log/` (rotating, 5 MB × 3 backups), with arguments, duration, and a one-line result summary. Log file names:
+
+| Server | Log file |
+|---|---|
+| Legacy all-in-one | `log/mcp_server.log` |
+| ePSD2 | `log/eme-gir-epsd2.log` |
+| ETCSL | `log/eme-gir-etcsl.log` |
+| CDLI | `log/eme-gir-cdli.log` |
+| Signs | `log/eme-gir-ogsl.log` |
+| Translator | `log/eme-gir-translator.log` |
+
+Tail one or all while chatting with the agent:
 
 ```bash
-tail -F log/mcp_server.log
+tail -F log/mcp_server.log              # legacy only
+tail -F log/eme-gir-*.log               # all 5 per-domain servers
+tail -F log/*.log                       # everything
 ```
 
-Errors get full tracebacks. The startup banner reports loaded DB sizes so you can confirm the right files are mounted.
+Errors get full tracebacks. The startup banner reports the loaded DB sizes so you can confirm the right files are mounted.
 
 ### Running over HTTP (for remote agents, Docker, or non-stdio clients)
 
-The same `mcp_server.py` script also speaks the MCP **streamable-HTTP** transport — useful when the consumer can't (or shouldn't) launch the server as a subprocess: web-hosted agents, multi-tenant deployments, sidecar containers, etc.
+Every server can also speak the MCP **streamable-HTTP** transport — useful when the consumer can't (or shouldn't) launch the server as a subprocess: web-hosted agents, multi-tenant deployments, sidecar containers, etc. Suite-wide port allocation:
 
-```bash
-# Local-only (default bind = 127.0.0.1, default port = 5051)
-python3 mcp_server.py --transport http
+| Server | HTTP command | Default port |
+|---|---|---:|
+| Legacy all-in-one | `python3 mcp_server.py --transport http` | 5051 |
+| ePSD2 | `python -m servers.epsd2 --transport http` | 5052 |
+| ETCSL | `python -m servers.etcsl --transport http` | 5053 |
+| CDLI | `python -m servers.cdli --transport http` | 5054 |
+| Signs | `python -m servers.ogsl --transport http` | 5055 |
+| Translator | `python -m servers.translator --transport http` | 5056 |
 
-# Behind a reverse proxy on a private network
-python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
-```
+(The Flask web app uses 5050.) Each server takes the same `--host` / `--port` overrides — bind to `0.0.0.0` behind a reverse proxy on a private network.
 
-Endpoint: `http://HOST:5051/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). All 19 tools (the 17 translation tools plus the two `start_here` / `get_grammar_reference` resource-wrapper tools) work over HTTP exactly as they do over stdio. By default there is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. To enforce in-app auth instead (or in addition), see the next section.
+Endpoint pattern: `http://HOST:PORT/mcp/` (note the trailing slash — `/mcp` without it 307-redirects). Tools work over HTTP exactly as they do over stdio. By default there is **no in-app authentication**; the server trusts any client that can reach the port. Always front it with a reverse proxy (nginx / caddy / traefik) when binding outside `127.0.0.1`. To enforce in-app auth instead (or in addition), see the next section — auth env vars apply to ALL servers uniformly via the shared `eme_gir.server` boilerplate.
 
 ### Adding Auth0 OAuth (optional, HTTP transport only)
 
@@ -423,39 +486,62 @@ Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport 
 
 ## Appendix: file inventory
 
+The repo is organized into four layers post-Phase-5:
+
 | | |
 |---|---|
-| **Code** | |
+| **Top-level build pipeline + entry points** | |
 | `download_corpus.py` | Stdlib-only batch downloader; resume-safe; auto-fetches the InCommon TLS intermediate that Oracc's server omits. |
 | `find_missing_corpora.py` | Audit tool: HEAD-probes every project in Oracc's `projects.json` against `corpus/`, lists what's reachable but missing. `--fetch` flag downloads them (with zip-validity check). |
 | `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, morphology, and instances. |
 | `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` and per-text catalogue metadata, builds `text_index.sqlite`. |
 | `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
-| `build_etcsl_db.py` | Downloads the ETCSL bulk zip (4.9 MB) from the Oxford Text Archive, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs), normalizes ETCSL's ASCII transliteration to Eme-gir/Oracc Unicode, ingests to `etcsl.sqlite` with FTS5 indexes. Powers the `etcsl_*` MCP tools. |
-| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `eme-gir/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
-| `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
+| `build_inflected_collocations.py` | Case+sense-aware n-grams → `inflected_collocations.sqlite`. Powers `find_phrase_pattern` v2/v3 syntax. |
+| `build_etcsl_db.py` | Downloads ETCSL bulk zip (4.9 MB), parses 394 TEI XML texts (custom entity-expansion table), normalizes to Oracc Unicode, ingests to `etcsl.sqlite` with FTS5 indexes. Powers the `etcsl_*` tools. |
+| `build_cdli_db.py` | Downloads the CDLI catalogue CSV (~147 MB) from the cdli-gh GitHub mirror, parses 353K rows into `cdli.sqlite`. Powers `lookup_artifact` + `find_artifacts` + the AttestationLine enrichment in `see_examples`/`find_verb_form`. |
 | `app.py` + `templates/` | Flask app. Routes: `/eme-gir/sux` (paginated glossary with letter zoom + search), `/eme-gir/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
-| `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 17 translation tools + 2 bootstrap tool wrappers + 2 resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) for agents over stdio or streamable-HTTP. Logs every call to `log/mcp_server.log`. |
-| `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
+| `mcp_server.py` | **Legacy all-in-one** MCP server. Registers all 21 tools and 2 resources in one process. Kept for backwards compat; new deployments should prefer `servers/<domain>`. Logs to `log/mcp_server.log`. |
 | `init.sh` | One-shot data initialization script for the Docker `init` service. Downloads corpus + builds indexes if the `data/.initialized` sentinel is missing. |
+| **`servers/` — per-domain MCP entry points (Phase 5)** | |
+| `servers/epsd2/__main__.py` | 11 ePSD2 dictionary + corpus tools, HTTP port 5052. `python -m servers.epsd2`. |
+| `servers/etcsl/__main__.py` | 4 ETCSL literary corpus tools (bilingual), HTTP port 5053. |
+| `servers/cdli/__main__.py` | 2 CDLI artifact catalogue tools, HTTP port 5054. |
+| `servers/ogsl/__main__.py` | 2 cuneiform sign rendering tools, HTTP port 5055. |
+| `servers/translator/__main__.py` | Bootstrap surface (2 resources + 2 tool wrappers, no data tools), HTTP port 5056. |
+| **`eme_gir/` — shared Python package (Phases 1-4)** | |
+| `eme_gir/paths.py` | Single source of truth for project file locations — every module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
+| `eme_gir/log.py` | `init_logging(server_name)` + `log_call` decorator. Per-server log files written to `log/<server_name>.log`. |
+| `eme_gir/server.py` | Shared server boilerplate: `make_server(name, instructions)` (auth + transport-security wiring) and `run_server(mcp, log, default_port, required_dbs)` (argparse + startup banner). |
+| `eme_gir/cuneify.py` | OGSL-backed transliteration → Unicode cuneiform. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
+| `eme_gir/text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` into the actual Sumerian line. |
+| `eme_gir/cdli.py` | Shared CDLI helpers (connect + enrichment). Used cross-domain by ePSD2's `see_examples`/`find_verb_form`. |
+| `eme_gir/sumerian_morphology.py` | Suffix peeler + verbal-prefix detector. Shared by `parse_phrase`, `translate_sumerian`, `build_inflected_collocations.py`. |
+| `eme_gir/auth0_verifier.py` | Optional Auth0 RS256 JWT verification for HTTP-transport bearer-token auth. |
+| `eme_gir/umami_analytics.py` | Fire-and-forget tool-call telemetry. Opt-in via env vars. |
+| `eme_gir/models/{common,epsd2,etcsl,cdli,signs,translator}.py` | Pydantic response models per-domain. `models/__init__.py` re-exports everything for backwards compat. |
+| `eme_gir/tools/{epsd2,etcsl,cdli,signs,translator}.py` | Tool function implementations per-domain. Plain Python functions decorated with `@log_call`; entry points register them via `mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(fn)`. |
 | **Docs / config** | |
-| `.mcp.json` | Project-scoped MCP server config — Claude Code auto-detects when launched in this directory. |
+| `.mcp.json` | Project-scoped MCP server config — 6 entries (legacy + 5 per-domain). Claude Code auto-detects when launched in this directory. |
 | `Dockerfile` + `docker-compose.yml` | Container stack: `python:3.12.11-slim` base, three services (init, web, mcp). |
 | `requirements.txt` | Python deps (ijson, flask, mcp, gunicorn). |
-| `prompt/SUMERIAN_GRAMMAR.md` | ~14 KB Sumerian grammar cheat sheet (Edzard 2003), also served as the MCP resource `oracc://grammar/sumerian`. |
-| `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP server. Also served as the MCP resource `oracc://prompt/agent`. |
-| `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, and project-prefix glossary. |
+| `prompt/SUMERIAN_GRAMMAR.md` | ~40 KB Jagersma-2010-based academic grammar reference. Cite as `(Jagersma §N.M)`. |
+| `prompt/MEADOW_GRAMMAR.md` | ~48 KB temple-register grammar companion (Meadow's Sumerian 101 lessons + Siri Nin's commentary). Cite as `(Meadow §101-N)` or `(Siri Nin)`. Combined with SUMERIAN_GRAMMAR.md (~80 KB) by `get_grammar_reference()` and the `oracc://grammar/sumerian` resource. |
+| `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP servers. Also served as the `oracc://prompt/agent` resource by the Translator server. |
+| `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, project-prefix glossary, the 5-server architecture. |
 | `static/img/jenova.png` | Header avatar / favicon. |
 | **Generated artifacts (gitignored)** | |
 | `corpus/` | 208 `.zip` files (~3.1 GB), one per Oracc project. |
 | `data/glossary.sqlite` | ~3.4 GB indexed extract of the Sumerian glossary (15,940 entries, 35.5 M attestations, 248 K morphology rows). |
 | `data/glossary_akk.sqlite` | ~114 MB Akkadian glossary built from `corpus/rinap.zip` for bilingual workflows (optional). |
 | `data/text_index.sqlite` | ~10 MB index of 139,455 `(project, text_id, period, designation)` rows. |
-| `data/collocations.sqlite` | ~22 MB index of ~178 K phrasal n-grams of citation forms mined from the corpus. |
-| `data/etcsl.sqlite` | ~31 MB ETCSL literary corpus (394 texts, 34,229 lines, 159,963 words, 5,608 translation paragraphs) with FTS5 indexes on Sumerian and English. |
-| `data/etcsl.zip` | ~4.9 MB cached download of the Oxford Text Archive ETCSL bulk zip; rebuilds skip re-downloading if present. |
+| `data/collocations.sqlite` | ~22 MB index of ~178K phrasal n-grams of citation forms mined from the corpus. |
+| `data/inflected_collocations.sqlite` | ~62 MB case+sense-aware n-grams. Powers `find_phrase_pattern` v2/v3. |
+| `data/etcsl.sqlite` | ~31 MB ETCSL literary corpus (394 texts, 34,229 lines) with FTS5 on Sumerian + English. |
+| `data/etcsl.zip` | ~4.9 MB cached Oxford Text Archive ETCSL bulk zip. |
+| `data/cdli.sqlite` | ~157 MB CDLI artifact catalogue (353K artifacts × ~25 curated columns). |
+| `data/cdli_cat.csv` | ~147 MB cached CDLI source CSV. |
 | `data/.initialized` | Per-host runtime sentinel written by `init.sh` after a successful Docker first-boot init. |
-| `log/mcp_server.log` | Live tool-call log; rotates at 5 MB × 3 backups. |
+| `log/*.log` | Live tool-call logs (one per running MCP server). Each rotates at 5 MB × 3 backups. |
 
 ---
 

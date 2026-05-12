@@ -1,9 +1,52 @@
 {
+  "_comment": [
+    "Project-scoped MCP server config — Claude Code auto-detects this when launched in the repo.",
+    "Six entries: the legacy all-in-one (`eme-gir`) plus the five per-domain servers.",
+    "Pick whichever subset you want active in your client by removing entries here.",
+    "Absolute paths are required: Claude Code spawns MCP servers without sourcing the user's shell init,",
+    "so a bare `python3` resolves to /usr/bin/python3 which doesn't have the `mcp` package installed."
+  ],
   "mcpServers": {
     "eme-gir": {
       "type": "stdio",
       "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
-      "args": ["/Users/jenova/projects/jenova-marie/eme-gir/mcp_server.py"]
+      "args": ["/Users/jenova/projects/jenova-marie/eme-gir/mcp_server.py"],
+      "_comment": "Legacy all-in-one — registers all 21 tools. Backwards compatible with pre-Phase-5 setups."
+    },
+    "eme-gir-epsd2": {
+      "type": "stdio",
+      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
+      "args": ["-m", "servers.epsd2"],
+      "cwd": "/Users/jenova/projects/jenova-marie/eme-gir",
+      "_comment": "11 ePSD2 dictionary + corpus tools (translate_english, lookup_entry, see_examples, find_verb_form, etc.). HTTP port 5052."
+    },
+    "eme-gir-etcsl": {
+      "type": "stdio",
+      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
+      "args": ["-m", "servers.etcsl"],
+      "cwd": "/Users/jenova/projects/jenova-marie/eme-gir",
+      "_comment": "4 ETCSL literary corpus tools (bilingual). HTTP port 5053. ATTRIBUTION REQUIRED (CC BY 3.0 UK)."
+    },
+    "eme-gir-cdli": {
+      "type": "stdio",
+      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
+      "args": ["-m", "servers.cdli"],
+      "cwd": "/Users/jenova/projects/jenova-marie/eme-gir",
+      "_comment": "2 CDLI artifact catalogue tools (provenience, museum custody, image links). HTTP port 5054."
+    },
+    "eme-gir-ogsl": {
+      "type": "stdio",
+      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
+      "args": ["-m", "servers.ogsl"],
+      "cwd": "/Users/jenova/projects/jenova-marie/eme-gir",
+      "_comment": "2 cuneiform sign rendering tools (cuneify, lookup_sign) backed by the Oracc Global Sign List. HTTP port 5055. Reusable for Akkadian/Hittite too."
+    },
+    "eme-gir-translator": {
+      "type": "stdio",
+      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
+      "args": ["-m", "servers.translator"],
+      "cwd": "/Users/jenova/projects/jenova-marie/eme-gir",
+      "_comment": "Bootstrap surface: agent prompt + grammar references as resources + tool wrappers. HTTP port 5056."
     }
   }
 }

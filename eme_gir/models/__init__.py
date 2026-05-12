@@ -14,7 +14,7 @@ Submodule layout (all importable as `eme_gir.models.<submodule>`):
 | `epsd2`  | Eme-gir dictionary + corpus  | `TranslateEnglishResponse`, `LookupEntryResponse`, `SeeExamplesResponse`, `FindVerbFormResponse`, `ParsePhraseResponse`, … |
 | `etcsl`  | Oxford literary corpus       | `ETCSLSearchEnglishResponse`, `ETCSLLookupTextResponse`, … |
 | `cdli`   | CDLI artifact catalogue      | `CDLIArtifact`, `LookupArtifactResponse`, `FindArtifactsResponse` |
-| `signs`  | OGSL sign rendering          | `SignInfo`, `LookupSignResponse`, `CuneifyResponse` |
+| `ogsl`   | OGSL sign rendering          | `SignInfo`, `LookupSignResponse`, `CuneifyResponse` |
 | `translator` | Translator MCP            | `GrammarReferenceResponse` |
 
 The flat re-exports below preserve the pre-split import surface:
@@ -85,7 +85,7 @@ from .etcsl import (
     ETCSLSearchEnglishResponse,
     ETCSLSearchSumerianResponse,
 )
-from .signs import (
+from .ogsl import (
     CuneifyResponse,
     LookupSignResponse,
     SignInfo,
@@ -139,7 +139,7 @@ __all__ = [
     "CDLIArtifact",
     "FindArtifactsResponse",
     "LookupArtifactResponse",
-    # signs
+    # ogsl
     "CuneifyResponse",
     "LookupSignResponse",
     "SignInfo",
