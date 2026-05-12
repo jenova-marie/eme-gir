@@ -5,7 +5,7 @@ Reads directly from inside a project zip (no extraction needed), uses ijson's
 C backend for constant-memory parsing, and defers index creation until after
 bulk insert for maximum throughput.
 
-Default target: eme-gir's gloss-sux.json (1.9 GB) inside corpus/eme-gir.zip.
+Default target: epsd2's gloss-sux.json (1.9 GB) inside corpus/epsd2.zip.
 """
 
 from __future__ import annotations
@@ -300,10 +300,10 @@ def ingest_instances(con, stream, log_every: int) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--zip", default="corpus/eme-gir.zip",
-                    help="zip archive to read from (default: corpus/eme-gir.zip)")
-    ap.add_argument("--member", default="eme-gir/gloss-sux.json",
-                    help="path inside the zip (default: eme-gir/gloss-sux.json)")
+    ap.add_argument("--zip", default="corpus/epsd2.zip",
+                    help="zip archive to read from (default: corpus/epsd2.zip)")
+    ap.add_argument("--member", default="epsd2/gloss-sux.json",
+                    help="path inside the zip (default: epsd2/gloss-sux.json)")
     ap.add_argument("--json", help="alternative: read this loose JSON file directly")
     ap.add_argument("--db", default=str(GLOSSARY_DB), help="output SQLite path")
     ap.add_argument("--log-every", type=int, default=20000,

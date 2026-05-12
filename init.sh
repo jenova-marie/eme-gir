@@ -69,12 +69,12 @@ log "data persists via the /app/data and /app/corpus bind mounts"
 log "wiping /app/data — contents are untrusted without a current sentinel"
 find /app/data -mindepth 1 -delete 2>/dev/null || true
 
-# 1. Corpus zips (~3.1 GB across 208 zips). The presence of eme-gir.zip
+# 1. Corpus zips (~3.1 GB across 208 zips). The presence of epsd2.zip
 #    is a good cheap proxy for "this directory has been populated";
 #    download_corpus.py itself is resume-safe and only fetches what's
 #    missing or wrong-sized.
-if [[ -e /app/corpus/eme-gir.zip ]]; then
-    log "[1/6] corpus: eme-gir.zip present, assuming corpus directory populated"
+if [[ -e /app/corpus/epsd2.zip ]]; then
+    log "[1/6] corpus: epsd2.zip present, assuming corpus directory populated"
 else
     log "[1/6] corpus: downloading Oracc JSON archives (~3.1 GB)"
     python3 /app/download_corpus.py
