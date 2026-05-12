@@ -41,12 +41,9 @@ Add to Claude Desktop / Code MCP config under "mcpServers"."""
 
 from __future__ import annotations
 
-import functools
-import logging
 import os
 import sqlite3
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +92,6 @@ from eme_gir.paths import (
     GLOSSARY_DB,
     GRAMMAR_DOC,
     INFLECTED_COLLOCATIONS_DB,
-    MCP_SERVER_LOG as LOG_FILE,
     ROOT,
     MEADOW_GRAMMAR_DOC,
     TEXT_INDEX_DB,
@@ -111,119 +107,17 @@ CDLI_ATTRIBUTION = (
     "for the History of Science (Berlin) since 2022."
 )
 
-# Logs go to TWO places so they're visible no matter how the server is run:
-#   - stderr (visible if launched directly: `python3 mcp_server.py 2>&1`)
-#   - log/mcp_server.log (always — Claude Code discards stderr, so without
-#     this file the logs would be invisible to its users; tail with
-#     `tail -F log/mcp_server.log` while chatting with the agent).
-# stdout is intentionally NOT a log target — it's reserved for the JSON-RPC
-# protocol stream and any extra writes there would corrupt the connection.
-_log_format = logging.Formatter(
-    "%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-_root = logging.getLogger()
-_root.setLevel(logging.INFO)
-_stderr_h = logging.StreamHandler(sys.stderr)
-_stderr_h.setFormatter(_log_format)
-_root.addHandler(_stderr_h)
-# Use a RotatingFileHandler so the log file doesn't grow unbounded across
-# many sessions. 5 MB × 3 backups = ~15 MB ceiling.
-from logging.handlers import RotatingFileHandler
-_file_h = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
-_file_h.setFormatter(_log_format)
-_root.addHandler(_file_h)
-log = logging.getLogger("eme-gir")
+# Logging + per-tool-call telemetry decorator are now provided by the
+# shared `eme_gir.log` module so every MCP server in the suite uses the
+# same configuration. `init_logging("mcp_server")` configures the root
+# logger (stderr + log/mcp_server.log rotating file) and returns the
+# package's `eme-gir` logger; the `log_call` decorator wraps each tool
+# function for entry/exit/timing logs + umami analytics emission. The
+# alias preserves the pre-extraction `@_log_call` decorator usage at
+# every tool definition below.
+from eme_gir.log import init_logging, log_call as _log_call
 
-
-def _log_call(fn):
-    """Wrap a tool function so each invocation logs entry + exit + timing.
-
-    Sits between @mcp.tool() and the bare function so FastMCP's pydantic
-    schema sees the original signature (preserved by functools.wraps).
-    """
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        arg_bits = []
-        for k, v in kwargs.items():
-            r = repr(v)
-            if len(r) > 60:
-                r = r[:57] + "..."
-            arg_bits.append(f"{k}={r}")
-        log.info(f"→ {fn.__name__}({', '.join(arg_bits)})")
-        # arg_keys ships only the NAMES (sorted) — never the values —
-        # so the analytics dashboard can answer "are agents passing
-        # `period=...` to see_examples?" without leaking which period
-        # any specific user queried.
-        arg_keys = sorted(kwargs.keys())
-        t0 = time.monotonic()
-        try:
-            result = fn(*args, **kwargs)
-        except Exception as e:
-            elapsed = (time.monotonic() - t0) * 1000
-            log.exception(
-                f"  ✗ {fn.__name__} ({elapsed:.0f}ms) raised "
-                f"{type(e).__name__}: {e}"
-            )
-            umami_analytics.emit(fn.__name__, {
-                "duration_ms": round(elapsed, 1),
-                "outcome": "error",
-                "error_kind": type(e).__name__,
-                "arg_keys": arg_keys,
-            })
-            raise
-        elapsed = (time.monotonic() - t0) * 1000
-        # Summarize the result shape concisely so logs stay scannable.
-        summary = ""
-        if isinstance(result, dict):
-            if "error" in result:
-                summary = f" ⚠ ERROR: {str(result['error'])[:80]}"
-            elif "results" in result and isinstance(result["results"], list):
-                summary = f" → {len(result['results'])} results"
-                if "total_matches" in result:
-                    summary += f" (of {result['total_matches']} total)"
-            elif "lines" in result and isinstance(result["lines"], list):
-                summary = f" → {len(result['lines'])} lines"
-                if result.get("period_filter"):
-                    summary += f" [period={result['period_filter']!r}]"
-            elif "matches" in result and isinstance(result["matches"], list):
-                summary = f" → {len(result['matches'])} matches"
-            elif "tokens" in result and isinstance(result["tokens"], list):
-                summary = f" → {len(result['tokens'])} tokens"
-            elif "cuneiform" in result:
-                cu = result["cuneiform"]
-                summary = f" → {cu[:40]}"
-                if not result.get("complete", True):
-                    summary += f" ({result.get('placeholder_count', 0)} □)"
-            elif "morphology" in result:
-                kinds = result.get("kinds") or []
-                counts = {k: len(result["morphology"][k]) for k in kinds}
-                summary = f" → {counts}"
-            elif "spellings" in result:
-                summary = (
-                    f" → {result.get('cf','?')} [{result.get('gw','?')}], "
-                    f"{len(result['spellings'])} spellings, "
-                    f"{len(result.get('senses', []))} senses"
-                )
-        log.info(f"  ← {fn.__name__} ({elapsed:.0f}ms){summary}")
-        # Outcome is "error" when the result is a structured ErrorResponse
-        # (tool returned cleanly but the operation failed — bad oid,
-        # missing scope, etc.) and "ok" otherwise. Distinct from raised
-        # exceptions, which take the except branch above.
-        is_error = isinstance(result, dict) and "error" in result
-        if not is_error and hasattr(result, "model_dump"):
-            try:
-                is_error = "error" in result.model_dump(exclude_none=True)
-            except Exception:
-                is_error = False
-        umami_analytics.emit(fn.__name__, {
-            "duration_ms": round(elapsed, 1),
-            "outcome": "error" if is_error else "ok",
-            "result_count": umami_analytics._count_result_items(result),
-            "arg_keys": arg_keys,
-        })
-        return result
-    return wrapper
+log = init_logging("mcp_server")
 
 def _build_auth_kwargs() -> dict:
     """Read EME_GIR_AUTH0_* env vars and return auth/token_verifier kwargs.
