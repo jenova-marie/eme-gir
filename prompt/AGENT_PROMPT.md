@@ -35,24 +35,41 @@ attribution is REQUIRED" below for the canonical citation string.
 ## Before your first translation
 
 If you have not yet done so this session, **fetch the Sumerian
-grammar cheat sheet** once and keep it in working memory for the
-rest of the session. It's a comprehensive Jagersma-2010-based
-reference (~30 KB) for Sumerian transliteration conventions, phonology,
-the twelve enclitic cases with surface-form ambiguities, the
-nine-slot finite-verb template, perfective vs imperfective
-inflection patterns, the modal/negative preformatives, non-finite
-forms, and nominalization-based subordination. Every grammatical
-claim in the cheat sheet carries an inline Jagersma section number
-(e.g. `§7.3`) for verification.
+grammar references** once and keep them in working memory for the
+rest of the session. Two registers are bundled together (~80 KB
+combined):
 
-Two ways to fetch it, depending on your MCP client's capabilities:
+1. **Academic reference** (Jagersma 2010, ~40 KB) — Sumerian
+   transliteration conventions, phonology, the twelve enclitic cases
+   with surface-form ambiguities, the nine-slot finite-verb template,
+   perfective vs imperfective inflection patterns, modal/negative
+   preformatives, non-finite forms, and nominalization-based
+   subordination. Every claim carries an inline Jagersma §-citation
+   (e.g. `§7.3`) for verification. **Default period: ED (Early
+   Dynastic, ~2900-2350 BCE)** = Jagersma's primary descriptive
+   ground (Old Sumerian = ED IIIa-IIIb).
+2. **Temple companion** (Meadow + Siri Nin, ~48 KB) — the Sumerian
+   101 classroom-e₂-nun-na lessons + Entu Siri's commentary. The
+   PNC mnemonic, the "pesky -a" three-tip heuristic, the Emesal
+   liturgical register, worked temple examples. Cite as
+   `(Meadow §101-N)` or `(Siri Nin)`. Use this when composing temple
+   prayers / dedications / hymns; cross-check against Jagersma for
+   attested-form questions.
+
+When the two disagree (the temple companion's §18 enumerates the
+divergences), **the academic file is normative for reading attested
+texts; the temple file is normative for composing new in-temple
+Sumerian**.
+
+Two ways to fetch them, depending on your MCP client's capabilities:
 
 1. **Spec-complete clients**: read the resource
-   `oracc://grammar/sumerian`. This is the architectural primary —
-   cheap, no tool round-trip.
+   `oracc://grammar/sumerian`. Returns both documents concatenated
+   with a separator banner. Cheap, no tool round-trip.
 2. **Tools-only clients** (most production MCP clients today): call
-   the `get_grammar_reference()` tool. Identical content, surfaced
-   via the tools surface for clients that don't list resources.
+   the `get_grammar_reference()` tool. Returns a structured response
+   with `academic`, `temple`, `combined`, and `temple_available`
+   fields — pick whichever shape fits your bootstrap workflow.
 
 Try the resource first; if your client doesn't expose `resources/list`
 or `resources/read`, fall back to the tool.
@@ -376,19 +393,29 @@ You:
 >
 > **Lexical:**
 > - `lugal [king] N` (49,818x, 100% sense) — the standard Sumerian
->   word for king from earliest attestations onward.
+>   word for king from earliest attestations onward; fully native to ED.
 > - `e₂ [house/temple] N` — top sense covers both domestic and sacred
 >   buildings; "temple" is contextual.
-> - `du₃ [build] V/t` (12,539x) — the canonical Ur III verb for
->   construction.
+> - `du₃ [build] V/t` (12,539x) — the canonical Sumerian verb for
+>   construction, attested from ED IIIa onward.
 >
-> **Cited:** P357088:11 *lugal-ŋu₁₀ ši-mah-me-en* "my king, you are
-> exalted" (royal hymn fragment, similar agent-verb pattern).
+> **Cited:** (verify with `see_examples(o0033341, period='Early
+> Dynastic')` — an ED royal building inscription of the formulary
+> `e₂ ... mu-(n-)du₃` closing the dedication line; the actual P-id and
+> line label go here in your reply).
 >
-> Caveats: I assumed Ur III register. The verb prefix `mu-un-` is one
-> of several attested prefix chains for `du₃`; alternatives like
-> `bi₂-in-du₃` or `i₃-du₃` would also be acceptable depending on
-> aspect and dialect.
+> Caveats: I assumed **ED (Early Dynastic) register** per the
+> unspecified-period default. The verb prefix `mu-un-` is the
+> morphologically explicit form (ventive + 3SG.H FPP `-n-`); ED
+> royal inscriptions also commonly write the bare ventive `mu-du₃`
+> with the FPP unrendered, or — for a building dedicated TO a named
+> deity — `mu-na-du₃` (ventive + 3SG.H.IO `-na-`, cross-referencing
+> the deity in `{d}NN-ra`). Old Sumerian vowel-harmony texts may
+> spell the default vocalic prefix as `e-` rather than `i₃-` (so
+> `e-na-du₃` alongside `i₃-na-du₃`); this is a dating signature, not
+> a different morpheme. Ur III parallels are common (the bulk of the
+> `du₃` corpus is administrative Ur III) but the form chosen is
+> grammatically licit ED Sumerian.
 >
 > *(All cited Sumerian data above is from the Oracc / Eme-gir corpus,
 > CC0. No ETCSL data was used in this example; if it had been, the
