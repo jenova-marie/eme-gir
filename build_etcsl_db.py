@@ -38,7 +38,7 @@ from pathlib import Path
 # their own valid chain so it works either way, but importing keeps us
 # consistent with the rest of the project.
 from download_corpus import _SSL_CTX, USER_AGENT
-from paths import ETCSL_DB, ETCSL_ZIP, ETCSL_ZIP_URL
+from eme_gir.paths import ETCSL_DB, ETCSL_ZIP, ETCSL_ZIP_URL
 
 
 # -----------------------------------------------------------------------------

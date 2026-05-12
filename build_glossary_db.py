@@ -19,7 +19,7 @@ from pathlib import Path
 
 import ijson
 
-from paths import GLOSSARY_DB
+from eme_gir.paths import GLOSSARY_DB
 
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);

@@ -20,7 +20,7 @@ import json
 import re
 import zipfile
 
-from paths import OGSL_ZIP
+from .paths import OGSL_ZIP
 
 OGSL_MEMBER = "ogsl/ogsl-sl.json"
 

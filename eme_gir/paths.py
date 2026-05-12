@@ -16,7 +16,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+# `paths.py` lives at `eme_gir/paths.py`; the repo root is one level up
+# so we can resolve `data/`, `corpus/`, `log/`, `prompt/` relative to it
+# regardless of CWD or which entry-point script imported us.
+ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 LOG_DIR = ROOT / "log"
 CORPUS_DIR = ROOT / "corpus"

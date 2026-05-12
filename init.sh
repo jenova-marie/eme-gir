@@ -138,7 +138,7 @@ fi
 log "[8/8] pre-warming Flask SQLite migrations (sort + casefold columns)"
 python3 -c "
 import sqlite3
-from paths import GLOSSARY_DB
+from eme_gir.paths import GLOSSARY_DB
 from app import ensure_sort_columns, ensure_casefold_columns
 con = sqlite3.connect(GLOSSARY_DB)
 ensure_sort_columns(con)

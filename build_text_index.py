@@ -18,7 +18,7 @@ from pathlib import Path
 
 import ijson
 
-from paths import TEXT_INDEX_DB
+from eme_gir.paths import TEXT_INDEX_DB
 
 # Project prefix may be multi-level (e.g. "eme-gir/admin/ur3/corpusjson/P12345.json")
 # so we capture everything up to "/corpusjson/" — that prefix is exactly the

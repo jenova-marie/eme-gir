@@ -49,7 +49,7 @@ from download_corpus import (  # noqa: E402
     human as _human,
 )
 
-from paths import CORPUS_DIR, ROOT
+from eme_gir.paths import CORPUS_DIR, ROOT
 
 ORACC_HOST = "https://oracc.museum.upenn.edu"
 # /projects.json is the canonical simple list (just pathnames). The richer

@@ -44,7 +44,7 @@ from pathlib import Path
 
 import certifi
 
-from paths import CDLI_CSV, CDLI_CSV_URL, CDLI_DB
+from eme_gir.paths import CDLI_CSV, CDLI_CSV_URL, CDLI_DB
 
 # Curated subset of CSV columns we actually want in the SQLite. Each
 # tuple is (csv_column_name, sqlite_column_name) — we rename a few for

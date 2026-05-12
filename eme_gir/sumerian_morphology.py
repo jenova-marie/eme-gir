@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from mcp_models import Suffix
+from .models import Suffix
 
 
 # Suffix patterns, LONGEST-FIRST so multi-morpheme combos match before

@@ -13,7 +13,7 @@ import sqlite3
 import zipfile
 from typing import Any, Iterator
 
-from paths import TEXT_INDEX_DB
+from .paths import TEXT_INDEX_DB
 
 
 def parse_word_ref(word_ref: str) -> tuple[str, str, str, str | None] | None:

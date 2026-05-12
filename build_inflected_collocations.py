@@ -46,8 +46,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterator
 
-from paths import INFLECTED_COLLOCATIONS_DB, TEXT_INDEX_DB
-from sumerian_morphology import outermost_case, peel_suffixes, strip_token
+from eme_gir.paths import INFLECTED_COLLOCATIONS_DB, TEXT_INDEX_DB
+from eme_gir.sumerian_morphology import outermost_case, peel_suffixes, strip_token
 
 
 SCHEMA = """

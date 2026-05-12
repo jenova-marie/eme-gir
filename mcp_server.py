@@ -53,10 +53,10 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-import cuneify as _cuneify
-import text_resolver
-import umami_analytics
-from mcp_models import (
+from eme_gir import cuneify as _cuneify
+from eme_gir import text_resolver
+from eme_gir import umami_analytics
+from eme_gir.models import (
     AnalyzeFormResponse,
     CDLIArtifact,
     CaseChunk,
@@ -82,7 +82,7 @@ from mcp_models import (
     TranslateEnglishResponse,
     TranslateSumerianResponse,
 )
-from paths import (
+from eme_gir.paths import (
     AGENT_PROMPT_DOC,
     CDLI_ARTIFACT_URL,
     CDLI_DB,
@@ -263,7 +263,7 @@ def _build_auth_kwargs() -> dict:
     from mcp.server.auth.settings import AuthSettings
     from pydantic import AnyHttpUrl
 
-    from auth0_verifier import Auth0TokenVerifier
+    from eme_gir.auth0_verifier import Auth0TokenVerifier
 
     tenant_url = os.environ.get("EME_GIR_AUTH0_TENANT_URL", "").strip()
     audience = os.environ.get("EME_GIR_AUTH0_AUDIENCE", "").strip()
@@ -561,7 +561,7 @@ def _entry_payload(con: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
 # reused by build_inflected_collocations.py during corpus ingest. The
 # module-level aliases below preserve the existing private names used
 # elsewhere in this file, so the refactor is import-only — no logic change.
-from sumerian_morphology import (
+from eme_gir.sumerian_morphology import (
     SUMERIAN_SUFFIX_TABLE,
     VERBAL_PREFIXES,
     detect_verbal_prefixes as _detect_verbal_prefixes,

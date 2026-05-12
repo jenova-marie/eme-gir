@@ -26,7 +26,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterator
 
-from paths import COLLOCATIONS_DB, TEXT_INDEX_DB
+from eme_gir.paths import COLLOCATIONS_DB, TEXT_INDEX_DB
 
 SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);

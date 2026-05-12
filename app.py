@@ -19,9 +19,9 @@ from pathlib import Path
 
 from flask import Flask, abort, g, redirect, render_template, request, url_for
 
-import cuneify as _cuneify
-import text_resolver
-from paths import GLOSSARY_DB as DB_PATH, ROOT
+from eme_gir import cuneify as _cuneify
+from eme_gir import text_resolver
+from eme_gir.paths import GLOSSARY_DB as DB_PATH, ROOT
 
 # Sumerian alphabet order (from index.html letter nav).
 LETTER_ORDER = "ABCDEGŊHḪIKLMNOPRSṢŠTṬUWXYZ"
