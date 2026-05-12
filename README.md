@@ -47,7 +47,7 @@ A laptop-friendly version of the entire Eme-gir + Oracc dataset plus the ETCSL l
 
 A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
-The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the seventeen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
+The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the nineteen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
 
 ### For digital humanists
 
@@ -62,7 +62,7 @@ When an LLM agent connects to the `eme-gir` MCP server it gains nineteen special
 Both resources are designed to be fetched once at session start so the agent can self-bootstrap on first connection — no operator-side prompt copy-paste required.
 
 - **`oracc://prompt/agent`** — a drop-in system prompt teaching the end-to-end workflow over these tools: how to decompose English into content words, when to reach for `find_compound` vs `find_collocations`, how to pick ḫamṭu vs marû aspect, the required output format (transliteration + cuneiform + interlinear gloss + lexical justification + cited attestation), the ETCSL attribution requirement, and a fully worked example. Pairs with the grammar reference below; the prompt teaches *how to use the tools*, the grammar teaches *what Sumerian is*.
-- **`oracc://grammar/sumerian`** — a ~30 KB comprehensive Sumerian grammar cheat sheet (transliteration conventions, phonology, the twelve enclitic cases with surface-ambiguity tables, gender/plural, pronouns/numerals/adjectives, the nine-slot finite-verb template, perfective vs imperfective inflection patterns, all preformatives (vocalic/modal/negative), dimensional prefixes (IO/OO/local/comitative/ablative/terminative), the ventive `{mu}` and middle `{ba}`, non-finite forms, copular clauses, and nominalization-based subordination). Distilled from Bram Jagersma, *A Descriptive Grammar of Sumerian* (PhD dissertation, Universiteit Leiden, 2010, 776 pp) — the most comprehensive modern descriptive grammar of Sumerian. Every grammatical claim carries an inline Jagersma section number (e.g. `§7.3`) so the user can verify against the primary reference. Default period for translation when unspecified is **ED (Early Dynastic, ~2900-2350 BCE)** — Jagersma's primary descriptive ground (Old Sumerian = ED IIIa-IIIb). Without this in working memory, the agent can't reason about why `lugal-ra` is dative or why `mu-na-du₃` and `bi₂-in-du₃` differ in person agreement.
+- **`oracc://grammar/sumerian`** — TWO grammar references bundled (~80 KB combined). **First: the academic reference** (~40 KB) — a comprehensive Sumerian grammar cheat sheet distilled from Bram Jagersma, *A Descriptive Grammar of Sumerian* (PhD dissertation, Universiteit Leiden, 2010, 776 pp), the most comprehensive modern descriptive grammar of Sumerian. Covers transliteration conventions, phonology, the twelve enclitic cases with surface-ambiguity tables, gender/plural, pronouns/numerals/adjectives, the nine-slot finite-verb template, perfective vs imperfective inflection patterns, all preformatives (vocalic/modal/negative), dimensional prefixes (IO/OO/local/comitative/ablative/terminative), the ventive `{mu}` and middle `{ba}`, non-finite forms, copular clauses, and nominalization-based subordination. Every grammatical claim carries an inline Jagersma section number (e.g. `§7.3`) so the user can verify against the primary reference. **Second: the temple-register companion** (~48 KB) — Meadow's Sumerian 101 classroom-e₂-nun-na lessons plus Entu Siri Nin's commentary: prayer-ready pedagogy (the PNC mnemonic, the "pesky -a" three-tip heuristic, the Emesal liturgical register, worked temple-composition examples). Conflict-resolution policy: the academic part is normative for reading attested texts; the temple part is normative for composing new in-temple Sumerian. Default period for translation when unspecified is **ED (Early Dynastic, ~2900-2350 BCE)** — Jagersma's primary descriptive ground (Old Sumerian = ED IIIa-IIIb). Without this in working memory, the agent can't reason about why `lugal-ra` is dative or why `mu-na-du₃` and `bi₂-in-du₃` differ in person agreement.
 
 **For clients that only surface tools and not MCP resources** (the majority of production MCP clients as of writing), the same two bodies of content are also exposed as ordinary tools — call **`start_here()`** to get the agent system prompt and **`get_grammar_reference()`** to get the grammar cheat sheet. The agent prompt's docstring is prefixed with "⭐ CALL THIS FIRST" so a tools-list scan naturally surfaces it as the entry point. Spec-complete clients should prefer the resource form (cheaper, no tool round-trip, semantically right); the tool wrappers are a compatibility shim.
 
@@ -108,22 +108,31 @@ The four `etcsl_*` tools query the Oxford [Electronic Text Corpus of Sumerian Li
 
 Every `etcsl_*` result carries an `attribution` field with the canonical citation: *Black, J.A. et al., The Electronic Text Corpus of Sumerian Literature (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. CC BY 3.0 UK.* Attribution is required under the ETCSL license; the agent passes it through to the user verbatim.
 
+### Artifact catalogue (via CDLI)
+
+The two CDLI-backed tools query the **Cuneiform Digital Library Initiative**'s artifact catalogue — 353,000 cuneiform-bearing objects indexed by P-id with their excavation provenience, period attribution, museum custody, dimensions, publication history, and the URLs to CDLI-hosted photographs and line drawings. The same catalogue is also splatted **automatically** onto every cited line returned by `see_examples` and `find_verb_form`, so an agent answering "show me an attested form" can offer "see the actual tablet" links to the user without any extra tool calls — `cdli_url`, `photo_url`, `lineart_url`, plus thumbnails and museum holding info ride along on every `AttestationLine`.
+
+- **`lookup_artifact(p_id)`** — one P-id → one record. Upgrades a bare "P347156" citation into a proper "VS 24, 037 (VAT 16439, Berlin Vorderasiatisches Museum), Old Babylonian, from Babylon" reference. Returns provenience (with remarks and excavation field number), period (with refinement remarks), museum (collection + catalog number + accession number), dimensions, genre/subgenre, language, material, object type, publication history, and computed image URLs (`photo_url`, `lineart_url`, plus `photo_thumb_url` / `lineart_thumb_url` for inline display).
+- **`find_artifacts(provenience=…, period=…, museum_collection=…, genre=…, language=…, has_photo=…, has_lineart=…, …)`** — filtered query over the 353K-row catalogue. For structural questions about the corpus: *"every Ur III tablet from Drehem held by the British Museum"*, *"all Lagash II votive inscriptions"*, *"every Sumerian literary fragment in the Yale Babylonian Collection that has a photograph"*. Useful when the user wants representative coverage rather than a single example.
+
+Every artifact result carries the CDLI catalogue attribution. CDLI publishes its catalogue as **CC0** so attribution isn't legally required, but we pass it through anyway because the catalogue represents decades of meticulous scholarship by the CDLI team (originally UCLA, now MPIWG Berlin). We do **not** host any CDLI imagery — every `photo_url` and `lineart_url` we return points straight to cdli.earth, so CDLI remains the source of truth for tablet reproductions.
+
 For the recommended end-to-end agent workflow that stitches these tools together (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md) — a drop-in system prompt that teaches the workflow with worked examples. The same content is also served by the MCP server itself as `oracc://prompt/agent` so a connecting agent can self-bootstrap without operator-side configuration.
 
 ## Architecture at a glance
 
 ```
-┌────────────────────────┐      ┌──────────────────────────┐
-│ oracc.museum.upenn.edu │      │ etcsl.orinst.ox.ac.uk    │
-│  /json/                │      │  (Oxford literary corpus) │
-│  — 208 project zips    │      │  — TEI XML, bilingual    │
-└─────────┬──────────────┘      └────────┬─────────────────┘
-          │ download_corpus.py            │ build_etcsl_db.py
-          ▼                               ▼
-      corpus/*.zip                  data/etcsl.sqlite
-          │
-          │ streaming JSON parser (ijson, constant-memory)
-          ▼
+┌────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐
+│ oracc.museum.upenn.edu │  │ etcsl.orinst.ox.ac.uk    │  │ cdli-gh @ githubuserc...  │
+│  /json/                │  │  (Oxford literary corpus)│  │  cdli_cat.csv (LFS-direct)│
+│  — 208 project zips    │  │  — TEI XML, bilingual    │  │  — 353K artifact records  │
+└─────────┬──────────────┘  └────────┬─────────────────┘  └────────┬─────────────────┘
+          │ download_corpus.py       │ build_etcsl_db.py           │ build_cdli_db.py
+          ▼                          ▼                             ▼
+      corpus/*.zip              data/etcsl.sqlite             data/cdli.sqlite
+          │                                                       (provenience,
+          │ streaming JSON parser (ijson, constant-memory)         museum, period,
+          ▼                                                        image URLs)
       data/glossary.sqlite     data/text_index.sqlite     data/collocations.sqlite
        (3.4 GB · 35.5 M         (10 MB · text → zip          (22 MB · phrasal n-grams
         attestation refs)         lookup + period meta)        of citation forms)
@@ -131,11 +140,13 @@ For the recommended end-to-end agent workflow that stitches these tools together
           ▼
       ┌──────────────────────┐         ┌─────────────────────────────────┐
       │ Flask web app        │         │ MCP server (FastMCP)             │
-      │  • /eme-gir/sux        │         │  • stdio transport (Claude Code, │
+      │  • /eme-gir/sux      │         │  • stdio transport (Claude Code, │
       │  • entry pages       │         │    local agents)                 │
       │  • cuneiform render  │         │  • streamable-HTTP transport     │
       │  • period filtering  │         │    (remote agents, Docker)       │
-      │                      │         │  • 17 translation tools +        │
+      │                      │         │  • 19 translation/catalogue      │
+      │                      │         │    tools (13 Eme-gir + 4 ETCSL   │
+      │                      │         │    + 2 CDLI) +                   │
       │                      │         │    2 resources +                 │
       │                      │         │    2 bootstrap tool wrappers     │
       └──────────────────────┘         └─────────────────────────────────┘
