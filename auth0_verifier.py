@@ -32,7 +32,7 @@ import jwt
 from jwt import PyJWKClient
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
-log = logging.getLogger("epsd2.auth")
+log = logging.getLogger("eme-gir.auth")
 
 
 class Auth0TokenVerifier(TokenVerifier):
@@ -43,7 +43,7 @@ class Auth0TokenVerifier(TokenVerifier):
             No trailing slash; the issuer string is constructed by
             appending '/' (Auth0 emits `iss` with a trailing slash).
         audience: the API identifier configured in Auth0 for this server,
-            e.g. "https://epsd2.example.com". Tokens whose `aud` claim
+            e.g. "https://eme-gir.example.com". Tokens whose `aud` claim
             doesn't match are rejected — this is the RFC 8707 audience
             binding that prevents tokens from one MCP server being
             replayed against another.

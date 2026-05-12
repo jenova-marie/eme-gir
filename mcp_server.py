@@ -1,4 +1,4 @@
-"""MCP server exposing the local ePSD2 corpus for English -> Sumerian translation.
+"""MCP server exposing the local Eme-gir corpus for English -> Sumerian translation.
 
 Tools:
     translate_english(query, limit)        - rank Sumerian candidates for an English meaning
@@ -131,7 +131,7 @@ from logging.handlers import RotatingFileHandler
 _file_h = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3)
 _file_h.setFormatter(_log_format)
 _root.addHandler(_file_h)
-log = logging.getLogger("epsd2")
+log = logging.getLogger("eme-gir")
 
 
 def _log_call(fn):
@@ -224,32 +224,32 @@ def _log_call(fn):
     return wrapper
 
 def _build_auth_kwargs() -> dict:
-    """Read EPSD2_AUTH0_* env vars and return auth/token_verifier kwargs.
+    """Read EME_GIR_AUTH0_* env vars and return auth/token_verifier kwargs.
 
-    Returns an empty dict (auth disabled) unless EPSD2_REQUIRE_AUTH=1.
+    Returns an empty dict (auth disabled) unless EME_GIR_REQUIRE_AUTH=1.
     When enabled, returns {'auth': AuthSettings, 'token_verifier': Auth0TokenVerifier}
     suitable for splatting into the FastMCP constructor.
 
     Auth is OPT-IN and only meaningful for the streamable-HTTP transport;
     stdio runs unauthenticated regardless (per MCP spec, stdio uses
     environment-based credentials, not OAuth). The transport check
-    happens at run() time — if EPSD2_REQUIRE_AUTH=1 is set but stdio is
+    happens at run() time — if EME_GIR_REQUIRE_AUTH=1 is set but stdio is
     selected, the constructed verifier sits idle, which is harmless.
 
-    Required env vars when EPSD2_REQUIRE_AUTH=1:
-        EPSD2_AUTH0_TENANT_URL          e.g. https://my-tenant.auth0.com
-        EPSD2_AUTH0_AUDIENCE            e.g. https://epsd2.example.com
-        EPSD2_AUTH0_RESOURCE_SERVER_URL e.g. https://epsd2.example.com
+    Required env vars when EME_GIR_REQUIRE_AUTH=1:
+        EME_GIR_AUTH0_TENANT_URL          e.g. https://my-tenant.auth0.com
+        EME_GIR_AUTH0_AUDIENCE            e.g. https://eme-gir.example.com
+        EME_GIR_AUTH0_RESOURCE_SERVER_URL e.g. https://eme-gir.example.com
                                         (the public-facing URL of THIS
                                         server; goes into the RFC 9728
                                         Protected Resource Metadata)
     Optional:
-        EPSD2_AUTH0_REQUIRED_SCOPE      defaults to 'mcp:access'
+        EME_GIR_AUTH0_REQUIRED_SCOPE      defaults to 'mcp:access'
     """
     # Accept the conventional set of truthy strings so operators don't have
     # to remember our exact magic string. Anything not in this set (incl.
     # unset, "0", "false", "off", "no") leaves auth disabled.
-    if os.environ.get("EPSD2_REQUIRE_AUTH", "").strip().lower() not in {
+    if os.environ.get("EME_GIR_REQUIRE_AUTH", "").strip().lower() not in {
         "1", "true", "on", "yes", "y", "enable", "enabled",
     }:
         return {}
@@ -263,25 +263,25 @@ def _build_auth_kwargs() -> dict:
 
     from auth0_verifier import Auth0TokenVerifier
 
-    tenant_url = os.environ.get("EPSD2_AUTH0_TENANT_URL", "").strip()
-    audience = os.environ.get("EPSD2_AUTH0_AUDIENCE", "").strip()
+    tenant_url = os.environ.get("EME_GIR_AUTH0_TENANT_URL", "").strip()
+    audience = os.environ.get("EME_GIR_AUTH0_AUDIENCE", "").strip()
     resource_server_url = os.environ.get(
-        "EPSD2_AUTH0_RESOURCE_SERVER_URL", ""
+        "EME_GIR_AUTH0_RESOURCE_SERVER_URL", ""
     ).strip()
-    required_scope = os.environ.get("EPSD2_AUTH0_REQUIRED_SCOPE", "mcp:access").strip()
+    required_scope = os.environ.get("EME_GIR_AUTH0_REQUIRED_SCOPE", "mcp:access").strip()
 
     missing = [
         name
         for name, value in [
-            ("EPSD2_AUTH0_TENANT_URL", tenant_url),
-            ("EPSD2_AUTH0_AUDIENCE", audience),
-            ("EPSD2_AUTH0_RESOURCE_SERVER_URL", resource_server_url),
+            ("EME_GIR_AUTH0_TENANT_URL", tenant_url),
+            ("EME_GIR_AUTH0_AUDIENCE", audience),
+            ("EME_GIR_AUTH0_RESOURCE_SERVER_URL", resource_server_url),
         ]
         if not value
     ]
     if missing:
         raise RuntimeError(
-            f"EPSD2_REQUIRE_AUTH=1 but missing env vars: {', '.join(missing)}. "
+            f"EME_GIR_REQUIRE_AUTH=1 but missing env vars: {', '.join(missing)}. "
             "See START.md 'Adding Auth0 OAuth' for the full env contract."
         )
 
@@ -300,7 +300,7 @@ def _build_auth_kwargs() -> dict:
 
 
 def _build_transport_security_kwargs() -> dict:
-    """Read EPSD2_ALLOWED_HOSTS / _ORIGINS / _DISABLE_DNS_REBINDING_PROTECTION
+    """Read EME_GIR_ALLOWED_HOSTS / _ORIGINS / _DISABLE_DNS_REBINDING_PROTECTION
     env vars and return a transport_security kwarg for FastMCP.
 
     Why: the MCP SDK's streamable-http transport ships with DNS-rebinding
@@ -313,17 +313,17 @@ def _build_transport_security_kwargs() -> dict:
     the proxy's hostname.
 
     Env contract:
-        EPSD2_ALLOWED_HOSTS    comma-separated; the public hostname(s)
+        EME_GIR_ALLOWED_HOSTS    comma-separated; the public hostname(s)
                                that the reverse proxy serves us under.
                                localhost + 127.0.0.1 are always added so
                                in-container healthchecks keep working.
-                               e.g. "epsd2.intra.example.net,epsd2.example.com"
-        EPSD2_ALLOWED_ORIGINS  comma-separated; the Origin headers we
+                               e.g. "eme-gir.intra.example.net,eme-gir.example.com"
+        EME_GIR_ALLOWED_ORIGINS  comma-separated; the Origin headers we
                                accept on cross-origin requests (browser
                                clients). Stricter than allowed_hosts —
                                no auto-additions.
                                e.g. "https://archive.example.org"
-        EPSD2_DISABLE_DNS_REBINDING_PROTECTION
+        EME_GIR_DISABLE_DNS_REBINDING_PROTECTION
                                truthy → disable the check entirely.
                                Only safe when the reverse proxy already
                                enforces Host validation upstream.
@@ -332,10 +332,10 @@ def _build_transport_security_kwargs() -> dict:
     default — fine for local dev). When ANY of them is set, returns
     {'transport_security': TransportSecuritySettings(...)}.
     """
-    raw_hosts = os.environ.get("EPSD2_ALLOWED_HOSTS", "").strip()
-    raw_origins = os.environ.get("EPSD2_ALLOWED_ORIGINS", "").strip()
+    raw_hosts = os.environ.get("EME_GIR_ALLOWED_HOSTS", "").strip()
+    raw_origins = os.environ.get("EME_GIR_ALLOWED_ORIGINS", "").strip()
     disable = os.environ.get(
-        "EPSD2_DISABLE_DNS_REBINDING_PROTECTION", ""
+        "EME_GIR_DISABLE_DNS_REBINDING_PROTECTION", ""
     ).strip().lower() in {"1", "true", "on", "yes", "y", "enable", "enabled"}
 
     if not (raw_hosts or raw_origins or disable):
@@ -405,10 +405,10 @@ def _build_transport_security_kwargs() -> dict:
 
 
 mcp = FastMCP(
-    name="oracc-epsd2",
+    name="oracc-eme-gir",
     instructions=(
         "Local Sumerian dictionary + corpus tools for English ↔ Sumerian "
-        "translation, grounded in the Oracc / ePSD2 dataset (15,940 headwords, "
+        "translation, grounded in the Oracc / Eme-gir dataset (15,940 headwords, "
         "35.5 M attestations, 178K phrasal collocations, 138K corpusjson texts). "
         "All data is CC0; no network calls.\n\n"
         "════════════════════════════════════════════════════════════════════\n"
@@ -783,7 +783,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
           "oid": str,
           "lines": [
             {
-              "text_id": "P347156", "project": "epsd2",
+              "text_id": "P347156", "project": "eme-gir",
               "line_label": "o 34",
               "designation": "YOS 14, 341",
               "period": "Old Babylonian",
@@ -2092,7 +2092,7 @@ def lookup_sign(query: str, limit: int = 10) -> LookupSignResponse | ErrorRespon
 # find_verb_form — feature-driven attestation lookup over the morphology table
 # -----------------------------------------------------------------------------
 #
-# Slot order encoded by Oracc's morph patterns (verified against epsd2/sux):
+# Slot order encoded by Oracc's morph patterns (verified against eme-gir/sux):
 #   [modal] . [conj-prefix] . [dim1=na/dat] . [dim2=ni/loc] . [obj-agreement] : [base] ; [suffixes]
 #
 # Examples from du[build] V/t:
@@ -2356,7 +2356,7 @@ def find_verb_form(
         if not base:
             return ErrorResponse(
                 error=f"entry {eid} has no morphology base; "
-                       "this verb may be irregular/unanalyzed in epsd2"
+                       "this verb may be irregular/unanalyzed in eme-gir"
             )
         base_n = base["n"]
 
@@ -2619,7 +2619,7 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaRe
     limit = max(1, min(50, int(limit)))
     con = _etcsl_connect()
     try:
-        # The words index is case-sensitive on lemma, but ePSD2 lemmas are
+        # The words index is case-sensitive on lemma, but Eme-gir lemmas are
         # always lowercase (except proper nouns). Try lower then capitalized.
         rows = con.execute(
             """
@@ -3246,7 +3246,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="mcp_server.py",
         description=(
-            "Run the epsd2 MCP server. Default transport is stdio (used by "
+            "Run the eme-gir MCP server. Default transport is stdio (used by "
             "Claude Code's project-scoped .mcp.json auto-detection). Pass "
             "--transport http to expose the same tools over HTTP — useful "
             "for remote agents, Docker, or anywhere stdio isn't available."
@@ -3280,7 +3280,7 @@ if __name__ == "__main__":
             "Build it: `python3 build_text_index.py`"
         )
         sys.exit(1)
-    log.info(f"epsd2 MCP server starting (cwd={Path.cwd()}, root={ROOT})")
+    log.info(f"eme-gir MCP server starting (cwd={Path.cwd()}, root={ROOT})")
     log.info(
         f"  glossary={GLOSSARY_DB.stat().st_size // (1024*1024)} MB, "
         f"text_index={TEXT_INDEX_DB.stat().st_size // (1024*1024)} MB, "
@@ -3293,11 +3293,11 @@ if __name__ == "__main__":
     if mcp.settings.auth is not None:
         log.info(
             f"  auth=ENABLED (Auth0 issuer={mcp.settings.auth.issuer_url}, "
-            f"audience={os.environ.get('EPSD2_AUTH0_AUDIENCE')}, "
+            f"audience={os.environ.get('EME_GIR_AUTH0_AUDIENCE')}, "
             f"required_scopes={mcp.settings.auth.required_scopes})"
         )
     else:
-        log.info("  auth=disabled (set EPSD2_REQUIRE_AUTH=1 to enable)")
+        log.info("  auth=disabled (set EME_GIR_REQUIRE_AUTH=1 to enable)")
     # Transport-security (DNS-rebinding) banner — confirms which Host
     # header values uvicorn will accept. Default (no env vars set) is
     # the SDK's localhost-only allowlist; behind a reverse proxy this
@@ -3306,12 +3306,12 @@ if __name__ == "__main__":
     if ts is None:
         log.info(
             "  transport_security=default (SDK accepts Host: localhost / "
-            "127.0.0.1 only — set EPSD2_ALLOWED_HOSTS to add the public "
+            "127.0.0.1 only — set EME_GIR_ALLOWED_HOSTS to add the public "
             "hostname when deploying behind a reverse proxy)"
         )
     elif not ts.enable_dns_rebinding_protection:
         log.warning(
-            "  transport_security=DISABLED (EPSD2_DISABLE_DNS_REBINDING_PROTECTION "
+            "  transport_security=DISABLED (EME_GIR_DISABLE_DNS_REBINDING_PROTECTION "
             "is set — proxy MUST enforce Host validation upstream)"
         )
     else:
@@ -3320,7 +3320,7 @@ if __name__ == "__main__":
             f"allowed_origins={ts.allowed_origins})"
         )
     # Umami analytics — fire-and-forget tool-call telemetry. Off unless
-    # EPSD2_UMAMI_URL + EPSD2_UMAMI_WEBSITE_ID are both set. See
+    # EME_GIR_UMAMI_URL + EME_GIR_UMAMI_WEBSITE_ID are both set. See
     # umami_analytics.init_from_env() for the env-var contract.
     _umami = umami_analytics.init_from_env()
     if _umami is not None:
@@ -3331,8 +3331,8 @@ if __name__ == "__main__":
         )
     else:
         log.info(
-            "  analytics=disabled (set EPSD2_UMAMI_URL + "
-            "EPSD2_UMAMI_WEBSITE_ID to enable)"
+            "  analytics=disabled (set EME_GIR_UMAMI_URL + "
+            "EME_GIR_UMAMI_WEBSITE_ID to enable)"
         )
 
     if args.transport == "stdio":
@@ -3352,7 +3352,7 @@ if __name__ == "__main__":
         if mcp.settings.auth is None:
             auth_note = (
                 "No in-app auth — the proxy layer (nginx/caddy) is responsible "
-                "for TLS + access control. Set EPSD2_REQUIRE_AUTH=1 to enable "
+                "for TLS + access control. Set EME_GIR_REQUIRE_AUTH=1 to enable "
                 "Auth0 JWT verification in-app."
             )
         else:

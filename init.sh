@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# init.sh — one-shot data initialization for the epsd2 stack.
+# init.sh — one-shot data initialization for the eme-gir stack.
 #
 # Invoked by the `init` service in docker-compose.yml. The web and mcp
 # services declare `depends_on: init: condition: service_completed_successfully`,
@@ -42,10 +42,10 @@ INIT_VERSION="4"
 # when inflected_collocations.sqlite is absent; lookup_artifact /
 # find_artifacts AND the CDLI enrichment on see_examples / find_verb_form
 # error / degrade if cdli.sqlite is absent).
-: "${EPSD2_BUILD_COLLOCATIONS:=1}"
-: "${EPSD2_BUILD_INFLECTED_COLLOCATIONS:=1}"
-: "${EPSD2_BUILD_ETCSL:=1}"
-: "${EPSD2_BUILD_CDLI:=1}"
+: "${EME_GIR_BUILD_COLLOCATIONS:=1}"
+: "${EME_GIR_BUILD_INFLECTED_COLLOCATIONS:=1}"
+: "${EME_GIR_BUILD_ETCSL:=1}"
+: "${EME_GIR_BUILD_CDLI:=1}"
 
 log() { printf '[init %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
@@ -69,12 +69,12 @@ log "data persists via the /app/data and /app/corpus bind mounts"
 log "wiping /app/data — contents are untrusted without a current sentinel"
 find /app/data -mindepth 1 -delete 2>/dev/null || true
 
-# 1. Corpus zips (~3.1 GB across 208 zips). The presence of epsd2.zip
+# 1. Corpus zips (~3.1 GB across 208 zips). The presence of eme-gir.zip
 #    is a good cheap proxy for "this directory has been populated";
 #    download_corpus.py itself is resume-safe and only fetches what's
 #    missing or wrong-sized.
-if [[ -e /app/corpus/epsd2.zip ]]; then
-    log "[1/6] corpus: epsd2.zip present, assuming corpus directory populated"
+if [[ -e /app/corpus/eme-gir.zip ]]; then
+    log "[1/6] corpus: eme-gir.zip present, assuming corpus directory populated"
 else
     log "[1/6] corpus: downloading Oracc JSON archives (~3.1 GB)"
     python3 /app/download_corpus.py
@@ -93,8 +93,8 @@ python3 /app/build_glossary_db.py
 # 4. Collocations (~22 MB). Optional — find_collocations MCP tool
 #    returns a structured error if absent. Also used by find_phrase_pattern
 #    as a fallback when the case-aware inflected index is absent.
-if [[ "$EPSD2_BUILD_COLLOCATIONS" != "1" ]]; then
-    log "[4/7] collocations.sqlite: skipped (EPSD2_BUILD_COLLOCATIONS=$EPSD2_BUILD_COLLOCATIONS)"
+if [[ "$EME_GIR_BUILD_COLLOCATIONS" != "1" ]]; then
+    log "[4/7] collocations.sqlite: skipped (EME_GIR_BUILD_COLLOCATIONS=$EME_GIR_BUILD_COLLOCATIONS)"
 else
     log "[4/7] collocations.sqlite: building (~5 minutes)"
     python3 /app/build_collocations.py
@@ -103,16 +103,16 @@ fi
 # 5. Inflected collocations (~150 MB). Optional — find_phrase_pattern's
 #    case/sense-aware syntax errors out when this is absent, falling back
 #    to the legacy cf-only collocations.sqlite for v1 patterns.
-if [[ "$EPSD2_BUILD_INFLECTED_COLLOCATIONS" != "1" ]]; then
-    log "[5/7] inflected_collocations.sqlite: skipped (EPSD2_BUILD_INFLECTED_COLLOCATIONS=$EPSD2_BUILD_INFLECTED_COLLOCATIONS)"
+if [[ "$EME_GIR_BUILD_INFLECTED_COLLOCATIONS" != "1" ]]; then
+    log "[5/7] inflected_collocations.sqlite: skipped (EME_GIR_BUILD_INFLECTED_COLLOCATIONS=$EME_GIR_BUILD_INFLECTED_COLLOCATIONS)"
 else
     log "[5/7] inflected_collocations.sqlite: building (~25-40 minutes — case+sense aware)"
     python3 /app/build_inflected_collocations.py
 fi
 
 # 6. ETCSL (~31 MB). Optional but cheap — etcsl_* MCP tools require it.
-if [[ "$EPSD2_BUILD_ETCSL" != "1" ]]; then
-    log "[6/8] etcsl.sqlite: skipped (EPSD2_BUILD_ETCSL=$EPSD2_BUILD_ETCSL)"
+if [[ "$EME_GIR_BUILD_ETCSL" != "1" ]]; then
+    log "[6/8] etcsl.sqlite: skipped (EME_GIR_BUILD_ETCSL=$EME_GIR_BUILD_ETCSL)"
 else
     log "[6/8] etcsl.sqlite: building (~10 s, downloads 4.9 MB from OTA)"
     python3 /app/build_etcsl_db.py
@@ -121,8 +121,8 @@ fi
 # 7. CDLI catalogue (~157 MB). Optional but high-value — lookup_artifact
 #    and find_artifacts require it; see_examples / find_verb_form
 #    silently skip the CDLI URL enrichment when absent.
-if [[ "$EPSD2_BUILD_CDLI" != "1" ]]; then
-    log "[7/8] cdli.sqlite: skipped (EPSD2_BUILD_CDLI=$EPSD2_BUILD_CDLI)"
+if [[ "$EME_GIR_BUILD_CDLI" != "1" ]]; then
+    log "[7/8] cdli.sqlite: skipped (EME_GIR_BUILD_CDLI=$EME_GIR_BUILD_CDLI)"
 else
     log "[7/8] cdli.sqlite: building (~30s, downloads 147 MB from GitHub LFS)"
     python3 /app/build_cdli_db.py
@@ -152,9 +152,9 @@ cat > "$INIT_FILE" <<SENTINEL
 init_version=$INIT_VERSION
 initialized_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 hostname=$(hostname)
-collocations=$EPSD2_BUILD_COLLOCATIONS
-inflected_collocations=$EPSD2_BUILD_INFLECTED_COLLOCATIONS
-etcsl=$EPSD2_BUILD_ETCSL
-cdli=$EPSD2_BUILD_CDLI
+collocations=$EME_GIR_BUILD_COLLOCATIONS
+inflected_collocations=$EME_GIR_BUILD_INFLECTED_COLLOCATIONS
+etcsl=$EME_GIR_BUILD_ETCSL
+cdli=$EME_GIR_BUILD_CDLI
 SENTINEL
 log "==== initialization complete; sentinel written to $INIT_FILE ===="

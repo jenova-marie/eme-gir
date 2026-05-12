@@ -41,7 +41,7 @@ import threading
 
 import httpx
 
-log = logging.getLogger("epsd2.umami")
+log = logging.getLogger("eme-gir.umami")
 
 
 class _UmamiClient:
@@ -102,7 +102,7 @@ class _UmamiClient:
                     "Content-Type": "application/json",
                     # Umami's bot-filter looks at User-Agent; identify
                     # ourselves so events aren't dropped as bot traffic.
-                    "User-Agent": "epsd2-mcp/1.0 (Mozilla/5.0)",
+                    "User-Agent": "eme-gir-mcp/1.0 (Mozilla/5.0)",
                 }
                 if self.api_key:
                     headers["x-umami-api-key"] = self.api_key
@@ -119,31 +119,31 @@ _INSTANCE: _UmamiClient | None = None
 
 
 def init_from_env() -> _UmamiClient | None:
-    """Read EPSD2_UMAMI_* env vars and lazily construct the dispatcher.
+    """Read EME_GIR_UMAMI_* env vars and lazily construct the dispatcher.
 
     Returns the constructed client on success, or None when analytics
     should remain disabled (default — required env vars not set).
 
     Required env vars:
-        EPSD2_UMAMI_URL          base URL of the Umami instance, e.g.
+        EME_GIR_UMAMI_URL          base URL of the Umami instance, e.g.
                                   https://umami.recoverysky.app
-        EPSD2_UMAMI_WEBSITE_ID   Umami website UUID (from the dashboard)
+        EME_GIR_UMAMI_WEBSITE_ID   Umami website UUID (from the dashboard)
 
     Optional:
-        EPSD2_UMAMI_HOSTNAME     hostname to report (default: 'epsd2-mcp').
+        EME_GIR_UMAMI_HOSTNAME     hostname to report (default: 'eme-gir-mcp').
                                   Use this to distinguish multiple
                                   deployments (prod vs staging) under
                                   the same Umami website.
-        EPSD2_UMAMI_API_KEY      API key if your Umami instance requires
+        EME_GIR_UMAMI_API_KEY      API key if your Umami instance requires
                                   one for /api/send (most don't).
     """
     global _INSTANCE
-    url = os.environ.get("EPSD2_UMAMI_URL", "").strip()
-    wid = os.environ.get("EPSD2_UMAMI_WEBSITE_ID", "").strip()
+    url = os.environ.get("EME_GIR_UMAMI_URL", "").strip()
+    wid = os.environ.get("EME_GIR_UMAMI_WEBSITE_ID", "").strip()
     if not url or not wid:
         return None
-    hostname = os.environ.get("EPSD2_UMAMI_HOSTNAME", "").strip() or "epsd2-mcp"
-    api_key = os.environ.get("EPSD2_UMAMI_API_KEY", "").strip() or None
+    hostname = os.environ.get("EME_GIR_UMAMI_HOSTNAME", "").strip() or "eme-gir-mcp"
+    api_key = os.environ.get("EME_GIR_UMAMI_API_KEY", "").strip() or None
     _INSTANCE = _UmamiClient(
         url=url,
         website_id=wid,

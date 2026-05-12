@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A workspace for **parsing the Oracc / ePSD2 (electronic Pennsylvania Sumerian Dictionary) corpus and exposing it to LLM agents** for English ↔ Sumerian translation. Oracc is "The Open Richly Annotated Cuneiform Corpus" hosted at `https://oracc.museum.upenn.edu`. This directory holds:
+A workspace for **parsing the Oracc / Eme-gir (electronic Pennsylvania Sumerian Dictionary) corpus and exposing it to LLM agents** for English ↔ Sumerian translation. Oracc is "The Open Richly Annotated Cuneiform Corpus" hosted at `https://oracc.museum.upenn.edu`. This directory holds:
 
 - `download_corpus.py` — pulls the full set of `.zip` archives from `https://oracc.museum.upenn.edu/json/` into `corpus/`
 - `build_glossary_db.py` — streams a `gloss-{lang}.json` from inside its zip into a queryable SQLite index (`glossary.sqlite` by default). Uses ijson (yajl2_c backend) for constant-memory parsing.
-- `app.py` + `templates/` — Flask app that recreates Oracc's `/epsd2/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · ePSD2" with `static/img/jenova.png`.
-- `text_resolver.py` — resolves glossary `word_ref` strings (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual line of Sumerian text by lazy-loading the right `corpusjson/{P-id}.json` from inside its zip. LRU-cached per-text.
+- `app.py` + `templates/` — Flask app that recreates Oracc's `/eme-gir/sux` glossary browser locally, rendering from `glossary.sqlite`. Reuses Oracc's CSS via absolute URLs. Branded as "Jenova's Local · Eme-gir" with `static/img/jenova.png`.
+- `text_resolver.py` — resolves glossary `word_ref` strings (e.g. `eme-gir/admin/ur3:P113959.10.3`) into the actual line of Sumerian text by lazy-loading the right `corpusjson/{P-id}.json` from inside its zip. LRU-cached per-text.
 - `cuneify.py` — converts Oracc transliteration (`{d}lugal`, `lu₂-gal`, `peš₁₀-peš₁₀-e\l`) into Unicode cuneiform glyphs (𒀭𒈗, 𒇽𒃲, 𒁁𒁁𒂊). Loads the OGSL sign list from `corpus/ogsl.zip` once at import; exposed as a Jinja `cuneify` filter. ~93% of glossary spellings render with full glyph coverage.
-- `mcp_server.py` — MCP (Model Context Protocol) server exposing the corpus to LLM agents over stdio. **Twenty-one** tools live in `tools/list`: nineteen translation/catalogue tools + two bootstrap-resource wrappers. The nineteen are: thirteen over the ePSD2 dictionary + corpus (`translate_english`, `translate_sumerian`, `parse_phrase`, `lookup_entry`, `see_examples`, `find_compound`, `find_collocations`, `find_phrase_pattern`, `get_inflections`, `analyze_form`, `find_verb_form`, `lookup_sign`, `cuneify`) + four over the ETCSL literary corpus (`etcsl_search_english`, `etcsl_lines_with_lemma`, `etcsl_search_sumerian`, `etcsl_lookup_text` — bilingual because ETCSL ships English translations) + two over the CDLI artifact catalogue (`lookup_artifact`, `find_artifacts` — provenience, museum custody, and CDLI-hosted photo / lineart links). `see_examples` and `find_verb_form` also splat in CDLI image URLs and museum metadata onto every cited line when the catalogue is built. `parse_phrase` is the case-aware grammatical pre-annotator: it peels suffixes, classifies tokens by phrase role (subject_ergative, oblique_dative, comparison_equative, verb_head, …), and emits a compact bracket skeleton — not a true syntactic parser, but enough morphology-driven anchor points for the LLM to do the final parse. The two bootstrap wrappers — `start_here()` and `get_grammar_reference()` — return the same content as the two MCP resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) but via the universally-supported tools surface, since many production MCP clients today don't wire up `resources/list`/`resources/read`. `start_here()` leads its docstring with "⭐ CALL THIS FIRST" so a tools-list scan naturally surfaces it as the entry point. Spec-complete clients should prefer the resource form (cheaper, no tool round-trip, semantically primary). Designed for English↔Sumerian translation workflows; every candidate carries `sense_count` + `sense_pct` so the agent can distinguish "the word for X" from "X is a fringe meaning of this word".
-- `build_etcsl_db.py` — downloads the [ETCSL](https://etcsl.orinst.ox.ac.uk/) bulk zip (4.9 MB) from the Oxford Text Archive into `data/etcsl.zip`, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs that stdlib xml.etree refuses), normalizes ETCSL's ASCII transliteration (`j→ŋ`, `c→š`, digit subscripts) to ePSD2/Oracc convention, ingests into `data/etcsl.sqlite` (~31 MB) with FTS5 indexes on Sumerian transliteration AND English translations. Powers the four `etcsl_*` MCP tools.
+- `mcp_server.py` — MCP (Model Context Protocol) server exposing the corpus to LLM agents over stdio. **Twenty-one** tools live in `tools/list`: nineteen translation/catalogue tools + two bootstrap-resource wrappers. The nineteen are: thirteen over the Eme-gir dictionary + corpus (`translate_english`, `translate_sumerian`, `parse_phrase`, `lookup_entry`, `see_examples`, `find_compound`, `find_collocations`, `find_phrase_pattern`, `get_inflections`, `analyze_form`, `find_verb_form`, `lookup_sign`, `cuneify`) + four over the ETCSL literary corpus (`etcsl_search_english`, `etcsl_lines_with_lemma`, `etcsl_search_sumerian`, `etcsl_lookup_text` — bilingual because ETCSL ships English translations) + two over the CDLI artifact catalogue (`lookup_artifact`, `find_artifacts` — provenience, museum custody, and CDLI-hosted photo / lineart links). `see_examples` and `find_verb_form` also splat in CDLI image URLs and museum metadata onto every cited line when the catalogue is built. `parse_phrase` is the case-aware grammatical pre-annotator: it peels suffixes, classifies tokens by phrase role (subject_ergative, oblique_dative, comparison_equative, verb_head, …), and emits a compact bracket skeleton — not a true syntactic parser, but enough morphology-driven anchor points for the LLM to do the final parse. The two bootstrap wrappers — `start_here()` and `get_grammar_reference()` — return the same content as the two MCP resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) but via the universally-supported tools surface, since many production MCP clients today don't wire up `resources/list`/`resources/read`. `start_here()` leads its docstring with "⭐ CALL THIS FIRST" so a tools-list scan naturally surfaces it as the entry point. Spec-complete clients should prefer the resource form (cheaper, no tool round-trip, semantically primary). Designed for English↔Sumerian translation workflows; every candidate carries `sense_count` + `sense_pct` so the agent can distinguish "the word for X" from "X is a fringe meaning of this word".
+- `build_etcsl_db.py` — downloads the [ETCSL](https://etcsl.orinst.ox.ac.uk/) bulk zip (4.9 MB) from the Oxford Text Archive into `data/etcsl.zip`, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs that stdlib xml.etree refuses), normalizes ETCSL's ASCII transliteration (`j→ŋ`, `c→š`, digit subscripts) to Eme-gir/Oracc convention, ingests into `data/etcsl.sqlite` (~31 MB) with FTS5 indexes on Sumerian transliteration AND English translations. Powers the four `etcsl_*` MCP tools.
 - `build_cdli_db.py` — downloads the [CDLI](https://cdli.earth) bulk catalogue (`cdli_cat.csv`, ~147 MB) from the cdli-gh GitHub mirror via media.githubusercontent.com (LFS-direct, no `git lfs` install needed), parses 353K artifact rows × 64 columns into `data/cdli.sqlite` (~157 MB) keeping a curated subset of ~25 columns we actually use (designation, period, provenience, museum, dimensions, image-availability flags). Powers the `lookup_artifact` + `find_artifacts` MCP tools AND the photo/lineart URL enrichment that gets splatted onto every cited line by `see_examples` / `find_verb_form`. CDLI catalogue is CC0; we host no images — all image URLs point straight to cdli.earth.
 - `build_collocations.py` — walks every corpusjson text in `corpus/`, extracts 2/3/4-grams of citation forms within each line, stores counts in `collocations.sqlite`. ~138K texts → ~178K collocations kept (default `--min-count 3`).
 - `build_text_index.py` — scans every project zip in `corpus/` for `*/corpusjson/P*.json` files and builds `text_index.sqlite`, a `(project, text_id) → (zip_path, member_path)` map. Takes ~2 s for the full 208 zips.
 - `paths.py` — single source of truth for project file locations (DATA_DIR, LOG_DIR, GLOSSARY_DB, etc.). Every other module imports its canonical paths from here.
 - `corpus/` — 208 zip files (~3.1 GB), one per Oracc project; this is the bulk dataset
 - `data/` — generated SQLite indexes live here (auto-created on first run via `paths.py`):
-  - `data/glossary.sqlite` — 3.4 GB indexed extract of `epsd2/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
+  - `data/glossary.sqlite` — 3.4 GB indexed extract of `eme-gir/gloss-sux.json` (15,940 headwords, 124,649 spellings, 37,659 period rows, 1,901 compound refs, 35.5 M instance refs); sub-10 ms point lookups. Rebuild with `python3 build_glossary_db.py`.
   - `data/text_index.sqlite` — ~10 MB index of 139,455 `(project, text_id, period, designation)` rows across all corpus zips, enabling instant text→zip lookup AND period filtering on attestations. 85% of texts have period metadata pulled from each project's `catalogue.json`. Rebuild with `python3 build_text_index.py`.
   - `data/collocations.sqlite` — ~22 MB index of 178K phrasal collocations (2/3/4-grams of citation forms) mined from ~138K corpusjson texts, with min count 3. Plus 62K unigram counts. Rebuild with `python3 build_collocations.py`.
   - `data/inflected_collocations.sqlite` — ~62 MB index of ~106K case+sense-aware n-grams (cf, gw, pos, case per slot) mined from the same ~138K corpusjson texts, filtered to Sumerian-only (`f.lang` starts with `sux`). Uses the same suffix peeler as `parse_phrase` to detect the outermost case marker on each lemma's visible spelling. Powers v2/v3 syntax (`lugal[king]:ergative`, `N:locative`, etc.) in `find_phrase_pattern`. Built in ~5 min. Rebuild with `python3 build_inflected_collocations.py`.
@@ -53,10 +53,10 @@ python3 download_corpus.py --list-only
 python3 download_corpus.py --workers 2
 
 # Inspect a single project's contents without extracting
-unzip -l corpus/epsd2.zip
-unzip -p corpus/epsd2.zip epsd2/metadata.json | python3 -m json.tool
+unzip -l corpus/eme-gir.zip
+unzip -p corpus/eme-gir.zip eme-gir/metadata.json | python3 -m json.tool
 
-# Build the glossary SQLite index (defaults: corpus/epsd2.zip → epsd2/gloss-sux.json → data/glossary.sqlite)
+# Build the glossary SQLite index (defaults: corpus/eme-gir.zip → eme-gir/gloss-sux.json → data/glossary.sqlite)
 python3 build_glossary_db.py
 # Build for a different language / project
 python3 build_glossary_db.py --zip corpus/rinap.zip --member rinap/gloss-akk.json --db data/glossary_akk.sqlite
@@ -68,7 +68,7 @@ python3 build_text_index.py
 sqlite3 -header -column data/glossary.sqlite "SELECT cf, gw, pos, icount FROM entries WHERE cf='lugal';"
 
 # Run the local Oracc-style glossary browser
-python3 app.py                # http://127.0.0.1:5050/epsd2/sux
+python3 app.py                # http://127.0.0.1:5050/eme-gir/sux
 python3 app.py --port 8000 --debug
 
 # Run the MCP server over stdio (default; for Claude Desktop / Code MCP config)
@@ -121,10 +121,10 @@ Modern routes (the live ones):
 
 | Purpose | Pattern | Example |
 |---|---|---|
-| Glossary landing | `/{proj}/{lang}` | `/epsd2/sux` |
-| Search | `/{proj}/{lang}?q={term}` | `/epsd2/sux?q=lugal` |
-| Article (entry) | `/{proj}/{oid}` | `/epsd2/o0023086` |
-| Page navigation | `/{proj}/{lang}?page=N&zoom=A` | `/epsd2/sux?zoom=Š&page=2` |
+| Glossary landing | `/{proj}/{lang}` | `/eme-gir/sux` |
+| Search | `/{proj}/{lang}?q={term}` | `/eme-gir/sux?q=lugal` |
+| Article (entry) | `/{proj}/{oid}` | `/eme-gir/o0023086` |
+| Page navigation | `/{proj}/{lang}?page=N&zoom=A` | `/eme-gir/sux?zoom=Š&page=2` |
 | Distribution profile | `/{proj}/{lang}?xis={instance}` | usage stats per period/genre |
 | Sign info | `/{proj}/ogsl/brief/{id}.html` | cuneiform sign details |
 | Sources / score | `/{proj}/{oid}?sources` or `?score` | textual attestations |
@@ -137,7 +137,7 @@ Authoritative source: `https://oracc.museum.upenn.edu/doc/opendata/json/index.ht
 
 ### Zip layout
 
-Each project zip contains a single top-level directory matching the project name (e.g., `epsd2/…`, `rinap/…`). Standard files inside:
+Each project zip contains a single top-level directory matching the project name (e.g., `eme-gir/…`, `rinap/…`). Standard files inside:
 
 - `metadata.json` — project config, license, witnesses (composites), and a `"formats"` map listing which texts have `atf`, `lem`, `tr-en`, `xtf`
 - `catalogue.json` — per-text bibliographic catalogue keyed by text ID; always provides at least one of `id_text`/`id_composite`, plus `designation`, `period`, `provenience`
@@ -155,7 +155,7 @@ Each project zip contains a single top-level directory matching the project name
 
 `metadata.json` → `config.project-type` distinguishes shapes:
 
-- **`superglo`** (e.g., epsd2): primarily a glossary; the heavy file is `gloss-sux.json` (~1.9 GB for epsd2). May lack `corpusjson/`.
+- **`superglo`** (e.g., eme-gir): primarily a glossary; the heavy file is `gloss-sux.json` (~1.9 GB for eme-gir). May lack `corpusjson/`.
 - Text-edition projects (e.g., rinap): include `corpusjson/` plus `gloss-*.json` glossaries built from those texts.
 
 ### Text editions: the "cdl" tree (`type: "cdl"`)
@@ -204,7 +204,7 @@ The top-level `instances{}` map keys (e.g., `akk.r0019b`) to lists of word refer
 
 Built by `build_glossary_db.py`. All `icount`/`ipct` fields are integers (cast from the JSON's stringified numbers). Indexes are deferred until after bulk insert and built at the end for ~3× faster ingest.
 
-| Table | Rows (epsd2 sux) | Columns | Notes |
+| Table | Rows (eme-gir sux) | Columns | Notes |
 |---|---|---|---|
 | `meta` | 11 | `key, value` | source path, byte count, row counts, ingested_at, sort_version |
 | `entries` | 15,940 | `id PK, headword, cf, gw, pos, icount, ipct, xis, [letter, sort_key]` | one row per headword. `headword` is the full `cf[gw]POS` string. `letter`/`sort_key` are added by `app.py` on first run for Sumerian-correct alphabetical ordering (Ŋ between G and H, separators before letters, `.` after letters). Indexed on `cf`, `gw`, `pos`, `xis`, `letter`, `sort_key`. |
@@ -214,7 +214,7 @@ Built by `build_glossary_db.py`. All `icount`/`ipct` fields are integers (cast f
 | `sense_sigs` | 366,760 | `id PK, sense_id, sig, icount, ipct, xis` | full Oracc signature occurrences (`@proj%lang:form=cf[gw//sense]pos'epos$norm`). Indexed on `sense_id`, `sig`. |
 | `periods` | 37,659 | `entry_id, ord, p, icount, ipct, xis, PK(entry_id, ord) WITHOUT ROWID` | per-period attestation counts (e.g., "Ur III: 9816, Old Babylonian: …"). `ord` preserves Oracc's display order. Indexed on `p`. |
 | `compounds` | 1,901 | `entry_id, xcpd, eref, PK(entry_id, xcpd) WITHOUT ROWID` | "see-compounds" cross-references — e.g. *a* [ARM] → *a aŋ* [COMMAND], *a bad* [SPREAD], etc. `eref` points at the compound entry's `id`. Indexed on `eref`. |
-| `morphology` | 248,176 | `cbd_id PK, entry_id, kind, n, icount, ipct, xis WITHOUT ROWID` | per-entry morphological breakdown. `kind` ∈ {`base`, `morph`, `morph2`, `stem`, `prefix`, `form-sans`}. `n` is the morpheme pattern (`~` marks the base position in `morph` patterns; `mu.na:~` = prefix chain `mu.na` + base; `~,bi.a` = base + 3sg.nonp poss + locative). For epsd2/sux: 120K form-sans, 75K morphs, 38K bases, 15K prefixes; stem and morph2 empty. Indexed on `(entry_id, kind)`, `(kind, n)`, `xis`, and `(kind, n_cf)` for case-insensitive lookups. |
+| `morphology` | 248,176 | `cbd_id PK, entry_id, kind, n, icount, ipct, xis WITHOUT ROWID` | per-entry morphological breakdown. `kind` ∈ {`base`, `morph`, `morph2`, `stem`, `prefix`, `form-sans`}. `n` is the morpheme pattern (`~` marks the base position in `morph` patterns; `mu.na:~` = prefix chain `mu.na` + base; `~,bi.a` = base + 3sg.nonp poss + locative). For eme-gir/sux: 120K form-sans, 75K morphs, 38K bases, 15K prefixes; stem and morph2 empty. Indexed on `(entry_id, kind)`, `(kind, n)`, `xis`, and `(kind, n_cf)` for case-insensitive lookups. |
 | `instances` | 35,533,056 | `xis, word_ref, PK(xis,word_ref) WITHOUT ROWID` | the `xis → [{project}:{textid}.{line}.{word}]` map flattened into rows. Indexed on `word_ref` for reverse lookups. |
 
 Common queries:
@@ -232,20 +232,20 @@ SELECT word_ref FROM instances WHERE xis = (
 -- Reverse lookup: which lemma does this attestation belong to?
 SELECT e.cf, e.gw FROM instances i
 JOIN entries e ON e.xis = i.xis
-WHERE i.word_ref = 'epsd2:P012345.10.3';
+WHERE i.word_ref = 'eme-gir:P012345.10.3';
 ```
 
 To map `word_ref` (`{project}:{P-id}.{line}.{word}`) back to the actual transliteration, look up the corresponding `corpusjson/{P-id}.json` inside the project zip and walk the `cdl` tree to the matching `ref`.
 
 ## Local Oracc-style browser (`app.py`)
 
-Recreates `https://oracc.museum.upenn.edu/epsd2/sux` from the local SQLite. **Page 1 OIDs match the live site exactly**; pages 2+ match closely with occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't reverse-engineered yet — likely an entry-level sortcode field we don't capture). All of `corpus/` and the live site remain CC0.
+Recreates `https://oracc.museum.upenn.edu/eme-gir/sux` from the local SQLite. **Page 1 OIDs match the live site exactly**; pages 2+ match closely with occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't reverse-engineered yet — likely an entry-level sortcode field we don't capture). All of `corpus/` and the live site remain CC0.
 
 Routes:
 
-- `GET /` → 302 to `/epsd2/sux`
-- `GET /epsd2/sux` — paginated glossary; query params `?page`, `?zoom={letter}`, `?q={search}`
-- `GET /epsd2/<oid>` — entry detail page
+- `GET /` → 302 to `/eme-gir/sux`
+- `GET /eme-gir/sux` — paginated glossary; query params `?page`, `?zoom={letter}`, `?q={search}`
+- `GET /eme-gir/<oid>` — entry detail page
 
 Sumerian alphabetical sorting is implemented in `sort_key()` in `app.py`. Bumping `SORT_VERSION` triggers a one-shot re-population of the `letter` and `sort_key` columns on the next startup. Search-helper substitutions (`j→ŋ`, `sz→š`, `s,→ṣ`, `t,→ṭ`, digits → subscripts, `'→ʾ`) are applied to the `?q=` param in `normalize_query()`.
 
@@ -299,7 +299,7 @@ Schema design (`data/etcsl.sqlite`):
 Build details:
 - TEI XML uses ~80 ETCSL-specific entity refs (`&d;` for the divine determinative, `&jic;` for `{ŋeš}`, `&damb;`/`&dame;` for half-brackets, `&suppb;`/`&suppe;` for editorial brackets, etc.). Stdlib `xml.etree` rejects undeclared entities, so `build_etcsl_db.py` regex-substitutes them on the raw XML before parsing.
 - Bracket entities map to **Unicode characters** (`⸢⸣⟨⟩`), NOT ASCII (`[]<>`), because some entities appear inside XML attribute values and `<corr sic="...[en-ki]...">` would corrupt the markup.
-- Transliteration is normalized from ETCSL's ASCII convention to ePSD2/Oracc Unicode in `normalize_translit()`: `j → ŋ`, `c → š`, ASCII digits in subscript context → Unicode subscripts. This means the same `lemma` value works as a key in both ETCSL words and ePSD2 entries.
+- Transliteration is normalized from ETCSL's ASCII convention to Eme-gir/Oracc Unicode in `normalize_translit()`: `j → ŋ`, `c → š`, ASCII digits in subscript context → Unicode subscripts. This means the same `lemma` value works as a key in both ETCSL words and Eme-gir entries.
 - The build is idempotent: re-running drops and rebuilds the SQLite. Skips download if `data/etcsl.zip` already exists.
 
 ### Transport modes (stdio vs streamable-HTTP)
@@ -310,7 +310,7 @@ The committed `.mcp.json` only describes the stdio launch (Claude Code spawns it
 
 ### OAuth 2.1 / Auth0 authorization (`auth0_verifier.py`)
 
-Optional bearer-token auth on the HTTP transport, opt-in via `EPSD2_REQUIRE_AUTH=1`. FastMCP's resource-server-only mode is the architectural fit: we implement `mcp.server.auth.provider.TokenVerifier` (single async method `verify_token(token: str) -> AccessToken | None`), pass it plus an `AuthSettings` to the FastMCP constructor, and FastMCP wires the rest:
+Optional bearer-token auth on the HTTP transport, opt-in via `EME_GIR_REQUIRE_AUTH=1`. FastMCP's resource-server-only mode is the architectural fit: we implement `mcp.server.auth.provider.TokenVerifier` (single async method `verify_token(token: str) -> AccessToken | None`), pass it plus an `AuthSettings` to the FastMCP constructor, and FastMCP wires the rest:
 - `BearerAuthBackend` extracts `Authorization: Bearer ...` from incoming requests
 - `RequireAuthMiddleware` rejects unauthenticated requests with 401 + `WWW-Authenticate: Bearer error="invalid_token", error_description="...", resource_metadata="..."`
 - RFC 9728 Protected Resource Metadata is auto-served at `/.well-known/oauth-protected-resource` listing the configured Auth0 tenant as the `authorization_servers` entry and `mcp:access` as `scopes_supported`
@@ -318,23 +318,23 @@ Optional bearer-token auth on the HTTP transport, opt-in via `EPSD2_REQUIRE_AUTH
 `auth0_verifier.py` is thin (~80 lines): uses `pyjwt[crypto]`'s `PyJWKClient` (built-in JWKS LRU cache, 10-min TTL) to fetch Auth0's signing keys; validates RS256 signature + `aud` + `iss` (with trailing slash, per Auth0 convention) + `exp`/`iat` + required scope. The sync `get_signing_key_from_jwt` call is wrapped in `asyncio.to_thread` so JWKS cache misses don't block the asyncio event loop.
 
 Env-var contract (consulted at module load by `_build_auth_kwargs()` in `mcp_server.py`):
-- `EPSD2_REQUIRE_AUTH` — `"1"` enables, anything else disables (default: disabled)
-- `EPSD2_AUTH0_TENANT_URL` — `https://my-tenant.auth0.com` (no trailing slash)
-- `EPSD2_AUTH0_AUDIENCE` — Auth0 API identifier, e.g. `https://epsd2.example.com`
-- `EPSD2_AUTH0_RESOURCE_SERVER_URL` — public-facing URL of THIS server (used in RFC 9728 metadata; differs from `--host`/`--port` when behind a proxy)
-- `EPSD2_AUTH0_REQUIRED_SCOPE` — defaults to `mcp:access`; set to empty string to allow any valid Auth0 token
+- `EME_GIR_REQUIRE_AUTH` — `"1"` enables, anything else disables (default: disabled)
+- `EME_GIR_AUTH0_TENANT_URL` — `https://my-tenant.auth0.com` (no trailing slash)
+- `EME_GIR_AUTH0_AUDIENCE` — Auth0 API identifier, e.g. `https://eme-gir.example.com`
+- `EME_GIR_AUTH0_RESOURCE_SERVER_URL` — public-facing URL of THIS server (used in RFC 9728 metadata; differs from `--host`/`--port` when behind a proxy)
+- `EME_GIR_AUTH0_REQUIRED_SCOPE` — defaults to `mcp:access`; set to empty string to allow any valid Auth0 token
 
-Stdio transport never enforces auth (per MCP spec stdio uses env-based credentials, not OAuth). If you set `EPSD2_REQUIRE_AUTH=1` but launch with `--transport stdio`, the verifier is constructed but sits idle, and the startup banner emits a WARN making this explicit. Verified end-to-end (2026-05-10): unauthenticated POST returns 401 with the correct `WWW-Authenticate` header; the official `mcp.client.streamable_http` client gets rejected on `initialize`; `/.well-known/oauth-protected-resource` returns the right JSON. A live valid-token test requires a real Auth0 tenant.
+Stdio transport never enforces auth (per MCP spec stdio uses env-based credentials, not OAuth). If you set `EME_GIR_REQUIRE_AUTH=1` but launch with `--transport stdio`, the verifier is constructed but sits idle, and the startup banner emits a WARN making this explicit. Verified end-to-end (2026-05-10): unauthenticated POST returns 401 with the correct `WWW-Authenticate` header; the official `mcp.client.streamable_http` client gets rejected on `initialize`; `/.well-known/oauth-protected-resource` returns the right JSON. A live valid-token test requires a real Auth0 tenant.
 
 Auth wiring uses `AnyHttpUrl` (from pydantic) for the `issuer_url` and `resource_server_url` fields per `AuthSettings` schema. `pyjwt[crypto]` is in `requirements.txt`; the `[crypto]` extra pulls in `cryptography` for RS256 signature verification. Imports are LAZY in `_build_auth_kwargs()` so the no-auth path doesn't pay the import cost and stdio dev environments without pyjwt installed don't fail to start.
 
 ### Transport security / DNS-rebinding allowlist (`_build_transport_security_kwargs`)
 
-The MCP SDK's streamable-http transport ships `enable_dns_rebinding_protection=True` by default with an empty allowlist that effectively only accepts `Host: localhost` / `127.0.0.1` (with port wildcards) — see `mcp.server.transport_security.TransportSecuritySettings`. Behind a reverse proxy that passes the public Host header through, every request returns **`421 Misdirected Request: Invalid Host header`**. Symptom looks like a routing/Caddy bug; root cause is SDK middleware refusing the Host. Operators must opt in via three EPSD2 env vars:
+The MCP SDK's streamable-http transport ships `enable_dns_rebinding_protection=True` by default with an empty allowlist that effectively only accepts `Host: localhost` / `127.0.0.1` (with port wildcards) — see `mcp.server.transport_security.TransportSecuritySettings`. Behind a reverse proxy that passes the public Host header through, every request returns **`421 Misdirected Request: Invalid Host header`**. Symptom looks like a routing/Caddy bug; root cause is SDK middleware refusing the Host. Operators must opt in via three EME_GIR env vars:
 
-- `EPSD2_ALLOWED_HOSTS` — comma-separated public hostnames the proxy will use. `localhost`, `localhost:*`, `127.0.0.1`, `127.0.0.1:*`, `::1`, `[::1]:*` are auto-added so in-container `curl --fail http://localhost:5051/...` healthchecks keep working (curl sends `Host: localhost:5051` with the port suffix — bare `localhost` doesn't match).
-- `EPSD2_ALLOWED_ORIGINS` — comma-separated `Origin` headers for browser MCP clients. No auto-additions; stricter than allowed_hosts.
-- `EPSD2_DISABLE_DNS_REBINDING_PROTECTION` — truthy escape hatch. Banner emits a WARNING when on. Only safe when the proxy enforces Host validation upstream.
+- `EME_GIR_ALLOWED_HOSTS` — comma-separated public hostnames the proxy will use. `localhost`, `localhost:*`, `127.0.0.1`, `127.0.0.1:*`, `::1`, `[::1]:*` are auto-added so in-container `curl --fail http://localhost:5051/...` healthchecks keep working (curl sends `Host: localhost:5051` with the port suffix — bare `localhost` doesn't match).
+- `EME_GIR_ALLOWED_ORIGINS` — comma-separated `Origin` headers for browser MCP clients. No auto-additions; stricter than allowed_hosts.
+- `EME_GIR_DISABLE_DNS_REBINDING_PROTECTION` — truthy escape hatch. Banner emits a WARNING when on. Only safe when the proxy enforces Host validation upstream.
 
 When none of the three is set, FastMCP falls through to its own auto-default (localhost-only with port wildcards). When ANY is set, `_build_transport_security_kwargs()` constructs an explicit `TransportSecuritySettings` and we override the auto-default. Startup banner reports `transport_security=ENABLED (allowed_hosts=..., allowed_origins=...)` or `transport_security=DISABLED` so the operative state is visible. Verified end-to-end with `Host: <allowed>` → 200, `Host: <not-allowed>` → 421, with-port localhost healthcheck pattern → 200.
 
@@ -349,17 +349,17 @@ The repo ships a `python:3.12.11-slim`-based image and a **three-service** compo
 Same image for all three services; only the `command:` differs.
 
 `init.sh` trust model: the sentinel `/app/data/.initialized` is the SOLE source of truth for "data/ is consistent with the current code." Sentinel missing OR version-stale → `find /app/data -mindepth 1 -delete` → rebuild from scratch. corpus/ is never wiped because `download_corpus.py` is resume-safe. Steps performed (in order, each gated by env vars where optional):
-1. `download_corpus.py` (skipped if `corpus/epsd2.zip` exists — proxy for "corpus directory is populated"; the script is itself resume-safe)
+1. `download_corpus.py` (skipped if `corpus/eme-gir.zip` exists — proxy for "corpus directory is populated"; the script is itself resume-safe)
 2. `build_text_index.py` (~2 s)
 3. `build_glossary_db.py` (~3.5 min, the dominant cost)
-4. `build_collocations.py` (~5 min, gated by `EPSD2_BUILD_COLLOCATIONS=1`)
-5. `build_etcsl_db.py` (~10 s, gated by `EPSD2_BUILD_ETCSL=1`)
+4. `build_collocations.py` (~5 min, gated by `EME_GIR_BUILD_COLLOCATIONS=1`)
+5. `build_etcsl_db.py` (~10 s, gated by `EME_GIR_BUILD_ETCSL=1`)
 6. Pre-warm Flask sort + casefold migrations on `glossary.sqlite` so the MCP server's startup check (which reads `meta.casefold_version`) passes immediately when mcp boots in parallel with web (otherwise mcp would race gunicorn's first worker for the migration lock).
 
 Bumping `INIT_VERSION` in init.sh forces a wipe + rebuild on the next start. Pre-built host data can be reused by manually writing `echo "init_version=2" > data/.initialized` BEFORE `docker compose up`.
 
 Build-time gotchas already accounted for in the Dockerfile:
-- `WORKDIR /app` makes the dir root-owned even after `COPY --chown` chowns the contents — gunicorn (running as `epsd2`) needs to write `/app/.gunicorn` for its control file. Fix: explicit `chown epsd2:epsd2 /app` after the COPY.
+- `WORKDIR /app` makes the dir root-owned even after `COPY --chown` chowns the contents — gunicorn (running as `eme-gir`) needs to write `/app/.gunicorn` for its control file. Fix: explicit `chown eme-gir:eme-gir /app` after the COPY.
 - `libyajl2` system package — `ijson`'s C backend depends on it; without it ijson silently falls back to its pure-python parser (~10x slower).
 - `chmod +x /app/init.sh` after the COPY (host file perms aren't always preserved by `COPY --chown`).
 - Non-root uid/gid 1000 matches the conventional first user on Linux hosts so bind mounts work without permission shuffling.
@@ -372,7 +372,7 @@ Runtime gotchas in `docker-compose.yml`:
 
 ### Logging
 
-Every tool call goes through a `_log_call` decorator that emits `→ tool(args)` / `← tool (Nms) → summary` lines to BOTH stderr AND a rotating `log/mcp_server.log` (5 MB × 3 backups). The file handler is essential because Claude Code captures only client-side events in its `~/Library/Caches/claude-cli-nodejs/.../mcp-logs-epsd2/*.jsonl` — the server's stderr is otherwise discarded. Tail with `tail -F log/mcp_server.log` while chatting with the agent. Errors get full tracebacks via `log.exception`. The startup banner logs DB sizes so you can confirm the right files are loaded.
+Every tool call goes through a `_log_call` decorator that emits `→ tool(args)` / `← tool (Nms) → summary` lines to BOTH stderr AND a rotating `log/mcp_server.log` (5 MB × 3 backups). The file handler is essential because Claude Code captures only client-side events in its `~/Library/Caches/claude-cli-nodejs/.../mcp-logs-eme-gir/*.jsonl` — the server's stderr is otherwise discarded. Tail with `tail -F log/mcp_server.log` while chatting with the agent. Errors get full tracebacks via `log.exception`. The startup banner logs DB sizes so you can confirm the right files are loaded.
 
 ### Wiring into Claude Code / Claude Desktop
 
@@ -381,7 +381,7 @@ The repo ships `.mcp.json` for project-scoped auto-detection. **Both paths must 
 ```json
 {
   "mcpServers": {
-    "epsd2": {
+    "eme-gir": {
       "type": "stdio",
       "command": "<absolute path to a python that has the `mcp` package>",
       "args": ["<absolute path to this repo>/mcp_server.py"]
@@ -390,7 +390,7 @@ The repo ships `.mcp.json` for project-scoped auto-detection. **Both paths must 
 }
 ```
 
-On the author's macOS+asdf setup that resolves to e.g. `/Users/<you>/.asdf/installs/python/3.12.11/bin/python3` and `/Users/<you>/projects/<...>/epsd2/mcp_server.py`. For a different machine, get the python path with `readlink -f $(which python3)` after confirming `python3 -c 'import mcp'` succeeds. The committed `.mcp.json` at the repo root currently hardcodes the author's paths — clone-and-go users will need to edit it to match their own machine.
+On the author's macOS+asdf setup that resolves to e.g. `/Users/<you>/.asdf/installs/python/3.12.11/bin/python3` and `/Users/<you>/projects/<...>/eme-gir/mcp_server.py`. For a different machine, get the python path with `readlink -f $(which python3)` after confirming `python3 -c 'import mcp'` succeeds. The committed `.mcp.json` at the repo root currently hardcodes the author's paths — clone-and-go users will need to edit it to match their own machine.
 
 ## Cuneiform rendering (`cuneify.py`)
 
@@ -413,7 +413,7 @@ Coverage: 92.9% of the 124,649 forms in `glossary.sqlite` render with no `□` p
 
 Entry detail pages show real Sumerian transliteration with the target word highlighted, pulled live from `corpusjson/{P-id}.json` inside the right project zip via a two-stage lookup:
 
-1. `parse_word_ref("epsd2/admin/ur3:P113959.10.3")` → `(project, text_id, line_n, word_n)`
+1. `parse_word_ref("eme-gir/admin/ur3:P113959.10.3")` → `(project, text_id, line_n, word_n)`
 2. `_lookup(project, text_id)` queries `text_index.sqlite` → `(zip_path, member_path)`
 3. `_load_corpusjson(...)` opens the zip, parses JSON, depth-first walks the `cdl` tree
 4. Collects all `l`/`d` nodes whose `ref` starts with `{text_id}.{line_n}.` → those are the words on this line, in order
@@ -455,11 +455,11 @@ Known scope cutoffs (deliberate, for the MVP):
 
 Inside `corpus/`, file prefixes group related projects:
 
-- `epsd2*` — Sumerian dictionary (the core dataset); the biggest is `epsd2-admin-ur3.zip` (Ur III administrative texts, 536 MB)
+- `eme-gir*` — Sumerian dictionary (the core dataset); the biggest is `eme-gir-admin-ur3.zip` (Ur III administrative texts, 536 MB)
 - `rinap*`, `riao`, `ribo`, `etcsri`, `armep` — royal inscriptions (Neo-Assyrian / Assyria / Babylonia / Sumerian / Achaemenid)
 - `saao*`, `atae-*` — letters and archives (State Archives of Assyria; Archive of Texts of the Ancient East, sub-projected by city)
 - `dcclt`, `ogsl`, `osl` — lexical lists and sign lists (the Mesopotamians' own dictionaries + the cuneiform glyph catalog)
 - `amgg` — Ancient Mesopotamian Gods and Goddesses (encyclopedia)
 - `ccpo`, `cmawro`, `blms`, `adsd*`, `dccmt` — commentaries, anti-witchcraft, liver omens, astronomical diaries, mathematical texts
 - `aemw-amarna*`, `aemw-ugarit` — Late Bronze Age Western corpora (Amarna letters, Ugarit)
-- `cdli`, `xcat`, `qcat`, `ecut`, `epsd2-catalogue` — catalogues / cross-project metadata
+- `cdli`, `xcat`, `qcat`, `ecut`, `eme-gir-catalogue` — catalogues / cross-project metadata

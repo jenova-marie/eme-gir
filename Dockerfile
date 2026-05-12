@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# epsd2 — Sumerian dictionary + corpus + MCP server, packaged as one
+# eme-gir — Sumerian dictionary + corpus + MCP server, packaged as one
 # image that runs two services in compose: gunicorn-fronted Flask web
 # (port 5050) and the MCP server in HTTP transport (port 5051).
 #
@@ -27,8 +27,8 @@ RUN apt-get update \
 # your host user has a different uid (Linux: `id -u`; macOS Docker
 # Desktop already maps host owners through to the container, so the
 # uid in here doesn't matter much).
-RUN groupadd --system --gid 1000 epsd2 \
-    && useradd  --system --uid 1000 --gid epsd2 --home-dir /app --shell /usr/sbin/nologin epsd2
+RUN groupadd --system --gid 1000 eme-gir \
+    && useradd  --system --uid 1000 --gid eme-gir --home-dir /app --shell /usr/sbin/nologin eme-gir
 
 WORKDIR /app
 
@@ -50,20 +50,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Then the source. Excludes are in .dockerignore — corpus/, data/,
 # log/, .git/, etc. are NOT copied; they come from bind mounts.
-COPY --chown=epsd2:epsd2 . /app/
+COPY --chown=eme-gir:eme-gir . /app/
 
 # Pre-create writable dirs AND chown /app itself. WORKDIR /app makes
 # the directory root-owned; COPY --chown only chowns copied files,
-# not the parent. Without this, gunicorn (running as epsd2) can't
+# not the parent. Without this, gunicorn (running as eme-gir) can't
 # create its control file at /app/.gunicorn and crashes on boot with
 # "Control server error: [Errno 13] Permission denied".
 # init.sh needs +x (the COPY may not preserve host perms); doing it
 # here means the `init` compose service can run it directly.
-RUN install -d -o epsd2 -g epsd2 /app/data /app/log \
-    && chown epsd2:epsd2 /app \
+RUN install -d -o eme-gir -g eme-gir /app/data /app/log \
+    && chown eme-gir:eme-gir /app \
     && chmod +x /app/init.sh
 
-USER epsd2
+USER eme-gir
 
 # Both services listen on these ports inside the container; compose
 # decides what to publish on the host (default: 127.0.0.1 only, so
@@ -71,4 +71,4 @@ USER epsd2
 EXPOSE 5050 5051
 
 # No CMD — services pick their own command in docker-compose.yml.
-# Run directly: `docker run --rm epsd2 python3 mcp_server.py --help`.
+# Run directly: `docker run --rm eme-gir python3 mcp_server.py --help`.

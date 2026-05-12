@@ -16,7 +16,7 @@ in some specific ways noted in §11 below.
 **Companion document.** Use this alongside the cheat sheet
 `prompt/SUMERIAN_GRAMMAR.md` (which covers morphology and syntax) and
 the convention map `prompt/JAGERSMA_CONVENTIONS.md` (which translates
-Jagersma's linguistic notation to Oracc/ePSD2 spelling).
+Jagersma's linguistic notation to Oracc/Eme-gir spelling).
 
 ---
 

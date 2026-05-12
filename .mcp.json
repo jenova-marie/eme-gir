@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "epsd2": {
+    "eme-gir": {
       "type": "stdio",
       "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
-      "args": ["/Users/jenova/projects/jenova-marie/epsd2/mcp_server.py"]
+      "args": ["/Users/jenova/projects/jenova-marie/eme-gir/mcp_server.py"]
     }
   }
 }

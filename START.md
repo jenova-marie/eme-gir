@@ -1,6 +1,6 @@
 # Getting Started
 
-Setup, build, run, and deploy instructions for **Jenova's Local · ePSD2**. For the project overview, motivation, and historical context, see [README.md](README.md).
+Setup, build, run, and deploy instructions for **Jenova's Local · Eme-gir**. For the project overview, motivation, and historical context, see [README.md](README.md).
 
 There are three rough layers, and you can stop wherever fits your need:
 
@@ -38,7 +38,7 @@ python3 build_etcsl_db.py
 python3 build_cdli_db.py
 
 # Run the web app once to populate the casefold + sort SQLite migrations
-python3 app.py    # → http://127.0.0.1:5050/epsd2/sux
+python3 app.py    # → http://127.0.0.1:5050/eme-gir/sux
 ```
 
 All generated SQLite indexes land in `data/`; logs land in `log/`. Both directories are auto-created on first run.
@@ -93,7 +93,7 @@ python3 build_collocations.py    # only if you use the find_collocations MCP too
 ## 2. Run the web browser
 
 ```bash
-python3 app.py                      # → http://127.0.0.1:5050/epsd2/sux
+python3 app.py                      # → http://127.0.0.1:5050/eme-gir/sux
 python3 app.py --port 8000 --debug  # alternate port + Flask debug mode
 ```
 
@@ -101,9 +101,9 @@ python3 app.py --port 8000 --debug  # alternate port + Flask debug mode
 
 The web app routes:
 
-- `GET /` → 302 redirect to `/epsd2/sux`
-- `GET /epsd2/sux` — paginated glossary; query params `?page`, `?zoom={letter}`, `?q={search}`
-- `GET /epsd2/<oid>` — entry detail page with attestations, cuneiform, and period breakdown
+- `GET /` → 302 redirect to `/eme-gir/sux`
+- `GET /eme-gir/sux` — paginated glossary; query params `?page`, `?zoom={letter}`, `?q={search}`
+- `GET /eme-gir/<oid>` — entry detail page with attestations, cuneiform, and period breakdown
 
 ---
 
@@ -116,7 +116,7 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 ```json
 {
   "mcpServers": {
-    "epsd2": {
+    "eme-gir": {
       "type": "stdio",
       "command": "/absolute/path/to/python3-with-mcp-installed",
       "args": ["/absolute/path/to/this/repo/mcp_server.py"]
@@ -129,7 +129,7 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 
 ### The nineteen tools
 
-**ePSD2 dictionary + corpus tools:**
+**Eme-gir dictionary + corpus tools:**
 
 - `translate_english(query, limit)` — rank Sumerian candidates for an English meaning
 - `translate_sumerian(transliteration)` — reverse direction: parse a Sumerian phrase into per-token glosses; surfaces detected case/possessive/plural suffixes on each token
@@ -201,31 +201,31 @@ This is **opt-in** via env var. Stdio transport never authenticates regardless (
 #### One-time Auth0 setup
 
 1. In the Auth0 dashboard, create an **API**:
-   - Name: anything descriptive, e.g. `epsd2-mcp`
-   - Identifier (audience): a stable URL representing your server, e.g. `https://epsd2.example.com`. Doesn't have to resolve — Auth0 just uses it as an opaque string in the `aud` JWT claim.
+   - Name: anything descriptive, e.g. `eme-gir-mcp`
+   - Identifier (audience): a stable URL representing your server, e.g. `https://eme-gir.example.com`. Doesn't have to resolve — Auth0 just uses it as an opaque string in the `aud` JWT claim.
    - Signing algorithm: **RS256** (the default)
-2. On the API's "Permissions" tab, add a scope: `mcp:access` (description: "Access the epsd2 MCP server"). All 19 tools sit behind this single scope; finer-grained scopes can be added later if needed.
+2. On the API's "Permissions" tab, add a scope: `mcp:access` (description: "Access the eme-gir MCP server"). All 19 tools sit behind this single scope; finer-grained scopes can be added later if needed.
 3. Either grab a long-lived test token from the API's "Test" tab (good for local development), or create a Machine-to-Machine application authorized to call this API and use the `client_credentials` grant.
 
 #### Server-side env vars
 
-When `EPSD2_REQUIRE_AUTH=1`:
+When `EME_GIR_REQUIRE_AUTH=1`:
 
 | Var | Required | Example | What it does |
 |---|---|---|---|
-| `EPSD2_REQUIRE_AUTH` | yes | `1` | Toggles auth on. Anything other than `1` keeps the legacy unauthenticated behavior. |
-| `EPSD2_AUTH0_TENANT_URL` | yes | `https://my-tenant.auth0.com` | Base URL of your Auth0 tenant (no trailing slash). The verifier fetches `${TENANT}/.well-known/jwks.json` to validate signatures. |
-| `EPSD2_AUTH0_AUDIENCE` | yes | `https://epsd2.example.com` | Must match the API identifier you set in step 1. Tokens with a different `aud` are rejected (RFC 8707 audience binding — prevents tokens for one server from being replayed against another). |
-| `EPSD2_AUTH0_RESOURCE_SERVER_URL` | yes | `https://epsd2.example.com` | The **public-facing** URL of THIS server, used in the RFC 9728 Protected Resource Metadata served at `/.well-known/oauth-protected-resource`. Differs from `--host`/`--port` when behind a reverse proxy. |
-| `EPSD2_AUTH0_REQUIRED_SCOPE` | no | `mcp:access` | A scope that must be present in the token's `scope` claim. Defaults to `mcp:access`; set to empty string to allow any valid Auth0 token. |
+| `EME_GIR_REQUIRE_AUTH` | yes | `1` | Toggles auth on. Anything other than `1` keeps the legacy unauthenticated behavior. |
+| `EME_GIR_AUTH0_TENANT_URL` | yes | `https://my-tenant.auth0.com` | Base URL of your Auth0 tenant (no trailing slash). The verifier fetches `${TENANT}/.well-known/jwks.json` to validate signatures. |
+| `EME_GIR_AUTH0_AUDIENCE` | yes | `https://eme-gir.example.com` | Must match the API identifier you set in step 1. Tokens with a different `aud` are rejected (RFC 8707 audience binding — prevents tokens for one server from being replayed against another). |
+| `EME_GIR_AUTH0_RESOURCE_SERVER_URL` | yes | `https://eme-gir.example.com` | The **public-facing** URL of THIS server, used in the RFC 9728 Protected Resource Metadata served at `/.well-known/oauth-protected-resource`. Differs from `--host`/`--port` when behind a reverse proxy. |
+| `EME_GIR_AUTH0_REQUIRED_SCOPE` | no | `mcp:access` | A scope that must be present in the token's `scope` claim. Defaults to `mcp:access`; set to empty string to allow any valid Auth0 token. |
 
 #### Local invocation
 
 ```bash
-EPSD2_REQUIRE_AUTH=1 \
-EPSD2_AUTH0_TENANT_URL=https://my-tenant.auth0.com \
-EPSD2_AUTH0_AUDIENCE=https://epsd2.example.com \
-EPSD2_AUTH0_RESOURCE_SERVER_URL=https://epsd2.example.com \
+EME_GIR_REQUIRE_AUTH=1 \
+EME_GIR_AUTH0_TENANT_URL=https://my-tenant.auth0.com \
+EME_GIR_AUTH0_AUDIENCE=https://eme-gir.example.com \
+EME_GIR_AUTH0_RESOURCE_SERVER_URL=https://eme-gir.example.com \
 python3 mcp_server.py --transport http --host 0.0.0.0 --port 5051
 ```
 
@@ -236,20 +236,20 @@ The startup banner will confirm the mode: `auth=ENABLED (Auth0 issuer=..., audie
 The compose file already declares the env vars with empty defaults. Set them via `.env` file or shell:
 
 ```bash
-EPSD2_REQUIRE_AUTH=1 \
-EPSD2_AUTH0_TENANT_URL=https://my-tenant.auth0.com \
-EPSD2_AUTH0_AUDIENCE=https://epsd2.example.com \
-EPSD2_AUTH0_RESOURCE_SERVER_URL=https://epsd2.example.com \
+EME_GIR_REQUIRE_AUTH=1 \
+EME_GIR_AUTH0_TENANT_URL=https://my-tenant.auth0.com \
+EME_GIR_AUTH0_AUDIENCE=https://eme-gir.example.com \
+EME_GIR_AUTH0_RESOURCE_SERVER_URL=https://eme-gir.example.com \
 docker compose up -d
 ```
 
 Or persist them in a `.env` file alongside `docker-compose.yml`:
 
 ```env
-EPSD2_REQUIRE_AUTH=1
-EPSD2_AUTH0_TENANT_URL=https://my-tenant.auth0.com
-EPSD2_AUTH0_AUDIENCE=https://epsd2.example.com
-EPSD2_AUTH0_RESOURCE_SERVER_URL=https://epsd2.example.com
+EME_GIR_REQUIRE_AUTH=1
+EME_GIR_AUTH0_TENANT_URL=https://my-tenant.auth0.com
+EME_GIR_AUTH0_AUDIENCE=https://eme-gir.example.com
+EME_GIR_AUTH0_RESOURCE_SERVER_URL=https://eme-gir.example.com
 ```
 
 #### Verifying
@@ -280,7 +280,7 @@ curl -X POST http://127.0.0.1:5051/mcp -L \
 As of this writing, **MCP clients (Claude Desktop, Claude Code) do not yet ship native OAuth/PKCE flow handling.** Practical paths today:
 
 - **Static long-lived test tokens.** Auth0's API "Test" tab generates tokens valid for hours — paste into your MCP client config as a static `Authorization: Bearer ...` header. Fine for development and for trusted single-user deployments.
-- **Reverse-proxy auth.** Run the MCP server with `EPSD2_REQUIRE_AUTH=0` and let your reverse proxy (nginx / caddy / Auth0's own proxy) inject `Authorization` headers based on whatever auth the proxy enforces (basic auth, Auth0 SSO, mTLS).
+- **Reverse-proxy auth.** Run the MCP server with `EME_GIR_REQUIRE_AUTH=0` and let your reverse proxy (nginx / caddy / Auth0's own proxy) inject `Authorization` headers based on whatever auth the proxy enforces (basic auth, Auth0 SSO, mTLS).
 - **Wait for native client OAuth.** The MCP spec mandates the discovery dance via Protected Resource Metadata; clients will eventually catch up. Once they do, no server-side change is needed — our server already serves the right metadata.
 
 ### Allowing the public hostname through DNS-rebinding protection (REQUIRED behind a reverse proxy)
@@ -291,31 +291,31 @@ Three env vars:
 
 | Var | Required | Example | What it does |
 |---|---|---|---|
-| `EPSD2_ALLOWED_HOSTS` | yes (when behind a proxy) | `epsd2.intra.example.net,epsd2.example.com` | Comma-separated list of public hostnames the proxy serves the MCP server under. `localhost` / `127.0.0.1` / `::1` (with and without port suffixes) are added automatically so in-container healthchecks keep working — only list the public hostnames here. |
-| `EPSD2_ALLOWED_ORIGINS` | only for browser clients | `https://archive.example.org` | Comma-separated list of `Origin` headers accepted on cross-origin requests. Stricter than allowed_hosts: no auto-additions. Skip this if no browser MCP client will hit the endpoint. |
-| `EPSD2_DISABLE_DNS_REBINDING_PROTECTION` | escape hatch | `1` | Disables the check entirely. Only safe when your reverse proxy enforces Host validation upstream. The startup banner emits a WARNING when this is on. |
+| `EME_GIR_ALLOWED_HOSTS` | yes (when behind a proxy) | `eme-gir.intra.example.net,eme-gir.example.com` | Comma-separated list of public hostnames the proxy serves the MCP server under. `localhost` / `127.0.0.1` / `::1` (with and without port suffixes) are added automatically so in-container healthchecks keep working — only list the public hostnames here. |
+| `EME_GIR_ALLOWED_ORIGINS` | only for browser clients | `https://archive.example.org` | Comma-separated list of `Origin` headers accepted on cross-origin requests. Stricter than allowed_hosts: no auto-additions. Skip this if no browser MCP client will hit the endpoint. |
+| `EME_GIR_DISABLE_DNS_REBINDING_PROTECTION` | escape hatch | `1` | Disables the check entirely. Only safe when your reverse proxy enforces Host validation upstream. The startup banner emits a WARNING when this is on. |
 
 Example for a Caddy/nginx deployment:
 
 ```env
-EPSD2_ALLOWED_HOSTS=epsd2.intra.example.net
-EPSD2_ALLOWED_ORIGINS=https://archive.example.org
+EME_GIR_ALLOWED_HOSTS=eme-gir.intra.example.net
+EME_GIR_ALLOWED_ORIGINS=https://archive.example.org
 ```
 
 Or in docker compose env:
 
 ```bash
-EPSD2_ALLOWED_HOSTS=epsd2.intra.example.net docker compose up -d
+EME_GIR_ALLOWED_HOSTS=eme-gir.intra.example.net docker compose up -d
 ```
 
 The startup banner will confirm what got applied:
 
 ```
 auth=ENABLED (Auth0 issuer=...)
-transport_security=ENABLED (allowed_hosts=['epsd2.intra.example.net','localhost','localhost:*','127.0.0.1','127.0.0.1:*','::1','[::1]:*'], allowed_origins=[...])
+transport_security=ENABLED (allowed_hosts=['eme-gir.intra.example.net','localhost','localhost:*','127.0.0.1','127.0.0.1:*','::1','[::1]:*'], allowed_origins=[...])
 ```
 
-If you see `transport_security=default (SDK accepts Host: localhost / 127.0.0.1 only ...)` and you're behind a proxy, that's the cause of any 421 errors — set `EPSD2_ALLOWED_HOSTS` and restart.
+If you see `transport_security=default (SDK accepts Host: localhost / 127.0.0.1 only ...)` and you're behind a proxy, that's the cause of any 421 errors — set `EME_GIR_ALLOWED_HOSTS` and restart.
 
 ---
 
@@ -346,7 +346,7 @@ docker compose logs -f init
 # After init exits, web + mcp start in parallel and reach healthy in ~6 s.
 
 # Endpoints (default bind: 127.0.0.1 only):
-#   web → http://127.0.0.1:5050/epsd2/sux
+#   web → http://127.0.0.1:5050/eme-gir/sux
 #   mcp → http://127.0.0.1:5051/mcp/  (note trailing slash)
 docker compose ps
 ```
@@ -377,7 +377,7 @@ docker compose up -d --build
 - Image runs as a non-root user (uid/gid 1000); matches conventional Linux first-user so bind mounts work without a chown dance. macOS Docker Desktop maps owners through transparently.
 - `data/` is mounted read/write on web and mcp — not because either writes glossary.sqlite at steady state, but because SQLite needs a writable directory for `-journal`/`-wal` files even on read-only transactions. Mark the SQLite files `chmod a-w` on the host if you really need write protection.
 - gunicorn worker count defaults to 4; override with `WEB_WORKERS=8 docker compose up -d`.
-- Skip optional builds: `EPSD2_BUILD_COLLOCATIONS=0 EPSD2_BUILD_ETCSL=0 docker compose up -d` (their MCP tools degrade gracefully or error if absent).
+- Skip optional builds: `EME_GIR_BUILD_COLLOCATIONS=0 EME_GIR_BUILD_ETCSL=0 docker compose up -d` (their MCP tools degrade gracefully or error if absent).
 
 Watch live logs:
 
@@ -396,7 +396,7 @@ A typical production layout serves the web UI at the root and HTTP MCP at `/mcp/
 ```nginx
 server {
     listen 443 ssl;
-    server_name epsd2.example.org;
+    server_name eme-gir.example.org;
     # ssl_certificate ...
 
     location /mcp/ {
@@ -404,7 +404,7 @@ server {
         proxy_http_version 1.1;
         proxy_buffering    off;          # MCP streams responses, don't buffer
         proxy_read_timeout 24h;          # long-lived SSE sessions
-        auth_basic         "epsd2 MCP";
+        auth_basic         "eme-gir MCP";
         auth_basic_user_file /etc/nginx/htpasswd;
     }
 
@@ -431,10 +431,10 @@ Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport 
 | `build_glossary_db.py` | ijson-streaming parser. Builds `glossary.sqlite` with normalized tables for entries, forms, norms, senses, signature occurrences, periods, compounds, morphology, and instances. |
 | `build_text_index.py` | Scans every `corpus/*.zip` for `corpusjson/P*.json` and per-text catalogue metadata, builds `text_index.sqlite`. |
 | `build_collocations.py` | Mines 2/3/4-gram phrasal collocations from every corpusjson text → `collocations.sqlite`. |
-| `build_etcsl_db.py` | Downloads the ETCSL bulk zip (4.9 MB) from the Oxford Text Archive, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs), normalizes ETCSL's ASCII transliteration to ePSD2/Oracc Unicode, ingests to `etcsl.sqlite` with FTS5 indexes. Powers the `etcsl_*` MCP tools. |
-| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `epsd2/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
+| `build_etcsl_db.py` | Downloads the ETCSL bulk zip (4.9 MB) from the Oxford Text Archive, parses 394 TEI XML literary texts (with a hand-built entity-expansion table for ~80 ETCSL-specific entity refs), normalizes ETCSL's ASCII transliteration to Eme-gir/Oracc Unicode, ingests to `etcsl.sqlite` with FTS5 indexes. Powers the `etcsl_*` MCP tools. |
+| `text_resolver.py` | Lazy lookup + LRU cache that turns a glossary `word_ref` (e.g. `eme-gir/admin/ur3:P113959.10.3`) into the actual Sumerian line, with the target word marked. |
 | `cuneify.py` | OGSL-backed transliteration → Unicode cuneiform converter. Loaded on first use; exposed as a Jinja filter to the web app and as the `cuneify` MCP tool. |
-| `app.py` + `templates/` | Flask app. Routes: `/epsd2/sux` (paginated glossary with letter zoom + search), `/epsd2/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
+| `app.py` + `templates/` | Flask app. Routes: `/eme-gir/sux` (paginated glossary with letter zoom + search), `/eme-gir/<oid>` (entry detail). Also runs the one-shot `_cf` casefold + Sumerian-sort migrations on first startup. |
 | `mcp_server.py` | MCP server (`mcp` SDK / FastMCP) exposing 17 translation tools + 2 bootstrap tool wrappers + 2 resources (`oracc://prompt/agent`, `oracc://grammar/sumerian`) for agents over stdio or streamable-HTTP. Logs every call to `log/mcp_server.log`. |
 | `paths.py` | Single source of truth for project file locations — every other module imports `DATA_DIR`, `GLOSSARY_DB`, `LOG_DIR`, etc. from here. |
 | `init.sh` | One-shot data initialization script for the Docker `init` service. Downloads corpus + builds indexes if the `data/.initialized` sentinel is missing. |
@@ -462,16 +462,16 @@ Two backend processes (`gunicorn` for Flask, `python3 mcp_server.py --transport 
 ## Appendix: how a request flows
 
 ```
-GET /epsd2/o0033341 (lugal)
+GET /eme-gir/o0033341 (lugal)
        │
        ├─> SQLite: load entry + forms + norms + senses + sense_sigs
        │            + periods + compounds + 500 instance refs
        │
        ├─> text_resolver.resolve_many(refs, limit=20)
        │       │
-       │       ├─> parse_word_ref('epsd2:P347156.34.5')
+       │       ├─> parse_word_ref('eme-gir:P347156.34.5')
        │       ├─> data/text_index.sqlite: lookup (project, text_id)
-       │       ├─> open corpus/epsd2.zip, parse corpusjson/P347156.json
+       │       ├─> open corpus/eme-gir.zip, parse corpusjson/P347156.json
        │       ├─> walk cdl tree, collect words on line 34
        │       └─> mark target word, dedupe by (text, line)
        │       (cached LRU 512 entries)

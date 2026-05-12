@@ -20,7 +20,7 @@ import ijson
 
 from paths import TEXT_INDEX_DB
 
-# Project prefix may be multi-level (e.g. "epsd2/admin/ur3/corpusjson/P12345.json")
+# Project prefix may be multi-level (e.g. "eme-gir/admin/ur3/corpusjson/P12345.json")
 # so we capture everything up to "/corpusjson/" — that prefix is exactly the
 # project path used in the glossary's word_ref strings.
 #
@@ -33,7 +33,7 @@ CATALOGUE_RE = re.compile(r"^(.+)/catalogue\.json$")
 
 SCHEMA = """
 CREATE TABLE text_locations (
-    project     TEXT NOT NULL,      -- glossary-style path, e.g., "rinap" or "epsd2/admin/ur3"
+    project     TEXT NOT NULL,      -- glossary-style path, e.g., "rinap" or "eme-gir/admin/ur3"
     text_id     TEXT NOT NULL,      -- e.g., "P405162"
     zip_path    TEXT NOT NULL,      -- relative path to the project zip
     member_path TEXT NOT NULL,      -- full path inside the zip
@@ -88,7 +88,7 @@ def main() -> int:
                     catalogue_members[m.group(1)] = name
 
             # Stream-read each project's catalogue.json for period + designation.
-            # Catalogues can be 100MB+ (epsd2 itself is 76MB), so use ijson.kvitems
+            # Catalogues can be 100MB+ (eme-gir itself is 76MB), so use ijson.kvitems
             # to stay constant-memory.
             cat_meta: dict[tuple[str, str], tuple[str | None, str | None]] = {}
             for proj, member in catalogue_members.items():

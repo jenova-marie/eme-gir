@@ -1,4 +1,4 @@
-"""Resolve glossary word_refs (e.g. "epsd2/admin/ur3:P113959.10.3") into
+"""Resolve glossary word_refs (e.g. "eme-gir/admin/ur3:P113959.10.3") into
 the actual line of Sumerian text in context, by lazily reading the
 right corpusjson/{P-id}.json from inside its project zip.
 
@@ -17,7 +17,7 @@ from paths import TEXT_INDEX_DB
 
 
 def parse_word_ref(word_ref: str) -> tuple[str, str, str, str | None] | None:
-    """'epsd2/admin/ur3:P113959.10.3' -> (project, text_id, line_n, word_n).
+    """'eme-gir/admin/ur3:P113959.10.3' -> (project, text_id, line_n, word_n).
 
     word_n may be None if the ref points at a whole line.
     Returns None if the ref shape is unrecognized.
@@ -80,7 +80,7 @@ def _open_zip(zip_path: str) -> zipfile.ZipFile:
     """Cache open ZipFile handles by path.
 
     `zipfile.ZipFile()` re-scans the archive's central directory on every
-    open — for the 536 MB epsd2-admin-ur3.zip with ~30K members this is
+    open — for the 536 MB eme-gir-admin-ur3.zip with ~30K members this is
     20-30 ms a pop. Repeated cold calls (e.g. resolving 50 attestations of
     `lugal` after a fresh server start) compounded that to ~20 s.
 

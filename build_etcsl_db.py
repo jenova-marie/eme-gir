@@ -49,10 +49,10 @@ from paths import ETCSL_DB, ETCSL_ZIP, ETCSL_ZIP_URL
 # -----------------------------------------------------------------------------
 
 ETCSL_ENTITIES: dict[str, str] = {
-    # Sumerian letters. Lowercase/uppercase pairs. Normalize to the ePSD2 /
+    # Sumerian letters. Lowercase/uppercase pairs. Normalize to the Eme-gir /
     # Oracc convention (ŋ over ĝ; emphatic s/t over digit-suffixed forms).
     "c": "š", "C": "Š",           # shin
-    "g": "ŋ", "G": "Ŋ",           # velar nasal — ePSD2 calls it ŋ; ETCSL writes ĝ via &g;
+    "g": "ŋ", "G": "Ŋ",           # velar nasal — Eme-gir calls it ŋ; ETCSL writes ĝ via &g;
     "h": "ḫ", "H": "Ḫ",           # h with breve below
     "hr": "ḫ",                    # rare variant
     "s": "š",                     # bare &s; — sometimes used for š in non-form contexts
@@ -141,7 +141,7 @@ def expand_entities(xml_text: str) -> str:
 # -----------------------------------------------------------------------------
 # Transliteration normalizer — convert ETCSL's ASCII-friendly conventions
 # (j=ŋ, c=š, digit-after-letter → subscript) to standard Unicode that matches
-# Oracc/ePSD2 spelling. Applied to attribute values like form= and lemma=.
+# Oracc/Eme-gir spelling. Applied to attribute values like form= and lemma=.
 # -----------------------------------------------------------------------------
 
 _DIGIT_SUB = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")

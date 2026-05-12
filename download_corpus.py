@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 INDEX_URL = "https://oracc.museum.upenn.edu/json/"
-USER_AGENT = "epsd2-corpus-fetch/1.0 (+contact: jenova@recoverysky.org)"
+USER_AGENT = "eme-gir-corpus-fetch/1.0 (+contact: jenova@recoverysky.org)"
 HREF_RE = re.compile(r'href="(/json/[^"]+\.zip)"', re.IGNORECASE)
 
 # Oracc's server omits the InCommon intermediate from its TLS chain, so most

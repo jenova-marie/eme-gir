@@ -4,7 +4,7 @@
 
 Strategy:
   1. Fetch /projectlist.json — the canonical list of all public Oracc
-     projects with pathnames (e.g., "epsd2/admin/ur3").
+     projects with pathnames (e.g., "eme-gir/admin/ur3").
   2. For each project, try TWO candidate download URLs:
        a) /json/{pathname-flattened-with-dashes}.zip   (the public index)
        b) /{pathname-with-slashes}/json.zip            (per-project alt)
@@ -197,7 +197,7 @@ def print_report(buckets: dict[str, list[dict]]) -> None:
     if mu:
         print()
         print(f"--- MISSING, no Oracc URL works ({len(mu)} projects) ---")
-        print("(content lives elsewhere — Oxford ETCSL, CDLI, ePSD2 staging, etc.)")
+        print("(content lives elsewhere — Oxford ETCSL, CDLI, Eme-gir staging, etc.)")
         for r in sorted(mu, key=lambda x: x["pathname"])[:20]:
             print(f"  {r['pathname']:<32}  {r['name'][:60]}")
         if len(mu) > 20:

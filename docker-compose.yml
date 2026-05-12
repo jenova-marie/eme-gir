@@ -31,20 +31,20 @@ services:
   # everything from corpus zips. See init.sh for the trust model.
   init:
     build: .
-    image: epsd2:latest
-    container_name: epsd2-init
+    image: eme-gir:latest
+    container_name: eme-gir-init
     command: /app/init.sh
     environment:
       # Toggle off to skip the longer optional builds; defaults are ON
       # because the MCP server's tool surface is incomplete without them.
-      EPSD2_BUILD_COLLOCATIONS: "${EPSD2_BUILD_COLLOCATIONS:-1}"
-      EPSD2_BUILD_INFLECTED_COLLOCATIONS: "${EPSD2_BUILD_INFLECTED_COLLOCATIONS:-1}"
-      EPSD2_BUILD_ETCSL: "${EPSD2_BUILD_ETCSL:-1}"
+      EME_GIR_BUILD_COLLOCATIONS: "${EME_GIR_BUILD_COLLOCATIONS:-1}"
+      EME_GIR_BUILD_INFLECTED_COLLOCATIONS: "${EME_GIR_BUILD_INFLECTED_COLLOCATIONS:-1}"
+      EME_GIR_BUILD_ETCSL: "${EME_GIR_BUILD_ETCSL:-1}"
       # CDLI catalogue (~157 MB, 30s build, 147 MB CSV download from
       # GitHub LFS). Powers lookup_artifact + find_artifacts AND the
       # CDLI photo/lineart URL enrichment on see_examples /
       # find_verb_form. Default ON — high-value, modest cost.
-      EPSD2_BUILD_CDLI: "${EPSD2_BUILD_CDLI:-1}"
+      EME_GIR_BUILD_CDLI: "${EME_GIR_BUILD_CDLI:-1}"
     volumes:
       - ./corpus:/app/corpus     # init writes here on first boot
       - ./data:/app/data         # init wipes + populates
@@ -52,8 +52,8 @@ services:
     restart: "no"                # one-shot; never restart on completion
 
   web:
-    image: epsd2:latest
-    container_name: epsd2-web
+    image: eme-gir:latest
+    container_name: eme-gir-web
     depends_on:
       init:
         condition: service_completed_successfully
@@ -78,7 +78,7 @@ services:
       - ./log:/app/log
     restart: unless-stopped
     healthcheck:
-      # Hits the glossary landing page (302 redirect to /epsd2/sux).
+      # Hits the glossary landing page (302 redirect to /eme-gir/sux).
       # `curl --fail` treats 3xx as success.
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5050/"]
       interval: 30s
@@ -88,8 +88,8 @@ services:
                                  # workers come up in <5s
 
   mcp:
-    image: epsd2:latest
-    container_name: epsd2-mcp
+    image: eme-gir:latest
+    container_name: eme-gir-mcp
     depends_on:
       init:
         condition: service_completed_successfully
@@ -100,40 +100,40 @@ services:
       --port 5051
     environment:
       # OAuth 2.1 / Auth0 bearer-token auth. OFF by default — leave
-      # EPSD2_REQUIRE_AUTH unset (or "0") and the HTTP transport runs
+      # EME_GIR_REQUIRE_AUTH unset (or "0") and the HTTP transport runs
       # unauthenticated as before, expecting a reverse proxy to handle
-      # access control. Set EPSD2_REQUIRE_AUTH=1 to enforce in-app:
+      # access control. Set EME_GIR_REQUIRE_AUTH=1 to enforce in-app:
       # tokens are validated as RS256 JWTs from the configured Auth0
       # tenant. See START.md "Adding Auth0 OAuth" for the full setup.
-      EPSD2_REQUIRE_AUTH: "${EPSD2_REQUIRE_AUTH:-0}"
-      EPSD2_AUTH0_TENANT_URL: "${EPSD2_AUTH0_TENANT_URL:-}"
-      EPSD2_AUTH0_AUDIENCE: "${EPSD2_AUTH0_AUDIENCE:-}"
-      EPSD2_AUTH0_RESOURCE_SERVER_URL: "${EPSD2_AUTH0_RESOURCE_SERVER_URL:-}"
-      EPSD2_AUTH0_REQUIRED_SCOPE: "${EPSD2_AUTH0_REQUIRED_SCOPE:-mcp:access}"
+      EME_GIR_REQUIRE_AUTH: "${EME_GIR_REQUIRE_AUTH:-0}"
+      EME_GIR_AUTH0_TENANT_URL: "${EME_GIR_AUTH0_TENANT_URL:-}"
+      EME_GIR_AUTH0_AUDIENCE: "${EME_GIR_AUTH0_AUDIENCE:-}"
+      EME_GIR_AUTH0_RESOURCE_SERVER_URL: "${EME_GIR_AUTH0_RESOURCE_SERVER_URL:-}"
+      EME_GIR_AUTH0_REQUIRED_SCOPE: "${EME_GIR_AUTH0_REQUIRED_SCOPE:-mcp:access}"
       # MCP SDK DNS-rebinding protection. Default allowlist is
       # localhost + 127.0.0.1 only — behind a reverse proxy that
       # passes the public Host header through, MUST add the proxy's
       # hostname here or every request returns 421. Comma-separated.
       # localhost / 127.0.0.1 / ::1 are added automatically — only
       # list the public hostnames the proxy will use.
-      EPSD2_ALLOWED_HOSTS: "${EPSD2_ALLOWED_HOSTS:-}"
+      EME_GIR_ALLOWED_HOSTS: "${EME_GIR_ALLOWED_HOSTS:-}"
       # Cross-origin Origin headers to accept (browser MCP clients).
       # Comma-separated; no auto-additions.
-      EPSD2_ALLOWED_ORIGINS: "${EPSD2_ALLOWED_ORIGINS:-}"
+      EME_GIR_ALLOWED_ORIGINS: "${EME_GIR_ALLOWED_ORIGINS:-}"
       # Escape hatch — set truthy to disable DNS-rebinding checks
       # entirely. Only safe when the reverse proxy enforces Host
       # validation upstream.
-      EPSD2_DISABLE_DNS_REBINDING_PROTECTION: "${EPSD2_DISABLE_DNS_REBINDING_PROTECTION:-0}"
+      EME_GIR_DISABLE_DNS_REBINDING_PROTECTION: "${EME_GIR_DISABLE_DNS_REBINDING_PROTECTION:-0}"
       # Umami analytics — fire-and-forget per-tool-call telemetry.
-      # Off when EPSD2_UMAMI_URL or EPSD2_UMAMI_WEBSITE_ID is unset.
+      # Off when EME_GIR_UMAMI_URL or EME_GIR_UMAMI_WEBSITE_ID is unset.
       # When enabled, every tool invocation produces one event with
       # tool name + duration + success/error + arg-key names + result
       # count. Tool argument VALUES are never sent — see
       # umami_analytics.py for the privacy boundary.
-      EPSD2_UMAMI_URL: "${EPSD2_UMAMI_URL:-}"
-      EPSD2_UMAMI_WEBSITE_ID: "${EPSD2_UMAMI_WEBSITE_ID:-}"
-      EPSD2_UMAMI_HOSTNAME: "${EPSD2_UMAMI_HOSTNAME:-epsd2-mcp}"
-      EPSD2_UMAMI_API_KEY: "${EPSD2_UMAMI_API_KEY:-}"
+      EME_GIR_UMAMI_URL: "${EME_GIR_UMAMI_URL:-}"
+      EME_GIR_UMAMI_WEBSITE_ID: "${EME_GIR_UMAMI_WEBSITE_ID:-}"
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME:-eme-gir-mcp}"
+      EME_GIR_UMAMI_API_KEY: "${EME_GIR_UMAMI_API_KEY:-}"
     ports:
       - "${MCP_BIND:-127.0.0.1}:5051:5051"
     volumes:

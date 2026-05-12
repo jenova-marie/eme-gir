@@ -1,13 +1,13 @@
-"""Flask app that recreates Oracc's /epsd2/sux glossary browser from glossary.sqlite.
+"""Flask app that recreates Oracc's /eme-gir/sux glossary browser from glossary.sqlite.
 
 Usage:
     python3 app.py            # http://localhost:5050
     python3 app.py --port 8000
 
 Routes:
-    GET /                  -> redirect to /epsd2/sux
-    GET /epsd2/sux         -> paginated glossary (supports ?page, ?zoom, ?q)
-    GET /epsd2/<oid>       -> single entry detail
+    GET /                  -> redirect to /eme-gir/sux
+    GET /eme-gir/sux         -> paginated glossary (supports ?page, ?zoom, ?q)
+    GET /eme-gir/<oid>       -> single entry detail
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ def create_app() -> Flask:
     def index():
         return redirect(url_for("glossary"))
 
-    @app.route("/epsd2/sux")
+    @app.route("/eme-gir/sux")
     def glossary():
         db = get_db()
         page = max(1, int(request.args.get("page", 1)))
@@ -276,7 +276,7 @@ def create_app() -> Flask:
             total=total, page=page, pages=pages, zoom=zoom, q=raw_q, per_page=PER_PAGE,
         )
 
-    @app.route("/epsd2/<oid>")
+    @app.route("/eme-gir/<oid>")
     def entry(oid: str):
         db = get_db()
         entry = db.execute(

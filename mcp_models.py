@@ -48,7 +48,7 @@ class ErrorResponse(_Permissive):
 
 
 class EntryHeader(_Permissive):
-    """Common ePSD2 entry-level fields surfaced across many tool responses."""
+    """Common Eme-gir entry-level fields surfaced across many tool responses."""
 
     oid: str = Field(..., description="Entry OID, e.g. 'o0033341'. Use with lookup_entry/see_examples/get_inflections.")
     cf: str = Field(..., description="Citation form (Sumerian headword), e.g. 'lugal'.")

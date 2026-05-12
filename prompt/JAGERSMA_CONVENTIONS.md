@@ -1,8 +1,8 @@
-# Jagersma 2010 → Oracc/ePSD2 conventions
+# Jagersma 2010 → Oracc/Eme-gir conventions
 
 A Rosetta stone between Bram Jagersma's *A Descriptive Grammar of Sumerian*
 (PhD dissertation, Universiteit Leiden, 2010, 776 pp, 31 chapters) and the
-Oracc/ePSD2 transliteration conventions used in this repository. This file
+Oracc/Eme-gir transliteration conventions used in this repository. This file
 is the source of truth for terminology, notation, and period labels used in
 `JAGERSMA_NOTES.md` and the synthesized `SUMERIAN_GRAMMAR.md`.
 
@@ -43,12 +43,12 @@ Jagersma's primary descriptive ground and **our new agent default period**.
 **Provenance codes** in source references: A (Adab), D (Drehem), I (Isin),
 L (Lagash), N (Nippur), U (Umma), Ur (Ur), ? (unknown).
 
-### Mapping to the ePSD2 `periods.p` column
+### Mapping to the Eme-gir `periods.p` column
 
 `see_examples(oid, period=…)` does a case-insensitive substring match
 against `glossary.sqlite::periods.p`. Confirmed-good substrings:
 
-| Default | ePSD2 column value(s) | Use for `period=` arg |
+| Default | Eme-gir column value(s) | Use for `period=` arg |
 |---|---|---|
 | ED (Jagersma's default) | "Early Dynastic IIIa", "Early Dynastic IIIb", "Early Dynastic" | `"Early Dynastic"` (matches both IIIa+IIIb) |
 | Ur III | "Ur III" | `"Ur III"` |
@@ -62,11 +62,11 @@ substrings return hits on the live `glossary.sqlite`.
 
 ---
 
-## 3. Transliteration: Jagersma → Oracc/ePSD2
+## 3. Transliteration: Jagersma → Oracc/Eme-gir
 
 Jagersma uses a linguistic transliteration system; Oracc uses the
 "standard" Sumerological one with subscript number disambiguation. The
-cheat sheet always uses **Oracc/ePSD2 convention** so examples
+cheat sheet always uses **Oracc/Eme-gir convention** so examples
 round-trip through our existing `cuneify` tool. Jagersma's originals
 are preserved in `JAGERSMA_NOTES.md` for verification.
 
@@ -82,7 +82,7 @@ are preserved in `JAGERSMA_NOTES.md` for verification.
 
 ### 3.2. Special phoneme letters
 
-| Jagersma | Oracc/ePSD2 | Phoneme |
+| Jagersma | Oracc/Eme-gir | Phoneme |
 |---|---|---|
 | `ḫ` (sometimes typeset `h~`) | `ḫ` (the actual character) or `h` in legacy contexts | velar/uvular fricative /x/ |
 | `ĝ` | `ŋ` (Unicode 014B) | velar nasal /ŋ/. ETCSL legacy uses `j`; both `j` and `ĝ` legacy forms normalize to `ŋ` |

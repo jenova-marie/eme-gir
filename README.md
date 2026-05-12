@@ -1,4 +1,4 @@
-# Jenova's Local · ePSD2
+# Jenova's Local · Eme-gir
 
 A complete offline mirror, web browser, and AI-agent interface for the **electronic Pennsylvania Sumerian Dictionary** and the larger **Oracc cuneiform corpus** — the canonical scholarly resources for the world's oldest written language.
 
@@ -8,11 +8,11 @@ If you're a Sumerologist who wants to query 35 million attestations without touc
 
 ## What this is
 
-The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (ePSD2), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world. Alongside Oracc, the Oxford **Electronic Text Corpus of Sumerian Literature (ETCSL)** — 394 hand-lemmatized literary compositions (hymns, myths, royal hymns, proverbs, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems) shipped with English translations — supplies the bilingual half of the Sumerian textual record that Oracc itself doesn't yet publish in machine-readable form.
+The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (Eme-gir), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world. Alongside Oracc, the Oxford **Electronic Text Corpus of Sumerian Literature (ETCSL)** — 394 hand-lemmatized literary compositions (hymns, myths, royal hymns, proverbs, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems) shipped with English translations — supplies the bilingual half of the Sumerian textual record that Oracc itself doesn't yet publish in machine-readable form.
 
-Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/epsd2` serves richly hyperlinked HTML pages, and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures, and is excellent for almost nothing in particular until you build infrastructure on top of it. ETCSL is similarly stranded: its 4.9 MB TEI XML bundle from the Oxford Text Archive is rigorously lemmatized and translated, but the format is academic-archival, not query-ready. *This project is the infrastructure that turns both into queryable, performant, agent-accessible Sumerian.*
+Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/eme-gir` serves richly hyperlinked HTML pages, and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures, and is excellent for almost nothing in particular until you build infrastructure on top of it. ETCSL is similarly stranded: its 4.9 MB TEI XML bundle from the Oxford Text Archive is rigorously lemmatized and translated, but the format is academic-archival, not query-ready. *This project is the infrastructure that turns both into queryable, performant, agent-accessible Sumerian.*
 
-Jenova's Local · ePSD2 is **two projects in one repository**, sharing the same underlying SQLite layer, cuneiform renderer, and attestation resolver:
+Jenova's Local · Eme-gir is **two projects in one repository**, sharing the same underlying SQLite layer, cuneiform renderer, and attestation resolver:
 
 ### 1. An MCP server backed by Oracc + ETCSL, optimized for LLM-agent queries
 
@@ -20,7 +20,7 @@ The primary surface of this project. Nineteen specialized translation + catalogu
 
 ### 2. A local Oracc front-end — for portability AND for 1:1 comparison with the canonical site
 
-A small Flask web app that recreates the look and feel of `oracc.museum.upenn.edu/epsd2/sux` page-by-page, byte-for-byte where possible. The motivation is twofold:
+A small Flask web app that recreates the look and feel of `oracc.museum.upenn.edu/eme-gir/sux` page-by-page, byte-for-byte where possible. The motivation is twofold:
 
 - **Local portability.** The full corpus and indexes (~6.5 GB combined) sit on your laptop. Run the web app offline — on a plane, on a dig site, in a library carrel — and get the same browsing experience you'd get from the live site, with extras the live site doesn't offer: case-insensitive Unicode-aware search across six fields, attestation lines shown in their original sentence context with the target word highlighted, and cuneiform glyphs alongside every spelling.
 - **1:1 comparison with the canonical site.** Because the local pages render from the same source data Oracc uses, you can diff a local entry against the canonical Oracc entry to validate the parsing pipeline and catch corpus drift. Page 1 of the glossary matches byte-for-byte; pages 2+ have occasional one-off reorderings due to a sub-sort tiebreaker we haven't fully reverse-engineered.
@@ -41,7 +41,7 @@ The whole thing runs on a laptop. The full corpus is ~3.1 GB and the indexes ano
 
 ### For Sumerologists and Assyriologists
 
-A laptop-friendly version of the entire ePSD2 + Oracc dataset plus the ETCSL literary corpus, all responding in milliseconds, working completely offline, and giving you direct SQL access to every cross-referenceable structure — period attestations, compound formations, sign frequencies, collocational n-grams, bilingual line-by-line literary readings. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"*, or *"show me every literary line where `inana` is the subject of a marû verb"* — become fifty-millisecond queries against denormalized SQLite. And because the local pages render from the same source data Oracc uses, you can diff an entry against the canonical oracc.museum.upenn.edu page when you need to verify a parse.
+A laptop-friendly version of the entire Eme-gir + Oracc dataset plus the ETCSL literary corpus, all responding in milliseconds, working completely offline, and giving you direct SQL access to every cross-referenceable structure — period attestations, compound formations, sign frequencies, collocational n-grams, bilingual line-by-line literary readings. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"*, or *"show me every literary line where `inana` is the subject of a marû verb"* — become fifty-millisecond queries against denormalized SQLite. And because the local pages render from the same source data Oracc uses, you can diff an entry against the canonical oracc.museum.upenn.edu page when you need to verify a parse.
 
 ### For LLM applications
 
@@ -55,7 +55,7 @@ A reference implementation of how to take a mature scholarly digital corpus and 
 
 ## The MCP toolbox
 
-When an LLM agent connects to the `epsd2` MCP server it gains nineteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, link to museum-hosted photographs of the cited tablets, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
+When an LLM agent connects to the `eme-gir` MCP server it gains nineteen specialized tools and two knowledge resources, all backed by the local SQLite indexes and the corpus zips. The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, link to museum-hosted photographs of the cited tablets, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
 
 ### Bootstrap: the knowledge resources
 
@@ -131,7 +131,7 @@ For the recommended end-to-end agent workflow that stitches these tools together
           ▼
       ┌──────────────────────┐         ┌─────────────────────────────────┐
       │ Flask web app        │         │ MCP server (FastMCP)             │
-      │  • /epsd2/sux        │         │  • stdio transport (Claude Code, │
+      │  • /eme-gir/sux        │         │  • stdio transport (Claude Code, │
       │  • entry pages       │         │    local agents)                 │
       │  • cuneiform render  │         │  • streamable-HTTP transport     │
       │  • period filtering  │         │    (remote agents, Docker)       │
@@ -147,7 +147,7 @@ Both servers can run as standalone Python processes, or be deployed together via
 
 | Source | License | What we use |
 |---|---|---|
-| **Oracc / ePSD2** (Tinney, Robson, Veldhuis, et al.) | **CC0** | Sumerian glossary; ~138K corpusjson texts; OGSL sign list |
+| **Oracc / Eme-gir** (Tinney, Robson, Veldhuis, et al.) | **CC0** | Sumerian glossary; ~138K corpusjson texts; OGSL sign list |
 | **ETCSL** (Black, Cunningham, Robson, Zólyomi, et al., Oxford 1998–2006) | **CC BY 3.0 UK** | 394 lemmatized literary texts with English translations |
 | **CDLI** (Cuneiform Digital Library Initiative, originally UCLA, now MPIWG Berlin / cdli.earth) | **CC0** | 353K-row artifact catalogue: provenience, period, museum custody, dimensions, citations, and the URLs to CDLI-hosted photographs we link out to |
 | **OGSL** (Tinney) | CC0, distributed inside Oracc | Cuneiform sign → Unicode mapping |
@@ -156,11 +156,11 @@ The Oracc, OGSL, and CDLI data is dedicated to the public domain (CC0) and so re
 
 ## License
 
-The code in this repository is released under the **MIT License** — see [`LICENSE`](LICENSE). Use it however you like, including commercially; the only requirement is that you carry the copyright notice forward in copies or substantial portions. The license applies to *the code*, not to the underlying linguistic data, which is governed separately by Oracc / ePSD2 (CC0) and ETCSL (CC BY 3.0 UK) as documented in the table above.
+The code in this repository is released under the **MIT License** — see [`LICENSE`](LICENSE). Use it however you like, including commercially; the only requirement is that you carry the copyright notice forward in copies or substantial portions. The license applies to *the code*, not to the underlying linguistic data, which is governed separately by Oracc / Eme-gir (CC0) and ETCSL (CC BY 3.0 UK) as documented in the table above.
 
 ## A note on the data itself
 
-Cuneiform is the world's oldest writing system, used continuously from roughly 3200 BCE to roughly 75 CE — a span of more than three thousand years. Sumerian is one of the languages it recorded, attested longest in administrative and economic texts. The bulk of the largest single zip in the corpus (`epsd2-admin-ur3`, 536 MB) is Ur III royal and temple bookkeeping from around 2100 BCE — the receipts, ration lists, work assignments, and animal counts of a Bronze Age bureaucracy.
+Cuneiform is the world's oldest writing system, used continuously from roughly 3200 BCE to roughly 75 CE — a span of more than three thousand years. Sumerian is one of the languages it recorded, attested longest in administrative and economic texts. The bulk of the largest single zip in the corpus (`eme-gir-admin-ur3`, 536 MB) is Ur III royal and temple bookkeeping from around 2100 BCE — the receipts, ration lists, work assignments, and animal counts of a Bronze Age bureaucracy.
 
 The 35.5 million word-references in this dictionary are pointers into roughly that many actual occurrences of words on actual clay tablets, mostly held today in museum collections in London, Berlin, Philadelphia, Istanbul, and Baghdad. The cuneiform glyphs you see on entry pages here are the same characters that Sumerian scribes pressed into clay four millennia ago, encoded into Unicode in 2006 (block U+12000–U+1237F). When the MCP server's `cuneify` tool turns a transliteration like `lugal-e e₂ mu-na-du₃` into the glyphs 𒈗𒂊 𒂍 𒈬𒈾𒆕, you are looking at the same writing system that recorded the Code of Ur-Nammu, the Epic of Gilgameš, the praise poems of king Šulgi, the household accounts of Sumerian temples, and (in its later Akkadian and Hittite cuneiform descendants) the diplomatic correspondence of the Late Bronze Age.
 
@@ -171,7 +171,7 @@ This project doesn't add anything to that data; it just makes it easier to ask q
 - About **8%** of glossary attestation references cite texts in projects we haven't downloaded; those fall back to raw reference strings on entry pages.
 - About **7%** of spellings contain at least one sign missing from OGSL and render with `□` placeholders. Coverage will improve as OGSL grows.
 - The web app's entry page doesn't yet render a dedicated bibliography section, per-sense interleaved examples, or a Period × Form cross-tabulation — though attestation lines do surface the publication shorthand (e.g. "YOS 14, 341") for any text with catalogue metadata.
-- The `/epsd2/sux` glossary list page matches the live Oracc page 1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't fully reverse-engineered).
+- The `/eme-gir/sux` glossary list page matches the live Oracc page 1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't fully reverse-engineered).
 - Composite text references (Q-ids) aren't handled by the attestation resolver; only P-ids (physical objects).
 - English translations of texts are not in Oracc's public JSON archive — they exist only in the live HTML pages and would need scraping. The optional ETCSL ingest pulls in 394 literary texts that DO ship with English translations, so any literary lookup via the `etcsl_*` MCP tools is bilingual out of the box, but the administrative bulk corpus remains transliteration-only.
 
