@@ -1,0 +1,1993 @@
+"""MCP tools for the ePSD2 (Eme-gir dictionary + corpus) domain.
+
+Thirteen tool functions plus their supporting helpers, all extracted
+from the legacy monolithic mcp_server.py. Tools are plain Python
+functions decorated with @log_call; registration with a FastMCP
+instance happens at the per-server entry-point script.
+
+Categories:
+
+  • Dictionary lookup & translation:
+      translate_english, translate_sumerian, lookup_entry, see_examples,
+      find_compound, get_inflections, analyze_form
+  • Phrase parsing & collocations:
+      parse_phrase, find_collocations, find_phrase_pattern
+  • Verb morphology (the irregular heart):
+      find_verb_form
+
+Cross-domain dependencies:
+  - eme_gir.cdli for AttestationLine enrichment (see_examples, find_verb_form)
+  - eme_gir.cuneify for spelling rendering in lookup_entry / find_verb_form
+  - eme_gir.text_resolver for resolving word_refs to actual lines
+  - eme_gir.sumerian_morphology for suffix-peeling + verbal-prefix detection
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from typing import Any
+
+from .. import cdli as _cdli
+from .. import cuneify as _cuneify
+from .. import text_resolver
+from ..log import log_call
+from ..models.common import AttestationLine, EntryHeader, ErrorResponse, Suffix
+from ..models.epsd2 import (
+    AnalyzeFormResponse,
+    AnalyzeMatch,
+    CaseChunk,
+    CollocationHit,
+    Compound,
+    FindCollocationsResponse,
+    FindCompoundResponse,
+    FindPhrasePatternResponse,
+    FindVerbFormResponse,
+    GetInflectionsResponse,
+    LemmaCandidate,
+    LookupEntryResponse,
+    MorphRow,
+    ParsePhraseResponse,
+    PatternToken,
+    Period,
+    PhrasePatternHit,
+    SeeExamplesResponse,
+    Sense,
+    Spelling,
+    TokenAnalysis,
+    TokenCandidate,
+    TranslateEnglishResponse,
+    TranslateSumerianResponse,
+    VerbFormFilterSpec,
+    VerbFormMatch,
+)
+from ..paths import (
+    COLLOCATIONS_DB,
+    GLOSSARY_DB,
+    INFLECTED_COLLOCATIONS_DB,
+    TEXT_INDEX_DB,
+)
+from ..sumerian_morphology import (
+    SUMERIAN_SUFFIX_TABLE,
+    VERBAL_PREFIXES,
+    detect_verbal_prefixes as _detect_verbal_prefixes,
+    peel_suffixes as _peel_suffixes,
+    strip_token as _strip_token,
+)
+
+
+
+
+# -----------------------------------------------------------------------------
+# DB helpers
+# -----------------------------------------------------------------------------
+
+def _connect() -> sqlite3.Connection:
+    if not GLOSSARY_DB.exists():
+        raise FileNotFoundError(
+            f"glossary.sqlite not found at {GLOSSARY_DB}. "
+            "Build it with: python3 build_glossary_db.py"
+        )
+    con = sqlite3.connect(GLOSSARY_DB)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+_PERIODS_CACHE: list[str] | None = None
+
+
+def _resolve_period_filter(needle: str) -> list[str]:
+    """Return the actual period names that match a casefold substring needle.
+
+    text_locations has an index on period — but a `lower(period) LIKE %x%`
+    query can't use it (function call + leading wildcard both kill index
+    usage), and a full scan over 139K rows is ~20s.
+
+    The corpus only has ~40-50 distinct period names. Pre-load them once
+    per server lifetime and do the substring match in Python; then look up
+    matching texts via an IN-clause on the indexed column. Two milliseconds.
+    """
+    global _PERIODS_CACHE
+    if _PERIODS_CACHE is None:
+        if not TEXT_INDEX_DB.exists():
+            return []
+        ti = sqlite3.connect(TEXT_INDEX_DB)
+        try:
+            _PERIODS_CACHE = [
+                r[0] for r in ti.execute(
+                    "SELECT DISTINCT period FROM text_locations "
+                    "WHERE period IS NOT NULL"
+                )
+            ]
+        finally:
+            ti.close()
+    needle_cf = needle.casefold()
+    return [p for p in _PERIODS_CACHE if needle_cf in p.casefold()]
+
+
+def _check_casefold_columns(con: sqlite3.Connection) -> None:
+    """The Flask app's first run populates *_cf mirror columns. The MCP server
+    needs them too — bail with a clear hint if they're missing rather than
+    fabricate them silently with a UDF."""
+    row = con.execute("SELECT value FROM meta WHERE key='casefold_version'").fetchone()
+    if not row:
+        raise RuntimeError(
+            "glossary.sqlite is missing casefolded search columns. "
+            "Run `python3 app.py` once first to populate them, then restart this server."
+        )
+
+
+def _entry_payload(con: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    """Build the standard 'entry candidate' shape returned by translate_english
+    and friends. Keep it tight: just enough for an agent to decide whether to
+    dig deeper with lookup_entry."""
+    return {
+        "oid": row["oid"],
+        "cf": row["cf"],
+        "gw": row["gw"],
+        "pos": row["pos"],
+        "sense": row["sense_mng"],
+        "sense_count": row["sense_count"] or 0,
+        "sense_pct": row["sense_pct"] or 0,
+        "entry_total": row["entry_total"] or 0,
+    }
+
+
+# Grammatical pre-annotation helpers (suffix table, peeler, verbal-prefix
+# detector) live in sumerian_morphology.py so the same code path can be
+# reused by build_inflected_collocations.py during corpus ingest. The
+# module-level aliases below preserve the existing private names used
+# elsewhere in this file, so the refactor is import-only — no logic change.
+from eme_gir.sumerian_morphology import (
+    SUMERIAN_SUFFIX_TABLE,
+    VERBAL_PREFIXES,
+    detect_verbal_prefixes as _detect_verbal_prefixes,
+    peel_suffixes as _peel_suffixes,
+    strip_token as _strip_token,
+)
+
+
+# -----------------------------------------------------------------------------
+# Tools
+# -----------------------------------------------------------------------------
+#
+# All tools are read-only point-lookups against local SQLite indexes built
+# from the CC0 Oracc / ETCSL corpora. No network calls. No writes. Same
+# Note: READ_ONLY_ANNOTATIONS is set by the server entry point at
+# registration time; the tool functions here just provide the
+# implementation + @log_call instrumentation.
+
+
+@log_call
+def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
+    """Find Sumerian lemmas that mean a given English word or phrase.
+
+    Returns ranked candidates with the matching SENSE inline (not just the
+    headword), so the agent can distinguish "the word for X" from "X happens
+    to be a fringe meaning of this word".
+
+    Ranking: by absolute frequency of the matching sense (sense_count, DESC).
+    `sense_pct` is what % of the entry's total uses are in this sense — a
+    high sense_pct (e.g. 99%) means "this is essentially what the word means";
+    a low sense_pct (e.g. 0%) means "tangential metaphorical extension only,
+    probably not your translation".
+
+    Returns:
+        {
+          "query": str,
+          "results": [
+            {
+              "oid": "o0033341",
+              "cf": "lugal", "gw": "king", "pos": "N",
+              "sense": "king",
+              "sense_count": 49818,    # how often this exact sense is attested
+              "sense_pct": 100,        # of the entry's total uses, what % is this sense
+              "entry_total": 49942,    # total attestations of the lemma overall
+            },
+            ...
+          ],
+          "total_matches": int,
+        }
+
+    Search hits BOTH the entry guide-word and the per-sense meaning, so e.g.
+    "horn" finds both `si [horn]` (where it's the headword sense) and `a [arm]`
+    (where it's a 0%-ipct fringe sense — visible but ranked low).
+    """
+    limit = max(1, min(50, int(limit)))
+    needle = f"%{query.casefold().strip()}%"
+
+    con = _connect()
+    try:
+        _check_casefold_columns(con)
+        # Match against either the senses meaning or the entry's guide-word.
+        # We surface the BEST matching sense per entry (the one with highest
+        # icount that hits) so a polysemous entry only appears once.
+        rows = con.execute(
+            """
+            WITH matched AS (
+                SELECT s.entry_id, s.id AS sense_id, s.mng AS sense_mng,
+                       s.icount AS sense_count, s.ipct AS sense_pct,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY s.entry_id
+                           ORDER BY s.icount DESC NULLS LAST
+                       ) AS rk
+                FROM senses s
+                WHERE s.mng_cf LIKE ?
+                UNION
+                SELECT e.id AS entry_id, NULL AS sense_id, e.gw AS sense_mng,
+                       e.icount AS sense_count, 100 AS sense_pct,
+                       1 AS rk
+                FROM entries e
+                WHERE e.gw_cf LIKE ?
+                  AND NOT EXISTS (SELECT 1 FROM senses s2
+                                  WHERE s2.entry_id=e.id AND s2.mng_cf LIKE ?)
+            ),
+            best AS (
+                SELECT * FROM matched WHERE rk=1
+            )
+            SELECT e.id AS oid, e.cf, e.gw, e.pos, e.icount AS entry_total,
+                   b.sense_mng, b.sense_count, b.sense_pct
+            FROM best b
+            JOIN entries e ON e.id = b.entry_id
+            ORDER BY b.sense_count DESC NULLS LAST, e.icount DESC NULLS LAST
+            LIMIT ?
+            """,
+            (needle, needle, needle, limit),
+        ).fetchall()
+
+        total = con.execute(
+            """
+            SELECT COUNT(DISTINCT entry_id) FROM (
+                SELECT entry_id FROM senses WHERE mng_cf LIKE ?
+                UNION
+                SELECT id AS entry_id FROM entries WHERE gw_cf LIKE ?
+            )
+            """,
+            (needle, needle),
+        ).fetchone()[0]
+    finally:
+        con.close()
+
+    return TranslateEnglishResponse(
+        query=query,
+        total_matches=total,
+        results=[_entry_payload(con, r) for r in rows],
+    )
+
+
+@log_call
+def lookup_entry(oid: str) -> LookupEntryResponse | ErrorResponse:
+    """Get the full structured view of a single dictionary entry.
+
+    Use after translate_english to drill into a chosen candidate. Returns:
+        - headword (cf, gw, pos, total icount)
+        - all senses with counts and percentages
+        - top spellings (with cuneiform glyphs)
+        - all time-period attestations
+        - all see-compounds (idiomatic compounds containing this word)
+
+    Args:
+        oid: entry OID like 'o0033341' (returned by translate_english as 'oid').
+    """
+    con = _connect()
+    try:
+        entry = con.execute(
+            "SELECT id, cf, gw, pos, icount, ipct, headword FROM entries WHERE id=?",
+            (oid,),
+        ).fetchone()
+        if not entry:
+            return ErrorResponse(error=f"no entry with oid={oid!r}")
+
+        senses = [dict(r) for r in con.execute(
+            "SELECT id, mng AS meaning, pos, icount AS count, ipct AS pct "
+            "FROM senses WHERE entry_id=? ORDER BY icount DESC NULLS LAST",
+            (oid,),
+        )]
+
+        forms = []
+        for r in con.execute(
+            "SELECT n AS spelling, icount AS count, ipct AS pct "
+            "FROM forms WHERE entry_id=? ORDER BY icount DESC NULLS LAST LIMIT 25",
+            (oid,),
+        ):
+            forms.append({
+                "spelling": r["spelling"],
+                "count": r["count"] or 0,
+                "pct": r["pct"] or 0,
+                "cuneiform": _cuneify.cuneify(r["spelling"]),
+            })
+
+        periods = [dict(r) for r in con.execute(
+            "SELECT p AS period, icount AS count, ipct AS pct "
+            "FROM periods WHERE entry_id=? ORDER BY ord",
+            (oid,),
+        )]
+
+        compounds = [dict(r) for r in con.execute(
+            "SELECT xcpd AS compound, eref AS oid FROM compounds "
+            "WHERE entry_id=? ORDER BY xcpd",
+            (oid,),
+        )]
+    finally:
+        con.close()
+
+    return LookupEntryResponse(
+        oid=entry["id"],
+        cf=entry["cf"],
+        gw=entry["gw"],
+        pos=entry["pos"],
+        headword=entry["headword"],
+        total_count=entry["icount"] or 0,
+        senses=senses,
+        spellings=forms,
+        periods=periods,
+        compounds=compounds,
+    )
+
+
+@log_call
+def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExamplesResponse | ErrorResponse:
+    """Show real attested Sumerian lines containing this lemma, with the
+    target word highlighted. Use this to verify a translation choice or
+    to cite primary-source evidence.
+
+    Pulls from the corpusjson/ files inside our local Oracc zips (~92%
+    of glossary refs resolve from local data). Each line includes the
+    text P-id, line label (e.g. "obv. 3"), the source publication
+    designation if known (e.g. "YOS 14, 341"), the period the source
+    text is dated to (e.g. "Ur III"), and the words in transliteration.
+
+    Args:
+        oid: entry OID
+        limit: max number of unique lines to return (default 3, cap 20)
+        period: optional period filter (e.g. "Ur III", "Old Babylonian",
+                "Neo-Assyrian"). When set, only returns examples whose
+                source text is dated to that period (substring match,
+                case-insensitive — so "babylonian" matches both Old and
+                Middle Babylonian). 85% of texts have period metadata.
+
+    Returns:
+        {
+          "oid": str,
+          "lines": [
+            {
+              "text_id": "P347156", "project": "eme-gir",
+              "line_label": "o 34",
+              "designation": "YOS 14, 341",
+              "period": "Old Babylonian",
+              "transliteration": "ŋa₂-e-gin₇-nam {d}en-ki lugal abzu-ke₄ ...",
+              "target": "lugal",
+              "target_position": 3,
+            },
+            ...
+          ],
+        }
+    """
+    limit = max(1, min(20, int(limit)))
+    period_needle = period.casefold().strip() if period else None
+
+    con = _connect()
+    try:
+        entry = con.execute(
+            "SELECT cf, gw, xis FROM entries WHERE id=?", (oid,)
+        ).fetchone()
+        if not entry:
+            return ErrorResponse(error=f"no entry with oid={oid!r}")
+        if not entry["xis"]:
+            return SeeExamplesResponse(oid=oid, lines=[], note="entry has no instance refs")
+        # Pull all refs upfront when filtering — small DB op, lets us slim
+        # the resolve pass to only candidates from period-matching texts.
+        # No-filter case bumped to 5000 (was 500) because for heavily
+        # attested lemmas the first 500 refs may all sit in one project
+        # whose corpusjson is missing locally; 5000 catches more variety
+        # without meaningfully slowing the happy path (resolve_many stops
+        # at over_fetch_lines anyway).
+        ref_limit = 50000 if period_needle else 5000
+        word_refs = [
+            r[0] for r in con.execute(
+                "SELECT word_ref FROM instances WHERE xis=? LIMIT ?",
+                (entry["xis"], ref_limit),
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+
+    if period_needle and TEXT_INDEX_DB.exists():
+        # Pre-fetch all text_ids whose source text's period matches the filter,
+        # then drop refs whose text isn't in the matching set. Two-step lookup:
+        # (1) resolve the casefold-substring period query to a small set of
+        #     literal period names (cached, milliseconds);
+        # (2) fetch matching text_ids via IN-clause on the indexed column.
+        # Avoids the full-table scan + per-row lower() the naive query did
+        # (~20s for lugal); this version stays under 100ms.
+        period_names = _resolve_period_filter(period_needle)
+        if not period_names:
+            return SeeExamplesResponse(
+                oid=oid, cf=entry["cf"], gw=entry["gw"],
+                period_filter=period, lines=[],
+                note=f"no periods matched filter {period!r}",
+            )
+        ti = sqlite3.connect(TEXT_INDEX_DB)
+        try:
+            placeholders = ",".join("?" * len(period_names))
+            matching = {
+                row[0]: row[1]
+                for row in ti.execute(
+                    f"SELECT text_id, period FROM text_locations "
+                    f"WHERE period IN ({placeholders})",
+                    period_names,
+                )
+            }
+        finally:
+            ti.close()
+        word_refs = [
+            r for r in word_refs
+            if (parsed := text_resolver.parse_word_ref(r))
+            and parsed[1] in matching
+        ]
+
+    over_fetch_lines = max(limit * 4, 50) if period_needle else limit
+    resolved = text_resolver.resolve_many(word_refs, limit=over_fetch_lines)
+    lines: list[dict[str, Any]] = []
+    for r in resolved:
+        if period_needle:
+            r_period = (r.get("period") or "").casefold()
+            if period_needle not in r_period:
+                continue
+        words = r["words"]
+        target_pos = next(
+            (i for i, w in enumerate(words) if w["is_target"]), None
+        )
+        target_frag = words[target_pos]["frag"] if target_pos is not None else None
+        line: dict[str, Any] = {
+            "text_id": r["text_id"],
+            "project": r["project"],
+            "line_label": r["line_label"],
+            "designation": r.get("designation"),
+            "period": r.get("period"),
+            "transliteration": " ".join(w["frag"] for w in words),
+            "target": target_frag,
+            "target_position": target_pos,
+        }
+        # CDLI enrichment — splat in cdli_url, photo/lineart URLs, and
+        # museum metadata so the caller can offer "see the actual
+        # tablet" links without a follow-up tool call. None when the
+        # CDLI catalogue isn't built or doesn't know this artifact.
+        cdli = _cdli.enrichment(r["text_id"])
+        if cdli:
+            line.update(cdli)
+        lines.append(line)
+        if len(lines) >= limit:
+            break
+    diagnostic: str | None = None
+    # When we returned nothing despite having refs, give the caller a
+    # diagnostic so they understand WHY (most common cause: the lemma's
+    # attestations live in projects we don't have downloaded locally,
+    # or in composite-text Q-ids where the corpusjson exists but is empty).
+    if not lines and word_refs:
+        from collections import Counter
+        proj_counter: Counter[str] = Counter()
+        text_id_kind = Counter()  # 'P' or 'Q'
+        for r in word_refs:
+            parsed = text_resolver.parse_word_ref(r)
+            if not parsed:
+                continue
+            proj_counter[parsed[0]] += 1
+            text_id_kind[parsed[1][:1]] += 1
+        top_projects = ", ".join(
+            f"{p} ({c:,})" for p, c in proj_counter.most_common(3)
+        )
+        kind_breakdown = ", ".join(
+            f"{n} {k}-id" for k, n in text_id_kind.most_common()
+        )
+        diagnostic = (
+            f"Tried {len(word_refs):,} refs ({kind_breakdown}); "
+            f"top source projects: {top_projects}. "
+            f"Empty result usually means those projects' corpusjson files "
+            f"aren't in our local corpus/, or the texts exist as empty "
+            f"composite-edition placeholders. Try a higher-attested lemma, "
+            f"a different period, or download the missing project zips."
+        )
+    return SeeExamplesResponse(
+        oid=oid,
+        cf=entry["cf"],
+        gw=entry["gw"],
+        period_filter=period,
+        lines=lines,
+        diagnostic=diagnostic,
+    )
+
+
+@log_call
+def find_compound(english_phrase: str, limit: int = 10) -> FindCompoundResponse:
+    """Find Sumerian compound expressions matching an English phrase.
+
+    Critical for translation because Sumerian uses fixed multi-word compounds
+    for many concepts that English expresses as single verbs / phrases:
+        "to spread the arms"  -> a bad
+        "to bail water"        -> a bal [BAIL]
+        "to pour out water"    -> a bala [POUR OUT WATER]
+        "to draw water"        -> a bala (same)
+        "in the presence of the king" -> lugal kura
+
+    Searches across compound headwords AND English glosses of compound
+    entries. Results have full entry info so the agent can immediately
+    use the matched compound.
+
+    Args:
+        english_phrase: e.g. "build temple", "bail water", "swear oath"
+        limit: max results (default 10, cap 25)
+    """
+    limit = max(1, min(25, int(limit)))
+    needle = f"%{english_phrase.casefold().strip()}%"
+
+    con = _connect()
+    try:
+        _check_casefold_columns(con)
+        # A "compound entry" is one whose cf has a space (e.g. "a bad", "a bala").
+        # We also surface entries that have see-compounds matching the phrase.
+        rows = con.execute(
+            """
+            SELECT DISTINCT e.id AS oid, e.cf, e.gw, e.pos, e.icount AS entry_total
+            FROM entries e
+            WHERE instr(e.cf, ' ') > 0
+              AND (e.gw_cf LIKE ?
+                   OR EXISTS (SELECT 1 FROM senses s
+                              WHERE s.entry_id=e.id AND s.mng_cf LIKE ?))
+            ORDER BY e.icount DESC NULLS LAST
+            LIMIT ?
+            """,
+            (needle, needle, limit),
+        ).fetchall()
+    finally:
+        con.close()
+
+    results = [dict(r) for r in rows]
+    return FindCompoundResponse(
+        query=english_phrase,
+        total_matches=len(results),
+        results=results,
+    )
+
+
+@log_call
+def get_inflections(
+    oid: str, min_count: int = 2, limit_per_kind: int = 25,
+) -> GetInflectionsResponse | ErrorResponse:
+    """Show attested morphological breakdowns of a lemma.
+
+    For each kind of morphological data, returns the most-frequent patterns
+    with attestation counts. Use this to understand HOW a verb actually
+    inflects in the corpus, before composing a new sentence — Sumerian
+    inflection is too irregular to generate from rules; better to retrieve
+    real attested patterns and adapt.
+
+    Returned `kind` values:
+      - "base": attested lemma forms (e.g., 'a₂', '{ŋeš}a₂', 'A-KU₄').
+      - "morph": morphology pattern, '~' marks the base position.
+                 e.g., 'mu.na:~' means prefix chain 'mu.na' + base;
+                       'V.e:~' means generic vowel + 'e' prefix + base;
+                       '~,bi.a' means base + 'bi' (3sg.nonp.poss) + 'a' (loc).
+      - "morph2": alternative/secondary morphology analyses.
+      - "stem": stems (verb-specific; often absent for nouns).
+      - "prefix": just the verbal prefix chain (e.g., 'mu.na', 'V.e').
+                  These map 1:1 to morph rows via xis.
+      - "form-sans": attested concrete spelling for the morph pattern, with
+                     determinatives written explicitly (e.g., 'mu-na-|A+KU₄|').
+                     This is what you'd actually see in a tablet.
+
+    Args:
+        oid: entry OID (e.g., 'o0033341' for lugal).
+        min_count: drop rows with attestation count below this (default 2 —
+            filters out the long tail of zero/one-off noise; common entries
+            like `lugal` have 100+ form-sans rows where most have count<2).
+            Pass 0 to see everything.
+        limit_per_kind: cap each `kind` bucket at this many rows (default
+            25). Pass 0 for no cap. The result also includes `truncated`
+            flags so the caller knows when more data exists.
+
+    Returned shape:
+        {
+          "oid": ..., "cf": ..., "gw": ..., "pos": ...,
+          "morphology": {
+            "base":      [{n, count, pct, xis}, ...],
+            "form-sans": [{n, count, pct, xis}, ...],
+            "morph":     [{n, count, pct, xis}, ...],
+            ...
+          },
+          "kinds": [...],
+          "truncated": {"form-sans": "showed 25 of 132 (filtered count>=2)"}
+        }
+    """
+    min_count = max(0, int(min_count))
+    limit_per_kind = max(0, int(limit_per_kind))
+
+    con = _connect()
+    try:
+        entry = con.execute(
+            "SELECT cf, gw, pos FROM entries WHERE id=?", (oid,)
+        ).fetchone()
+        if not entry:
+            return ErrorResponse(error=f"no entry with oid={oid!r}")
+        rows = con.execute(
+            "SELECT kind, n, icount, ipct, xis FROM morphology "
+            "WHERE entry_id=? ORDER BY kind, icount DESC NULLS LAST",
+            (oid,),
+        ).fetchall()
+    finally:
+        con.close()
+
+    raw_by_kind: dict[str, list[dict]] = {}
+    for r in rows:
+        raw_by_kind.setdefault(r["kind"], []).append({
+            "n": r["n"],
+            "count": r["icount"] or 0,
+            "pct": r["ipct"] or 0,
+            "xis": r["xis"],
+        })
+
+    by_kind: dict[str, list[dict]] = {}
+    truncated: dict[str, str] = {}
+    for kind, items in raw_by_kind.items():
+        filtered = [i for i in items if i["count"] >= min_count]
+        kept = filtered[:limit_per_kind] if limit_per_kind else filtered
+        by_kind[kind] = kept
+        total = len(items)
+        if len(kept) < total:
+            truncated[kind] = (
+                f"showed {len(kept)} of {total} "
+                f"(filtered count>={min_count}"
+                + (f", capped at {limit_per_kind}" if limit_per_kind else "")
+                + ")"
+            )
+
+    return GetInflectionsResponse(
+        oid=oid,
+        cf=entry["cf"],
+        gw=entry["gw"],
+        pos=entry["pos"],
+        morphology=by_kind,
+        kinds=sorted(by_kind.keys()),
+        truncated=truncated,
+        filters={"min_count": min_count, "limit_per_kind": limit_per_kind},
+    )
+
+
+@log_call
+def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
+    """Decompose an attested Sumerian spelling into its lemma and morphology.
+
+    Searches across forms, form-sans (sandhi-resolved spellings), and bases
+    for the input transliteration, returning every entry the spelling could
+    belong to along with the morphological role it plays. Use this when
+    reading Sumerian or to verify that a constructed inflection matches
+    something actually attested.
+
+    Returns matches grouped by entry, each with:
+      - oid, cf, gw, pos: which lemma the spelling belongs to
+      - matched_in: which table the hit came from (forms / morphology.base /
+                    morphology.form-sans / morphology.morph)
+      - count, pct, xis: attestation stats for this specific spelling
+
+    Args:
+        spelling: a transliterated Sumerian word, e.g. 'lugal-e', 'mu-na-du₃',
+                  '{ŋeš}a₂'. Case-insensitive (Unicode-aware).
+        limit: max matches to return (default 20, cap 50)
+    """
+    limit = max(1, min(50, int(limit)))
+    needle = spelling.casefold().strip()
+
+    con = _connect()
+    try:
+        # Both branches use _cf indexed equality (forms.n_cf and
+        # morphology.n_cf) so each is a fast indexed lookup. Previously the
+        # morphology branch had `lower(m.n) = lower(?)` which forced a full
+        # scan of all 248K morphology rows (~340-550 ms per call); the
+        # n_cf column populated by app.ensure_casefold_columns() lets
+        # idx_morphology_kind_n_cf do the work in a few ms.
+        rows = con.execute(
+            """
+            SELECT 'forms' AS source, e.id AS oid, e.cf, e.gw, e.pos,
+                   f.n AS matched, f.icount AS count, f.ipct AS pct, f.xis
+            FROM forms f JOIN entries e ON e.id = f.entry_id
+            WHERE f.n_cf = ?
+            UNION ALL
+            SELECT 'morphology.' || m.kind AS source, e.id AS oid, e.cf, e.gw, e.pos,
+                   m.n AS matched, m.icount AS count, m.ipct AS pct, m.xis
+            FROM morphology m JOIN entries e ON e.id = m.entry_id
+            WHERE m.kind IN ('base', 'form-sans', 'morph')
+              AND m.n_cf = ?
+            ORDER BY count DESC NULLS LAST
+            LIMIT ?
+            """,
+            (needle, needle, limit),
+        ).fetchall()
+    finally:
+        con.close()
+    return AnalyzeFormResponse(
+        spelling=spelling,
+        matches=[{
+            "matched_in": r["source"],
+            "oid": r["oid"],
+            "cf": r["cf"],
+            "gw": r["gw"],
+            "pos": r["pos"],
+            "matched_text": r["matched"],
+            "count": r["count"] or 0,
+            "pct": r["pct"] or 0,
+            "xis": r["xis"],
+        } for r in rows],
+    )
+
+
+@log_call
+def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> TranslateSumerianResponse:
+    """Reverse-direction lookup: parse a Sumerian transliteration into per-token
+    English glosses. Use this to verify a translation you composed, or to read
+    a Sumerian phrase you encountered.
+
+    Tokenization is **whole-token-first**: splits the input only on whitespace,
+    then for each token tries the WHOLE thing (with hyphens intact) against
+    `entries.cf`, `forms.n`, and `morphology.n` (kind in 'base','form-sans').
+    Only if the whole-token lookup yields zero candidates does the parser fall
+    back to splitting on hyphens/dots and gloss each piece individually. This
+    matches the Sumerian convention that hyphens join signs WITHIN one word —
+    so `lu₂-gal` resolves cleanly as the lemma `lugal`, `mu-un-du₃` resolves
+    as the inflected form of `du₃`, etc. — instead of shattering every
+    hyphenated word into orphan signs.
+
+    Each returned entry carries a `match_kind` signal:
+      - "whole"          : the token resolved as-is (the preferred reading)
+      - "split_fallback" : whole-token lookup failed; this is one piece of
+                            the hyphen-split fallback. `from_word` names the
+                            original hyphenated token.
+      - "unmatched"      : neither the whole token nor any split piece
+                            resolved (no candidates).
+
+    Args:
+        transliteration: a Sumerian phrase like "lugal-e e₂ mu-un-du₃"
+        limit_per_token: max lemma candidates returned per token (default 3)
+    """
+    import re as _re
+
+    def _lookup(cur: sqlite3.Cursor, needle_cf: str, limit: int) -> list[dict[str, Any]]:
+        # UNION of three indexed equality lookups against entries.cf_cf,
+        # forms.n_cf, and morphology.n_cf (kind in base/form-sans). Each
+        # branch is a single index hit; the union and ORDER BY happen at
+        # the SQLite layer. ~sub-ms per call on the glossary index.
+        rows = cur.execute(
+            """
+            SELECT * FROM (
+                SELECT e.id AS oid, e.cf, e.gw, e.pos,
+                       e.icount AS entry_total
+                FROM entries e WHERE e.cf_cf = ?
+                UNION
+                SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                FROM forms f JOIN entries e ON e.id = f.entry_id
+                WHERE f.n_cf = ?
+                UNION
+                SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                FROM morphology m JOIN entries e ON e.id = m.entry_id
+                WHERE m.kind IN ('base', 'form-sans') AND m.n_cf = ?
+            ) ORDER BY entry_total DESC NULLS LAST
+            LIMIT ?
+            """,
+            (needle_cf, needle_cf, needle_cf, limit),
+        ).fetchall()
+        return [{
+            "oid": r["oid"],
+            "cf": r["cf"],
+            "gw": r["gw"],
+            "pos": r["pos"],
+            "entry_total": r["entry_total"] or 0,
+        } for r in rows]
+
+    _STRIP_CHARS = "⸢⸣[](),;:!?"
+
+    def _clean(s: str) -> str:
+        # Strip braced determinatives, surrounding bracketing/punctuation,
+        # and obvious damage placeholders (`x`).
+        s = _re.sub(r"\{[^}]*\}", "", s).strip().strip(_STRIP_CHARS)
+        return "" if s in {"x", "X"} else s
+
+    # Tokenize on whitespace ONLY. Hyphens stay intact inside each token
+    # so we can try the whole hyphenated word as a form-spelling lookup first.
+    words = [w for w in (_clean(piece) for piece in transliteration.split()) if w]
+
+    con = _connect()
+    try:
+        cur = con.cursor()
+        results: list[dict[str, Any]] = []
+        for word in words:
+            whole = _lookup(cur, word.casefold(), limit_per_token)
+            if whole:
+                # Lexicographer-blessed whole-token reading. Prefer this.
+                # Additionally surface the detected suffix chain so the
+                # agent has the grammatical-role signal even when the
+                # whole spelling was already in forms.n (Option 3).
+                base, suffixes = _peel_suffixes(word)
+                entry: dict[str, Any] = {
+                    "token": word,
+                    "candidates": whole,
+                    "match_kind": "whole",
+                }
+                if suffixes:
+                    entry["base"] = base
+                    entry["suffixes"] = [s.model_dump() for s in suffixes]
+                results.append(entry)
+                continue
+
+            # Whole-token lookup failed. If the word has hyphens or dots,
+            # fall back to splitting and glossing each piece. If it's a
+            # single bare piece with no separators, there's nowhere to
+            # fall back to — emit an empty "unmatched" entry so the
+            # agent can see we tried and found nothing.
+            pieces = [p for p in (_clean(s) for s in _re.split(r"[-.]", word)) if p]
+            if len(pieces) <= 1:
+                results.append({
+                    "token": word,
+                    "candidates": [],
+                    "match_kind": "unmatched",
+                })
+                continue
+
+            for piece in pieces:
+                results.append({
+                    "token": piece,
+                    "candidates": _lookup(cur, piece.casefold(), limit_per_token),
+                    "match_kind": "split_fallback",
+                    "from_word": word,
+                })
+    finally:
+        con.close()
+    return TranslateSumerianResponse(
+        transliteration=transliteration,
+        tokens=results,
+    )
+
+
+@log_call
+def parse_phrase(transliteration: str) -> ParsePhraseResponse:
+    """Case-aware grammatical pre-annotation of a Sumerian phrase.
+
+    Goes BEYOND translate_sumerian's per-token glossing by classifying each
+    token's syntactic role in the phrase based on its morphology:
+
+      - **Nominal tokens** get their case/possessive/plural suffixes peeled
+        and annotated (ergative, dative, locative, equative, etc.). The
+        base after peeling is looked up for clean lemma candidates.
+      - **Verbal tokens** are detected by the prefix chain (mu-, ba-, bi₂-,
+        i₃-, ḫe₂-, …) and reported with the prefix chain extracted; case-
+        suffix peeling is skipped (verb-final suffixes are agreement, not
+        case).
+      - Each chunk carries an inferred `role` (subject_ergative,
+        object_absolutive, oblique_dative, verb_head, …) and a
+        `phrase_boundary_after` flag the agent uses to chunk the input
+        into NP/VP/clause units.
+
+    This is **not a true syntactic parser** — it does not produce a
+    constituency or dependency tree, makes no claim about phrase
+    attachment, and cannot disambiguate genuine syntactic ambiguity. It
+    surfaces the grammatical role markers that are explicitly encoded in
+    the morphology and lets the agent build the parse on top.
+
+    The agent should call this BEFORE attempting an interlinear gloss when
+    facing structural ambiguity (e.g. "in the distant lapis-blue sky" vs.
+    "the sky, lapis-like, far away" — the difference often hinges on
+    whether `za-gin₃` carries `-gin₇` equative, which this tool detects
+    explicitly). For straightforward word-by-word lookup, translate_sumerian
+    is lighter and sufficient.
+
+    Args:
+        transliteration: a Sumerian phrase like "lugal-e e₂ mu-na-du₃"
+    """
+    words = [w for w in (_strip_token(piece) for piece in transliteration.split()) if w]
+
+    # Map outermost case suffix → inferred phrase role
+    CASE_TO_ROLE = {
+        "ergative":                "subject_ergative",
+        "dative":                  "oblique_dative",
+        "locative":                "oblique_locative",
+        "comitative":              "oblique_comitative",
+        "ablative_instrumental":   "oblique_ablative",
+        "terminative":             "oblique_terminative",
+        "equative":                "comparison_equative",
+        "genitive":                "genitive_modifier",
+    }
+    # Short labels for the skeleton string.
+    ROLE_TO_LABEL = {
+        "subject_ergative":       "ERG",
+        "object_absolutive":      "ABS",
+        "noun_head_unmarked":     "ABS",  # zero-marked absolutive
+        "oblique_dative":         "DAT",
+        "oblique_locative":       "LOC",
+        "oblique_comitative":     "COM",
+        "oblique_ablative":       "ABL",
+        "oblique_terminative":    "TERM",
+        "comparison_equative":    "EQUATIVE",
+        "genitive_modifier":      "GEN",
+        "adjective_modifier":     "ADJ",
+        "verb_head":              "V",
+        "unknown":                "?",
+    }
+
+    con = _connect()
+    try:
+        cur = con.cursor()
+
+        def _lookup(needle: str, limit: int = 3) -> list[dict[str, Any]]:
+            rows = cur.execute(
+                """
+                SELECT * FROM (
+                    SELECT e.id AS oid, e.cf, e.gw, e.pos,
+                           e.icount AS entry_total
+                    FROM entries e WHERE e.cf_cf = ?
+                    UNION
+                    SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                    FROM forms f JOIN entries e ON e.id = f.entry_id
+                    WHERE f.n_cf = ?
+                    UNION
+                    SELECT e.id, e.cf, e.gw, e.pos, e.icount
+                    FROM morphology m JOIN entries e ON e.id = m.entry_id
+                    WHERE m.kind IN ('base', 'form-sans') AND m.n_cf = ?
+                ) ORDER BY entry_total DESC NULLS LAST
+                LIMIT ?
+                """,
+                (needle, needle, needle, limit),
+            ).fetchall()
+            return [{
+                "oid": r["oid"], "cf": r["cf"], "gw": r["gw"],
+                "pos": r["pos"], "entry_total": r["entry_total"] or 0,
+            } for r in rows]
+
+        chunks: list[CaseChunk] = []
+        skeleton_parts: list[str] = []
+        seen_roles: list[str] = []
+
+        for word in words:
+            # First check if this looks like a verb form by its prefix chain.
+            # We prefer this signal over POS-of-whole-token because verb
+            # forms often fail to whole-token-lookup if the inflected surface
+            # isn't in forms.n; we don't want to mis-treat them as nouns
+            # and start peeling case suffixes.
+            verbal_prefixes = _detect_verbal_prefixes(word)
+
+            # Whole-token lookup against the lexicon.
+            whole_candidates = _lookup(word.casefold())
+            top_pos = whole_candidates[0]["pos"] if whole_candidates else None
+            is_verb = (top_pos or "").startswith("V") or (
+                verbal_prefixes is not None and top_pos in (None, "")
+            )
+
+            if is_verb:
+                # Verbal head. Don't peel case suffixes — verb-final
+                # endings are person/aspect agreement, not nominal case.
+                # Reuse the existing whole-token candidates if any.
+                chunks.append(CaseChunk(
+                    token=word,
+                    base=word.split("-")[-1] if verbal_prefixes else None,
+                    suffixes=[],
+                    candidates=whole_candidates,
+                    pos_head=top_pos,
+                    is_verb_form=True,
+                    verbal_prefixes=verbal_prefixes,
+                    role="verb_head",
+                    phrase_boundary_after=True,
+                ))
+                skeleton_parts.append(
+                    f"[V {whole_candidates[0]['cf'] if whole_candidates else word.split('-')[-1]}"
+                    + (f" ({verbal_prefixes}-)" if verbal_prefixes else "")
+                    + "]"
+                )
+                seen_roles.append("verb_head")
+                continue
+
+            # Nominal token. Try suffix-peeling for grammatical role.
+            base, suffixes = _peel_suffixes(word)
+
+            # If peeling stripped at least one suffix and the whole-token
+            # lookup didn't succeed, re-lookup with the bare base —
+            # often the base IS in entries.cf even when the inflected
+            # surface isn't in forms.n.
+            if suffixes and not whole_candidates:
+                base_candidates = _lookup(base.casefold())
+                candidates = base_candidates
+                top_pos = base_candidates[0]["pos"] if base_candidates else None
+            else:
+                candidates = whole_candidates
+
+            # Determine the chunk's phrase role from the OUTERMOST case
+            # suffix (last in left-to-right order). Possessive/plural
+            # suffixes don't change phrase role on their own — only
+            # case does.
+            outermost_case = next(
+                (s for s in reversed(suffixes) if s.kind == "case"),
+                None,
+            )
+            if outermost_case:
+                role = CASE_TO_ROLE.get(outermost_case.role, "unknown")
+            elif top_pos == "AJ":
+                role = "adjective_modifier"
+            elif candidates:
+                # Bare noun (no case marker) → zero-marked absolutive.
+                role = "noun_head_unmarked"
+            else:
+                role = "unknown"
+
+            # Adjectives modify the preceding head and don't close the phrase.
+            # Everything else with a recognized role closes the phrase.
+            phrase_boundary_after = role != "adjective_modifier"
+
+            chunks.append(CaseChunk(
+                token=word,
+                base=base if suffixes else None,
+                suffixes=suffixes,
+                candidates=candidates,
+                pos_head=top_pos,
+                is_verb_form=False,
+                verbal_prefixes=None,
+                role=role,
+                phrase_boundary_after=phrase_boundary_after,
+            ))
+
+            # Build the skeleton chunk.
+            label = ROLE_TO_LABEL.get(role, "?")
+            head_str = (candidates[0]["cf"] if candidates else (base if suffixes else word))
+            if role == "adjective_modifier":
+                # Adjectives glue to the previous bracket — render as
+                # "+ADJ:head" inside the existing chunk if there is one.
+                if skeleton_parts and skeleton_parts[-1].endswith("]"):
+                    # Insert before the closing bracket.
+                    skeleton_parts[-1] = skeleton_parts[-1][:-1] + f" +ADJ:{head_str}]"
+                else:
+                    skeleton_parts.append(f"[ADJ {head_str}]")
+            elif outermost_case:
+                skeleton_parts.append(f"[NP {head_str}-{label}]")
+            elif role == "noun_head_unmarked":
+                skeleton_parts.append(f"[NP {head_str}-ABS]")
+            else:
+                skeleton_parts.append(f"[? {head_str}]")
+            seen_roles.append(role)
+
+        # Heuristic notes.
+        notes: list[str] = []
+        has_ergative = "subject_ergative" in seen_roles
+        has_absolutive = "noun_head_unmarked" in seen_roles or "object_absolutive" in seen_roles
+        has_verb = "verb_head" in seen_roles
+        if has_ergative and has_absolutive and has_verb:
+            notes.append(
+                "ergative subject + absolutive object + verb head: "
+                "transitive clause (canonical SOV pattern)"
+            )
+        elif has_absolutive and has_verb and not has_ergative:
+            notes.append(
+                "absolutive subject + verb head, no ergative marker: "
+                "likely INTRANSITIVE clause (or the ergative-marked subject "
+                "was elided in this fragment)"
+            )
+        if "comparison_equative" in seen_roles:
+            notes.append(
+                "equative -gin₇ detected: the marked noun is being "
+                "compared LIKE the head, not described AS the head — "
+                "rules out an attributive-adjective reading"
+            )
+        # Flag any chunks with ambiguous suffixes so the agent knows
+        # to disambiguate manually.
+        for ch in chunks:
+            for s in ch.suffixes:
+                if s.ambiguous_with:
+                    notes.append(
+                        f"token {ch.token!r}: suffix {s.spelling!r} read as "
+                        f"{s.role!r}, but ambiguous with: "
+                        f"{', '.join(s.ambiguous_with)}"
+                    )
+
+    finally:
+        con.close()
+
+    return ParsePhraseResponse(
+        transliteration=transliteration,
+        chunks=chunks,
+        skeleton=" ".join(skeleton_parts) if skeleton_parts else "(empty input)",
+        notes=notes,
+    )
+
+
+@log_call
+def find_collocations(word: str, length: int | None = None, limit: int = 20) -> FindCollocationsResponse | ErrorResponse:
+    """Find multi-word Sumerian collocations (idiomatic phrases) containing
+    a given lemma. Mined from every corpusjson text in our local Oracc zips.
+
+    These are PHRASAL idioms beyond what the lexical compounds table catches:
+    things like 'lugal-ŋu₁₀' (vocative "my king"), 'lugal kalam-ma' (the
+    standard "king of the land" formula), 'inim lugal' (the king's word),
+    etc. Useful for translation: prefer attested formulas to syntactically
+    correct but never-used constructions.
+
+    Args:
+        word: the lemma cf to search for (e.g. "lugal", "e₂", "diŋir").
+              Searched against ALL positions in 2/3/4-grams.
+        length: optional filter by n-gram length: 2, 3, or 4. None = all.
+        limit: max results (default 20, cap 50)
+    """
+    if not COLLOCATIONS_DB.exists():
+        return ErrorResponse(
+            error="collocations.sqlite not built; run `python3 build_collocations.py` first",
+        )
+    limit = max(1, min(50, int(limit)))
+
+    def _query(con: sqlite3.Connection, term: str) -> tuple[list[dict], int]:
+        where = ["(cf1=? OR cf2=? OR cf3=? OR cf4=?)"]
+        params: list[Any] = [term, term, term, term]
+        if length in (2, 3, 4):
+            where.append("n=?")
+            params.append(length)
+        sql_where = "WHERE " + " AND ".join(where)
+        rows = con.execute(
+            f"SELECT n, ngram, count FROM collocations {sql_where} "
+            "ORDER BY count DESC LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        ucount = con.execute(
+            "SELECT count FROM unigrams WHERE cf=?", (term,)
+        ).fetchone()
+        return (
+            [{"n": r["n"], "ngram": r["ngram"], "count": r["count"]} for r in rows],
+            ucount["count"] if ucount else 0,
+        )
+
+    con = sqlite3.connect(COLLOCATIONS_DB)
+    con.row_factory = sqlite3.Row
+    resolved_from: str | None = None
+    try:
+        results, unigram = _query(con, word)
+        if unigram == 0 and not results:
+            # The collocations index is keyed by citation form (cf), not by
+            # spelling. The agent likely passed an inflected spelling like
+            # 'e₂' (a variant of cf 'e') or 'lugal-e' (an inflection of
+            # 'lugal'). Look the spelling up in forms/morphology and retry
+            # with the most-attested cf — and tell the caller via
+            # `resolved_from` so they know we substituted.
+            gcon = _connect()
+            try:
+                cf_row = gcon.execute(
+                    """
+                    SELECT e.cf, e.icount FROM (
+                        SELECT entry_id FROM forms WHERE n_cf = ?
+                        UNION
+                        SELECT entry_id FROM morphology
+                        WHERE n_cf = ? AND kind IN ('base', 'form-sans')
+                    ) m JOIN entries e ON e.id = m.entry_id
+                    ORDER BY e.icount DESC NULLS LAST LIMIT 1
+                    """,
+                    (word.casefold(), word.casefold()),
+                ).fetchone()
+            finally:
+                gcon.close()
+            if cf_row and cf_row["cf"] != word:
+                resolved_from = word
+                word = cf_row["cf"]
+                results, unigram = _query(con, word)
+    finally:
+        con.close()
+
+    note: str | None = None
+    if resolved_from:
+        note = (
+            f"input {resolved_from!r} appears to be a spelling/form; "
+            f"resolved to citation form {word!r} for the lookup. The "
+            "collocations index is keyed by cf, not by spelling."
+        )
+    return FindCollocationsResponse(
+        word=word,
+        word_unigram_count=unigram,
+        results=results,
+        resolved_from=resolved_from,
+        note=note,
+    )
+
+
+import re as _re_slot
+
+# Slot grammar:
+#   slot ::= TARGET ('[' GW ']')? (':' CASE)?
+#   TARGET ::= cf | POS | '*'   (POS may end in '*' for family glob)
+#   GW    ::= ('!')? freetext   (sense disambiguator)
+#   CASE  ::= ('!')? role       (case marker constraint)
+#
+# Examples:
+#   "lugal"                — cf=lugal (homographs aggregated)
+#   "lugal[king]"          — cf=lugal AND gw=king (v3 sense)
+#   "lugal[!king]"         — cf=lugal AND gw != king (negated sense)
+#   "lugal:ergative"       — cf=lugal AND case=ergative (v2 case)
+#   "lugal[king]:ergative" — cf=lugal AND gw=king AND case=ergative
+#   "N"                    — POS=N
+#   "N:locative"           — POS=N AND case=locative
+#   "N:!ergative"          — POS=N AND case != ergative
+#   "V*"                   — POS family glob (V/t, V/i, etc.)
+#   "V*:ergative"          — any verb whose agreement reads ergative
+#   "*"                    — wildcard (any cf at this slot)
+#   "*:locative"           — any cf whose case is locative
+_SLOT_RE = _re_slot.compile(
+    r"^"
+    r"(?P<target>\*|[^\[:]+)"           # cf, POS (with optional *), or *
+    r"(?:\[(?P<gw>!?[^\]]+)\])?"        # optional [gw] with optional !
+    r"(?::(?P<case>!?[^:]+))?"          # optional :case with optional !
+    r"$"
+)
+
+
+def _parse_slot(slot: str) -> dict[str, Any] | None:
+    """Parse a slot spec into a constraint dict. Returns None on syntax error."""
+    if not slot:
+        return None
+    m = _SLOT_RE.match(slot.strip())
+    if not m:
+        return None
+    target = m.group("target").strip()
+    gw_raw = m.group("gw")
+    case_raw = m.group("case")
+
+    out: dict[str, Any] = {
+        "target_kind": None,   # 'cf' | 'pos' | 'pos_family' | 'wildcard'
+        "target": None,
+        "gw": None, "gw_negate": False,
+        "case": None, "case_negate": False,
+    }
+
+    # Classify the target as cf, POS, or wildcard. POS heuristic same as
+    # the v1 implementation: uppercase-leading or contains '/' or ends '*'.
+    if target == "*":
+        out["target_kind"] = "wildcard"
+    elif target.endswith("*"):
+        out["target_kind"] = "pos_family"
+        out["target"] = target[:-1] + "%"   # 'V*' → LIKE 'V%'
+    elif "/" in target or (target.isupper() and len(target) <= 4):
+        out["target_kind"] = "pos"
+        out["target"] = target
+    else:
+        out["target_kind"] = "cf"
+        out["target"] = target
+
+    if gw_raw:
+        gw_raw = gw_raw.strip()
+        if gw_raw.startswith("!"):
+            out["gw_negate"] = True
+            out["gw"] = gw_raw[1:].strip()
+        else:
+            out["gw"] = gw_raw
+
+    if case_raw:
+        case_raw = case_raw.strip()
+        if case_raw.startswith("!"):
+            out["case_negate"] = True
+            out["case"] = case_raw[1:].strip()
+        else:
+            out["case"] = case_raw
+
+    return out
+
+
+@log_call
+def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatternResponse | ErrorResponse:
+    """Retrieve corpus-attested n-grams that match a structural template.
+
+    Use this to ground a candidate phrasing in real attestation. Given a
+    pattern of length 2-4 where each slot uses this grammar:
+
+        slot = TARGET (':' CASE)?
+        TARGET = cf | POS | '*'
+                 (optionally annotated with '[gw]' for sense disambig)
+        CASE   = case_role          e.g. ergative, dative, locative,
+                                    equative, terminative, comitative,
+                                    ablative_instrumental, genitive
+
+        Negation: prefix the gw or case value with '!'.
+
+    Slot examples:
+      "lugal"                — cf=lugal, homographs aggregated
+      "lugal[king]"          — only the king-sense lugal (v3 sense disambig)
+      "lugal[!king]"         — any lugal sense EXCEPT king
+      "lugal:ergative"       — lugal in ergative case
+      "lugal[king]:ergative" — king-sense lugal in ergative
+      "N"                    — any noun, any case
+      "N:locative"           — any locative-marked noun (v2 case)
+      "N:!ergative"          — any noun NOT in ergative
+      "V*"                   — any verb (POS family glob)
+      "*:locative"           — any cf in locative case
+      "*"                    — wildcard (any cf, any case)
+
+    Pattern examples (with sample value):
+      ["lugal","N"]
+          → king + X — every noun attested next to lugal
+      ["RN","lugal"]
+          → every royal name attested with king (year-name templates)
+      ["N:ergative","N:locative","V*"]
+          → transitive-clause skeletons with locative complement
+      ["lugal[king]:ergative","N","du"]
+          → "the king(-erg) builds a/the X" attested patterns
+      ["za-gin₃:equative","N"]
+          → "lapis-like" comparative constructions
+
+    Routing: when `data/inflected_collocations.sqlite` exists, the tool
+    queries that (sense + case aware). When it's missing, the tool falls
+    back to `data/collocations.sqlite` for v1-style queries; queries that
+    use `[gw]` or `:case` syntax error out with a hint.
+
+    Results include per-slot annotation: cf, pos, gw, case (where
+    available). Returned rows are keyed by the FULL distinct
+    (cf, gw, pos, case) tuple per slot, so homographs and case-variants
+    appear as separate rows — that's the disambiguation the agent wants.
+
+    Args:
+        pattern: list of 2-4 slot specifiers (see grammar above).
+        limit: max number of attested n-grams to return (default 20).
+    """
+    if not isinstance(pattern, list) or not pattern:
+        return ErrorResponse(error="pattern must be a non-empty list of slot specifiers")
+    if len(pattern) < 2 or len(pattern) > 4:
+        return ErrorResponse(
+            error=f"pattern length must be 2, 3, or 4 (got {len(pattern)})",
+            hint="The collocation index only stores 2/3/4-grams.",
+        )
+    pattern = [p.strip() for p in pattern]
+    n = len(pattern)
+    limit = max(1, min(200, int(limit)))
+
+    parsed_slots: list[dict[str, Any]] = []
+    for raw in pattern:
+        ps = _parse_slot(raw)
+        if ps is None:
+            return ErrorResponse(
+                error=f"could not parse slot {raw!r}",
+                hint="See the docstring for slot grammar examples.",
+            )
+        parsed_slots.append(ps)
+
+    uses_v2_v3 = any(ps["gw"] or ps["case"] for ps in parsed_slots)
+
+    # Routing: prefer inflected (v2/v3) index when available.
+    if INFLECTED_COLLOCATIONS_DB.exists():
+        return _find_phrase_pattern_inflected(pattern, parsed_slots, n, limit)
+
+    # Inflected index missing — fall back to legacy cf-only index, but
+    # only if no slot uses the new gw/case syntax.
+    if uses_v2_v3:
+        return ErrorResponse(
+            error="pattern uses [gw] or :case syntax but inflected_collocations.sqlite is missing",
+            hint=("Run `python3 build_inflected_collocations.py` to build it "
+                  "(~25-40 min over the full corpus). Until then, restrict "
+                  "the pattern to v1 syntax (cf | POS | '*') and the legacy "
+                  "cf-only index will serve."),
+        )
+    if not COLLOCATIONS_DB.exists():
+        return ErrorResponse(
+            error=f"neither inflected_collocations.sqlite nor collocations.sqlite exists at {COLLOCATIONS_DB.parent}",
+            hint="Run `python3 build_collocations.py` (cf-only, ~5 min) OR `python3 build_inflected_collocations.py` (case+sense aware, ~30 min).",
+        )
+
+    return _find_phrase_pattern_legacy(pattern, parsed_slots, n, limit)
+
+
+def _find_phrase_pattern_inflected(
+    pattern: list[str],
+    parsed_slots: list[dict[str, Any]],
+    n: int,
+    limit: int,
+) -> FindPhrasePatternResponse:
+    """Query the inflected_collocations.sqlite index (v2/v3 path).
+
+    Rows in the inflected table are already keyed by the full distinct
+    (cf, gw, pos, case) tuple per slot, so the result naturally surfaces
+    homograph + case variants as separate rows. No aggregation needed at
+    query time; the row IS the answer.
+    """
+    where_parts: list[str] = ["n = ?"]
+    params: list[Any] = [n]
+
+    for i, ps in enumerate(parsed_slots, start=1):
+        # Target constraint
+        if ps["target_kind"] == "cf":
+            where_parts.append(f"cf{i} = ?")
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos":
+            where_parts.append(f"pos{i} = ?")
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos_family":
+            where_parts.append(f"pos{i} LIKE ?")
+            params.append(ps["target"])
+        # wildcard → no target constraint
+
+        # Sense (gw) constraint
+        if ps["gw"]:
+            op = "!=" if ps["gw_negate"] else "="
+            where_parts.append(f"gw{i} {op} ?")
+            params.append(ps["gw"])
+
+        # Case constraint. Note: 'absolutive' (zero-marked) is stored as
+        # NULL in the table. Treat 'absolutive' and 'none' as aliases for
+        # the NULL test.
+        if ps["case"]:
+            case_value = ps["case"].lower()
+            if case_value in ("absolutive", "none", "null"):
+                op = "IS NOT" if ps["case_negate"] else "IS"
+                where_parts.append(f"case{i} {op} NULL")
+            else:
+                if ps["case_negate"]:
+                    # `case != X` is true for both other-case AND NULL.
+                    # We want "NOT this specific case," so include NULL.
+                    where_parts.append(f"(case{i} != ? OR case{i} IS NULL)")
+                    params.append(ps["case"])
+                else:
+                    where_parts.append(f"case{i} = ?")
+                    params.append(ps["case"])
+
+    where_clause = " AND ".join(where_parts)
+
+    con = sqlite3.connect(str(INFLECTED_COLLOCATIONS_DB))
+    con.row_factory = sqlite3.Row
+    try:
+        total_row = con.execute(
+            f"SELECT COUNT(*) AS n FROM inflected_ngrams WHERE {where_clause}",
+            params,
+        ).fetchone()
+        total = total_row["n"]
+
+        rows = con.execute(
+            f"""
+            SELECT cf1, cf2, cf3, cf4, gw1, gw2, gw3, gw4,
+                   pos1, pos2, pos3, pos4, case1, case2, case3, case4,
+                   count
+            FROM inflected_ngrams
+            WHERE {where_clause}
+            ORDER BY count DESC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+        results: list[dict[str, Any]] = []
+        for r in rows:
+            tokens = []
+            for i in range(1, n + 1):
+                tokens.append({
+                    "cf": r[f"cf{i}"],
+                    "pos": r[f"pos{i}"],
+                    "gw": r[f"gw{i}"],
+                    "case": r[f"case{i}"],
+                })
+            ngram_str = " ".join(t["cf"] for t in tokens)
+            results.append({
+                "ngram": ngram_str,
+                "count": r["count"],
+                "tokens": tokens,
+            })
+    finally:
+        con.close()
+
+    return FindPhrasePatternResponse(
+        pattern=pattern,
+        n=n,
+        total_matches=total,
+        results=results,
+    )
+
+
+def _find_phrase_pattern_legacy(
+    pattern: list[str],
+    parsed_slots: list[dict[str, Any]],
+    n: int,
+    limit: int,
+) -> FindPhrasePatternResponse:
+    """Query the legacy cf-only collocations.sqlite index (v1 fallback).
+
+    Only invoked when:
+      - the inflected index is missing, AND
+      - no slot uses gw/case syntax (those would be unanswerable here).
+    """
+    where_parts: list[str] = ["c.n = ?"]
+    params: list[Any] = [n]
+
+    for i, ps in enumerate(parsed_slots, start=1):
+        col = f"c.cf{i}"
+        if ps["target_kind"] == "wildcard":
+            continue
+        if ps["target_kind"] == "cf":
+            where_parts.append(f"{col} = ?")
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos":
+            where_parts.append(
+                f"EXISTS (SELECT 1 FROM glossary.entries e WHERE e.cf = {col} AND e.pos = ?)"
+            )
+            params.append(ps["target"])
+        elif ps["target_kind"] == "pos_family":
+            where_parts.append(
+                f"EXISTS (SELECT 1 FROM glossary.entries e WHERE e.cf = {col} AND e.pos LIKE ?)"
+            )
+            params.append(ps["target"])
+
+    where_clause = " AND ".join(where_parts)
+    con = sqlite3.connect(str(COLLOCATIONS_DB))
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute(f"ATTACH DATABASE '{GLOSSARY_DB}' AS glossary")
+
+        total = con.execute(
+            f"SELECT COUNT(*) AS n FROM collocations c WHERE {where_clause}",
+            params,
+        ).fetchone()["n"]
+
+        rows = con.execute(
+            f"""
+            SELECT c.ngram, c.count, c.cf1, c.cf2, c.cf3, c.cf4
+            FROM collocations c
+            WHERE {where_clause}
+            ORDER BY c.count DESC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+        # Annotate cfs with POS+gw from the highest-icount entry per cf
+        # (homograph display fix, same as v1 path).
+        all_cfs: set[str] = set()
+        for r in rows:
+            for k in ("cf1", "cf2", "cf3", "cf4"):
+                if r[k]:
+                    all_cfs.add(r[k])
+        entry_lookup: dict[str, tuple[str | None, str | None]] = {}
+        if all_cfs:
+            placeholders = ",".join("?" * len(all_cfs))
+            for er in con.execute(
+                f"""
+                SELECT cf, pos, gw FROM (
+                    SELECT cf, pos, gw, icount,
+                           ROW_NUMBER() OVER (PARTITION BY cf ORDER BY icount DESC NULLS LAST) AS rk
+                    FROM glossary.entries
+                    WHERE cf IN ({placeholders})
+                ) WHERE rk = 1
+                """,
+                list(all_cfs),
+            ):
+                entry_lookup[er["cf"]] = (er["pos"], er["gw"])
+
+        results: list[dict[str, Any]] = []
+        for r in rows:
+            tokens = []
+            for i in range(1, n + 1):
+                cf = r[f"cf{i}"]
+                pos, gw = entry_lookup.get(cf, (None, None))
+                tokens.append({"cf": cf, "pos": pos, "gw": gw, "case": None})
+            results.append({
+                "ngram": r["ngram"],
+                "count": r["count"],
+                "tokens": tokens,
+            })
+    finally:
+        con.close()
+
+    return FindPhrasePatternResponse(
+        pattern=pattern,
+        n=n,
+        total_matches=total,
+        results=results,
+    )
+
+
+# -----------------------------------------------------------------------------
+# find_verb_form — feature-driven attestation lookup over the morphology table
+# -----------------------------------------------------------------------------
+#
+# Slot order encoded by Oracc's morph patterns (verified against eme-gir/sux):
+#   [modal] . [conj-prefix] . [dim1=na/dat] . [dim2=ni/loc] . [obj-agreement] : [base] ; [suffixes]
+#
+# Examples from du[build] V/t:
+#   mu:~          prefix=mu                                            (2,923)
+#   mu.na:~       prefix=mu, dim=dat                                     (473)
+#   mu.n:~        prefix=mu,                  obj=3sg.h                   (56)
+#   mu.na.n:~     prefix=mu, dim=dat,         obj=3sg.h                   (13)
+#   ba.b:~        prefix=ba,                  obj=3sg.nh           (3,976 verbs)
+
+_VERB_PREFIX_MAP = {
+    "mu":  "mu",  "ba": "ba", "i": "i", "bi": "bi",
+    "ga":  "ga",  "ha": "ha",
+    "imp": "",     # imperative — bare base, no prefix slot at all
+}
+_VERB_DIM_MAP = {
+    "dat":  "na",  # to/for him
+    "loc":  "ni",  # in/at
+    "com":  "da",  # with
+    "abl":  "ta",  # from
+    "term": "ši",  # toward
+    "loc2": "e",   # locative-2
+}
+_VERB_DIM_ORDER = ["dat", "loc", "com", "abl", "term", "loc2"]
+_VERB_OBJ_MAP = {
+    "3sg.h":  "n",
+    "3sg.nh": "b",
+    "3pl.h":  "neš",
+    "1sg":    "ʔ",
+}
+# marû imperfective tends to surface as one of these enclitic suffixes;
+# ḫamṭu lacks them. Heuristic only — does not catch stem-alternating verbs
+# (e.g. ŋen/du-du for "go") which are encoded as separate entries.
+_MARU_SUFFIX_GLOBS = ("*~;e", "*~;ed*", "*~;e.*", "*~;en*", "*~;eš*")
+
+
+def _morph_slots(morph_n: str) -> tuple[list[str], list[str]]:
+    """Split 'mu.na.n:~;a' into (['mu','na','n'], ['a']).
+
+    Returns (prefix_slots_in_order, suffix_slots_flat). The base is
+    implicit at the ':~' boundary and not returned. Suffix groups
+    separated by ',' (e.g. ';a,ak') are flattened.
+    """
+    if ":~" in morph_n:
+        # Standard prefix-chain + base + suffixes; rsplit so reduplication
+        # patterns like '~mu.n:~;en' use the LAST ':~' as the separator.
+        prefix_part, suffix_part = morph_n.rsplit(":~", 1)
+    elif "~" in morph_n:
+        # Bare base or base + suffix only (e.g. '~' or '~;a').
+        idx = morph_n.index("~")
+        prefix_part = morph_n[:idx]
+        suffix_part = morph_n[idx + 1:]
+    else:
+        prefix_part, suffix_part = morph_n, ""
+    pre_slots = [s for s in prefix_part.split(".") if s] if prefix_part else []
+    suf_groups = suffix_part.lstrip(";").split(";") if suffix_part else []
+    suf_flat = [s for chunk in suf_groups for s in chunk.split(",") if s]
+    return pre_slots, suf_flat
+
+
+def _matches_feature_spec(
+    morph_n: str, *,
+    polarity: str, prefix: str | None,
+    dimensional: list[str] | None,
+    object_person: str | None,
+) -> bool:
+    """Verify a morph row's slot decomposition against requested features.
+
+    Slot model (left-to-right in the prefix chain):
+        [polarity nu] . [conj-prefix] . [dim slots in canonical order]
+                      . [obj-agreement: n/b/neš/ʔ]
+    All matching is on COMPLETE slot tokens — `n` must be exactly `n`,
+    not a substring of `na`, `ne`, `neš`. This is what GLOB can't do.
+    """
+    pre_slots, _ = _morph_slots(morph_n)
+
+    cursor = 0  # walk pointer through pre_slots
+
+    if polarity == "neg":
+        if cursor >= len(pre_slots) or pre_slots[cursor] != "nu":
+            return False
+        cursor += 1
+
+    if prefix is not None:
+        wanted = _VERB_PREFIX_MAP[prefix]
+        if wanted == "":  # imperative — bare base, must have NO prefix slots left
+            return cursor == len(pre_slots) and (
+                object_person is None and not dimensional
+            )
+        if cursor >= len(pre_slots) or pre_slots[cursor] != wanted:
+            return False
+        cursor += 1
+    elif not pre_slots:
+        # No prefix requested AND row is bare base — only return it if
+        # the caller didn't ask for any other prefix-chain features.
+        return object_person is None and not dimensional and polarity == "affirm"
+
+    # The "tail" is everything from cursor to end. The object-agreement
+    # marker, if present, is always the LAST tail slot. Dimensional
+    # markers fill the slots between (in canonical order, but the user
+    # may not have requested all of them — the row may include extras).
+    tail = pre_slots[cursor:]
+
+    obj_slot = None
+    if object_person is not None:
+        wanted_obj = _VERB_OBJ_MAP[object_person]
+        if not tail or tail[-1] != wanted_obj:
+            return False
+        obj_slot = wanted_obj
+        tail = tail[:-1]
+
+    # Whatever's left in `tail` must include each requested dimensional
+    # marker, in canonical order. Extras in the row are OK (the user
+    # under-specified) — but we don't allow OUT-OF-ORDER, since the
+    # morph table itself preserves canonical order.
+    if dimensional:
+        wanted_dims = [_VERB_DIM_MAP[d] for d in _VERB_DIM_ORDER if d in dimensional]
+        i = 0
+        for slot in tail:
+            if i < len(wanted_dims) and slot == wanted_dims[i]:
+                i += 1
+        if i < len(wanted_dims):
+            return False
+
+    return True
+
+
+def _synthesize_verb_spelling(morph_n: str, base_n: str) -> str:
+    """Mechanically render a morph template into a spelling.
+
+    `~` -> base, then `.` `:` `;` `,` all become `-`.
+
+    NB: this does NOT model Sumerian phonology. Cases like agreement
+    `n` surfacing as `un` (mu.n:~ -> attested mu-un-du₃) are NOT
+    handled — the synthesized spelling for that pattern would be
+    'mu-n-du₃', which doesn't exist in forms but is unambiguous as a
+    morpheme rendering. Returned spellings are best-effort; the
+    morph row's `count` is the authoritative attestation total.
+    """
+    # Insert hyphens between adjacent base-occurrences in reduplication
+    # patterns like '~~' or '~mu' (no separator in the morph encoding)
+    # before substituting the base, so 'du₃' stays joined by '-'.
+    s = morph_n
+    for ch in ".:;,":
+        s = s.replace(ch, "-")
+    out = []
+    for i, ch in enumerate(s):
+        if ch == "~":
+            if i > 0 and s[i - 1] not in "-":
+                out.append("-")
+            out.append(base_n)
+            if i + 1 < len(s) and s[i + 1] not in "-":
+                out.append("-")
+        else:
+            out.append(ch)
+    s = "".join(out)
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-")
+
+
+@log_call
+def find_verb_form(
+    cf: str,
+    pos: str = "V/t",
+    *,
+    prefix: str | None = None,
+    polarity: str = "affirm",
+    object_person: str | None = None,
+    dimensional: list[str] | None = None,
+    aspect: str | None = None,
+    suffix_a: bool | None = None,
+    reduplicated: bool | None = None,
+    min_count: int = 1,
+    limit: int = 10,
+    with_example: bool = True,
+) -> FindVerbFormResponse | ErrorResponse:
+    """Find attested verb forms matching a feature spec.
+
+    Sumerian conjugation is too irregular to synthesize confidently. This
+    tool instead RETRIEVES attested forms by querying the corpus's
+    morphology index with grammatical-feature constraints — the agent gets
+    real Ur-III-through-Old-Babylonian scribal practice, ranked by
+    frequency, ready to drop into a translation.
+
+    Each match returns BOTH the morpheme template (`mu.na:~`) and a
+    mechanically-synthesized spelling (`mu-na-du₃`), the raw attestation
+    count, the share of this verb's total uses, the cuneiform rendering,
+    and one cited example line so the agent can verify it's real.
+
+    Slot model (matches the morph patterns in `morphology.n`):
+        [polarity nu] . [prefix] . [dim slots: na, ni, da, ta, ši, e]
+                      . [obj-agreement: n=3sg.h, b=3sg.nh, neš=3pl.h]
+                      : [base]
+                      ; [suffix slots: e/ed/en/eš (marû), a (nominalizer), …]
+
+    Args:
+        cf:  citation form, e.g. 'du', 'ŋar', 'ŋen'.
+        pos: 'V/t' (transitive, default) or 'V/i' (intransitive).
+        prefix: conjugation prefix in {'mu','ba','i','bi','ga','ha','imp'}.
+                'imp' = imperative (bare base, no prefix). None = any.
+        polarity: 'affirm' (default) or 'neg' (prepends nu-).
+        object_person: object/agreement marker just before the base.
+                       One of {'3sg.h','3sg.nh','3pl.h','1sg'}. None = any.
+        dimensional: zero or more of {'dat','loc','com','abl','term','loc2'}
+                     — appear in canonical slot order regardless of input.
+        aspect: 'hamtu' (perfective) or 'maru' (imperfective). HEURISTIC
+                via suffix presence (`-e/-ed/-en/-eš`); will MISS verbs
+                with stem alternation like ŋen/du-du for "go" — those
+                are stored as separate entries, so query each cf separately.
+        suffix_a: True to require nominalizing/relative -a suffix.
+        reduplicated: True to require base reduplication (~.~ in morph).
+        min_count: drop morph rows below this attestation count (default 1).
+        limit: cap on results returned (default 10, max 50).
+        with_example: include one cited line per match (default True). Set
+                      False to skip the text_resolver lookups when you only
+                      need pattern + count (faster).
+    """
+    limit = max(1, min(50, int(limit)))
+    min_count = max(0, int(min_count))
+
+    if polarity not in ("affirm", "neg"):
+        return ErrorResponse(error=f"polarity must be 'affirm' or 'neg', got {polarity!r}")
+    if aspect is not None and aspect not in ("hamtu", "maru"):
+        return ErrorResponse(error=f"aspect must be 'hamtu' or 'maru' or None, got {aspect!r}")
+    if prefix is not None and prefix not in _VERB_PREFIX_MAP:
+        return ErrorResponse(
+            error=f"unknown prefix={prefix!r}; expected one of {sorted(_VERB_PREFIX_MAP)}"
+        )
+    if object_person is not None and object_person not in _VERB_OBJ_MAP:
+        return ErrorResponse(
+            error=f"unknown object_person={object_person!r}; expected one of {sorted(_VERB_OBJ_MAP)}"
+        )
+    if dimensional:
+        unknown = [d for d in dimensional if d not in _VERB_DIM_MAP]
+        if unknown:
+            return ErrorResponse(
+                error=f"unknown dimensional={unknown}; expected subset of {_VERB_DIM_ORDER}"
+            )
+
+    con = _connect()
+    try:
+        entry = con.execute(
+            "SELECT id, cf, gw, pos, icount FROM entries "
+            "WHERE cf=? AND pos=? ORDER BY icount DESC LIMIT 1",
+            (cf, pos),
+        ).fetchone()
+        if not entry:
+            return ErrorResponse(
+                error=f"no entry with cf={cf!r} and pos={pos!r}",
+                hint="try translate_english or analyze_form to find the right cf/pos",
+            )
+        eid = entry["id"]
+        total_attestations = entry["icount"] or 0
+
+        base = con.execute(
+            "SELECT n FROM morphology WHERE entry_id=? AND kind='base' "
+            "ORDER BY icount DESC LIMIT 1",
+            (eid,),
+        ).fetchone()
+        if not base:
+            return ErrorResponse(
+                error=f"entry {eid} has no morphology base; "
+                       "this verb may be irregular/unanalyzed in eme-gir"
+            )
+        base_n = base["n"]
+
+        # Pull all morph rows for the entry above the count threshold
+        # (typically <500 even for the highest-attested verbs); filter
+        # in Python where slot-aware matching is straightforward.
+        all_rows = con.execute(
+            "SELECT n, icount, ipct, xis FROM morphology "
+            "WHERE entry_id=? AND kind='morph' AND icount >= ? "
+            "ORDER BY icount DESC",
+            (eid, min_count),
+        ).fetchall()
+
+        rows: list[sqlite3.Row] = []
+        for r in all_rows:
+            n = r["n"]
+            if not _matches_feature_spec(
+                n, polarity=polarity, prefix=prefix,
+                dimensional=dimensional, object_person=object_person,
+            ):
+                continue
+            # Suffix / aspect / redup filters operate on the suffix slot list.
+            _, suf_slots = _morph_slots(n)
+            has_a = "a" in suf_slots
+            is_redup = n.count("~") > 1
+            is_maru = any(s in ("e", "ed", "en", "eš") for s in suf_slots)
+            if suffix_a is True and not has_a: continue
+            if suffix_a is False and has_a: continue
+            if reduplicated is True and not is_redup: continue
+            if reduplicated is False and is_redup: continue
+            if aspect == "maru" and not is_maru: continue
+            if aspect == "hamtu" and is_maru: continue
+            rows.append(r)
+            if len(rows) >= limit:
+                break
+
+        # For each match, look up the corresponding form in `forms` so we
+        # can return BOTH the synthesized spelling AND (if the synthesis
+        # happens to match an attested form) its independent count there.
+        matches: list[dict[str, Any]] = []
+        for r in rows:
+            morph_n = r["n"]
+            count = r["icount"] or 0
+            synthesized = _synthesize_verb_spelling(morph_n, base_n)
+
+            forms_row = con.execute(
+                "SELECT n, icount FROM forms WHERE entry_id=? AND n=? LIMIT 1",
+                (eid, synthesized),
+            ).fetchone()
+            forms_n = forms_row["n"] if forms_row else None
+            forms_count = (forms_row["icount"] if forms_row else None)
+
+            example = None
+            if with_example and r["xis"]:
+                # Pull a few refs and resolve the first that has a matching line.
+                refs = [
+                    row[0] for row in con.execute(
+                        "SELECT word_ref FROM instances WHERE xis=? LIMIT ?",
+                        (r["xis"], 8),
+                    ).fetchall()
+                ]
+                resolved = text_resolver.resolve_many(refs, limit=1)
+                if resolved:
+                    line = resolved[0]
+                    target_pos = next(
+                        (i for i, w in enumerate(line["words"]) if w["is_target"]),
+                        None,
+                    )
+                    example = {
+                        "text_id": line["text_id"],
+                        "project": line["project"],
+                        "line_label": line["line_label"],
+                        "designation": line.get("designation"),
+                        "period": line.get("period"),
+                        "transliteration": " ".join(w["frag"] for w in line["words"]),
+                        "target_position": target_pos,
+                    }
+                    # CDLI enrichment — same pattern as see_examples
+                    cdli = _cdli.enrichment(line["text_id"])
+                    if cdli:
+                        example.update(cdli)
+
+            matches.append({
+                "morph": morph_n,
+                "spelling": forms_n if forms_n else synthesized,
+                "synthesized_spelling": synthesized,
+                "verified_in_forms": bool(forms_row),
+                "count": count,
+                "share_pct": round(count / total_attestations * 100, 2) if total_attestations else 0,
+                "forms_table_count": forms_count,
+                "cuneiform": _cuneify.cuneify(forms_n if forms_n else synthesized),
+                "example": example,
+            })
+    finally:
+        con.close()
+
+    warnings: list[str] = []
+    if aspect is not None:
+        warnings.append(
+            "aspect filter is suffix-based heuristic; verbs with stem "
+            "alternation (e.g. ŋen/du-du for 'go') are stored as separate "
+            "entries — query each cf separately"
+        )
+    if not matches:
+        warnings.append(
+            "no attested forms match this spec; try relaxing constraints, "
+            "or check get_inflections(oid) to see which patterns this verb "
+            "actually uses"
+        )
+
+    return FindVerbFormResponse(
+        cf=entry["cf"],
+        pos=entry["pos"],
+        gw=entry["gw"],
+        entry_oid=eid,
+        base=base_n,
+        total_attestations_for_entry=total_attestations,
+        candidates_scanned=len(all_rows),
+        filter_spec={
+            "prefix": prefix,
+            "polarity": polarity,
+            "object_person": object_person,
+            "dimensional": dimensional or [],
+            "aspect": aspect,
+            "suffix_a": suffix_a,
+            "reduplicated": reduplicated,
+        },
+        matches=matches,
+        warnings=warnings,
+    )
