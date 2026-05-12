@@ -33,6 +33,10 @@ python3 build_collocations.py
 # (Optional) Build the ETCSL literary corpus for the etcsl_* MCP tools (~10 sec)
 python3 build_etcsl_db.py
 
+# (Optional) Build the CDLI artifact catalogue for lookup_artifact + find_artifacts
+# (~30 sec; downloads 147 MB CSV from GitHub LFS, builds a 157 MB SQLite)
+python3 build_cdli_db.py
+
 # Run the web app once to populate the casefold + sort SQLite migrations
 python3 app.py    # → http://127.0.0.1:5050/epsd2/sux
 ```
@@ -105,7 +109,7 @@ The web app routes:
 
 ## 3. Run as an MCP server (for LLM agents)
 
-The repo ships an MCP server exposing seventeen tools designed for agent-driven English ↔ Sumerian translation, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
+The repo ships an MCP server exposing nineteen tools designed for agent-driven English ↔ Sumerian translation + CDLI artifact lookup, plus a project-scoped `.mcp.json` so **Claude Code auto-detects the server** when launched in this directory — no manual client config needed.
 
 For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `mcpServers` config:
 
@@ -123,7 +127,7 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 
 > **Both paths must be absolute.** MCP clients spawn the server without sourcing your shell init, so a bare `python3` resolves to the system python (which may not have the `mcp` package). On macOS with asdf-managed Python, look up the canonical path with `readlink -f $(which python3)`.
 
-### The seventeen tools
+### The nineteen tools
 
 **ePSD2 dictionary + corpus tools:**
 
@@ -147,6 +151,13 @@ For other MCP clients (Claude Desktop, Cline, etc.), add this to the client's `m
 - `etcsl_lines_with_lemma(lemma, limit)` — literary lines containing a given Sumerian lemma + the English paragraph
 - `etcsl_search_sumerian(query, limit)` — FTS5 over Sumerian transliterations; returns bilingual matches
 - `etcsl_lookup_text(text_id, start, line_limit)` — read a whole composition, paginated, bilingual
+
+**CDLI artifact catalogue tools** (require `python3 build_cdli_db.py`):
+
+- `lookup_artifact(p_id)` — full per-artifact metadata for one P-id: provenience (find spot), period, museum custody (collection + accession number), dimensions, citations, plus URLs to CDLI-hosted photographs and line drawings when available.
+- `find_artifacts(provenience, period, museum_collection, genre, language, limit)` — filter the 353K-row catalogue. All filters are case-insensitive substring matches (`provenience='Drehem'` matches `'Drehem (mod. Puzriš-Dagan)'`); AND together when multiple supplied. Useful for "every Ur III tablet from Drehem in the British Museum" style questions.
+
+`see_examples` and `find_verb_form` automatically splat the same CDLI image URLs + museum metadata onto every cited line they return when `cdli.sqlite` is built — so an agent calling `see_examples('o0033341')` for the lemma `lugal` gets each attested line with a clickable link to its CDLI photograph for free.
 
 Plus two MCP resources, both intended to be fetched once at session start so the agent self-bootstraps without operator-side prompt copy-paste:
 
