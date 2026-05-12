@@ -70,4 +70,5 @@ OGSL_ZIP = CORPUS_DIR / "ogsl.zip"
 
 # Prompt / grammar artifacts (checked into the repo, not generated).
 GRAMMAR_DOC = PROMPT_DIR / "SUMERIAN_GRAMMAR.md"
+MEADOW_GRAMMAR_DOC = PROMPT_DIR / "MEADOW_GRAMMAR.md"
 AGENT_PROMPT_DOC = PROMPT_DIR / "AGENT_PROMPT.md"

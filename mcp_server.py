@@ -72,6 +72,7 @@ from mcp_models import (
     FindPhrasePatternResponse,
     FindVerbFormResponse,
     GetInflectionsResponse,
+    GrammarReferenceResponse,
     LookupArtifactResponse,
     LookupEntryResponse,
     LookupSignResponse,
@@ -96,6 +97,7 @@ from paths import (
     INFLECTED_COLLOCATIONS_DB,
     MCP_SERVER_LOG as LOG_FILE,
     ROOT,
+    MEADOW_GRAMMAR_DOC,
     TEXT_INDEX_DB,
 )
 
@@ -418,16 +420,21 @@ mcp = FastMCP(
         "  • oracc://prompt/agent      — your full system prompt: the workflow, "
         "the required output format, the ETCSL attribution rule, and a worked "
         "example. Read this FIRST so the rest of the instructions make sense.\n"
-        "  • oracc://grammar/sumerian  — comprehensive Jagersma-2010-based "
-        "grammar reference (twelve enclitic cases, phonology, the nine-slot "
-        "finite-verb template, perfective vs imperfective inflection, modal/"
-        "negative preformatives, non-finite forms, nominalization-based "
-        "subordination). Every grammatical rule carries an inline Jagersma "
-        "§-citation for verification. Read this SECOND so you can reason "
-        "about morphology when tool results return inflected forms.\n"
+        "  • oracc://grammar/sumerian  — TWO grammar references concatenated: "
+        "(1) the comprehensive Jagersma-2010-based academic reference "
+        "(twelve enclitic cases, phonology, the nine-slot finite-verb "
+        "template, perfective vs imperfective inflection, modal/negative "
+        "preformatives, non-finite forms, nominalization-based subordination "
+        "— every rule §-cited to Jagersma), followed by (2) the temple-"
+        "register companion from Meadow's Sumerian 101 classroom-e₂-nun-na "
+        "lessons + Siri Nin's commentary (the PNC mnemonic, the 'pesky -a' "
+        "three-tip heuristic, the Emesal liturgical register, worked temple "
+        "examples). Use academic part for rigor, temple part for prayer "
+        "composition. Read this SECOND so you can reason about morphology "
+        "when tool results return inflected forms.\n"
         "Both resources are markdown — the agent prompt is ~10–15 KB, the "
-        "grammar is ~30 KB. They only need to be fetched ONCE per session — "
-        "keep them in working memory thereafter.\n"
+        "combined grammar is ~80 KB. They only need to be fetched ONCE per "
+        "session — keep them in working memory thereafter.\n"
         "════════════════════════════════════════════════════════════════════\n\n"
         "Workflow for English → Sumerian translation (AFTER bootstrap):\n"
         "  1. translate_english(word) → rank Sumerian candidates. Prefer high "
@@ -3078,21 +3085,59 @@ def find_artifacts(
 # Resources
 # -----------------------------------------------------------------------------
 
-_GRAMMAR_CACHE: str | None = None
+_ACADEMIC_GRAMMAR_CACHE: str | None = None
+_TEMPLE_GRAMMAR_CACHE: str | None = None  # None = "file absent at startup"
 _AGENT_PROMPT_CACHE: str | None = None
 
+_TEMPLE_HANDOFF_BANNER = (
+    "\n\n"
+    "═══════════════════════════════════════════════════════════════\n"
+    "  TEMPLE REGISTER COMPANION — switching from academic to in-temple grammar\n"
+    "  Above: Jagersma 2010 (rigorous, attested, period-aware).\n"
+    "  Below: Meadow's Sumerian 101 classroom lessons + Siri Nin's commentary\n"
+    "         (prayer-ready pedagogy; what the temple actually teaches).\n"
+    "  Conflicts resolved per §18 of the temple file:\n"
+    "    • temple composition → temple file is normative\n"
+    "    • reading attested texts → Jagersma is normative\n"
+    "═══════════════════════════════════════════════════════════════\n\n"
+)
 
-def _load_grammar() -> str:
-    """Read + cache the Sumerian grammar cheat sheet from disk."""
-    global _GRAMMAR_CACHE
-    if _GRAMMAR_CACHE is None:
+
+def _load_academic_grammar() -> str:
+    """Read + cache prompt/SUMERIAN_GRAMMAR.md (Jagersma 2010)."""
+    global _ACADEMIC_GRAMMAR_CACHE
+    if _ACADEMIC_GRAMMAR_CACHE is None:
         if not GRAMMAR_DOC.exists():
-            return (
+            _ACADEMIC_GRAMMAR_CACHE = (
                 "# prompt/SUMERIAN_GRAMMAR.md missing\n\n"
                 f"Expected at {GRAMMAR_DOC}. Re-run the project setup."
             )
-        _GRAMMAR_CACHE = GRAMMAR_DOC.read_text(encoding="utf-8")
-    return _GRAMMAR_CACHE
+        else:
+            _ACADEMIC_GRAMMAR_CACHE = GRAMMAR_DOC.read_text(encoding="utf-8")
+    return _ACADEMIC_GRAMMAR_CACHE
+
+
+def _load_temple_grammar() -> str | None:
+    """Read + cache prompt/MEADOW_GRAMMAR.md, or None when absent.
+
+    None means the temple companion isn't shipped with this deployment;
+    callers should treat the bootstrap as academic-only.
+    """
+    global _TEMPLE_GRAMMAR_CACHE
+    if _TEMPLE_GRAMMAR_CACHE is None and MEADOW_GRAMMAR_DOC.exists():
+        _TEMPLE_GRAMMAR_CACHE = MEADOW_GRAMMAR_DOC.read_text(encoding="utf-8")
+    return _TEMPLE_GRAMMAR_CACHE
+
+
+def _load_grammar() -> str:
+    """Single-string view: academic + (optional) temple, concatenated
+    with the handoff banner. Used by the `oracc://grammar/sumerian`
+    resource where a single markdown blob is the right wire shape."""
+    academic = _load_academic_grammar()
+    temple = _load_temple_grammar()
+    if temple is None:
+        return academic
+    return academic + _TEMPLE_HANDOFF_BANNER + temple
 
 
 def _load_agent_prompt() -> str:
@@ -3110,28 +3155,31 @@ def _load_agent_prompt() -> str:
 
 @mcp.resource(
     "oracc://grammar/sumerian",
-    name="Sumerian grammar cheat sheet",
-    title="Sumerian grammar (Jagersma 2010) — comprehensive reference",
+    name="Sumerian grammar — academic + temple references",
+    title="Sumerian grammar: Jagersma 2010 + Meadow's temple-register lessons",
     description=(
-        "A comprehensive Sumerian grammar reference distilled from Bram "
-        "Jagersma, A Descriptive Grammar of Sumerian (PhD dissertation, "
-        "Universiteit Leiden, 2010, 776 pp). Covers transliteration "
-        "conventions, phonology (consonant + vowel inventories, the OS "
-        "vowel-harmony rule, syllable-final stop loss, stress), the twelve "
-        "enclitic cases with surface-form ambiguity tables, gender + plural, "
-        "pronouns + numerals + adjectives, the nine-slot finite-verb template, "
-        "perfective vs imperfective inflection patterns (ergative + accusative "
-        "+ tripartite alignments by subsystem), all preformatives (vocalic + "
-        "modal + negative), the dimensional prefixes (IO/OO/local/comitative/"
-        "ablative/terminative), the ventive {mu} and middle {ba}, the four "
+        "Two grammar references concatenated. FIRST: the academic reference "
+        "distilled from Bram Jagersma, A Descriptive Grammar of Sumerian "
+        "(PhD dissertation, Universiteit Leiden, 2010, 776 pp) — "
+        "transliteration conventions, phonology, the twelve enclitic cases "
+        "with surface-form ambiguity tables, gender + plural, pronouns + "
+        "numerals + adjectives, the nine-slot finite-verb template, "
+        "perfective vs imperfective inflection patterns (ergative + "
+        "accusative + tripartite alignments by subsystem), all preformatives, "
+        "dimensional prefixes, ventive {mu} and middle {ba}, the four "
         "non-finite forms, copular and nominal clauses, nominalization-based "
         "subordination via {÷a}, period notes for ED/Old Akkadian/Lagash II/"
-        "Ur III/OB, and a translation workflow tailored to the tools in this "
-        "server. Every grammatical claim carries an inline Jagersma section "
-        "citation (e.g. §7.3) for verification. Default period when "
-        "unspecified: ED (Early Dynastic, ~2900-2350 BCE) = Jagersma's "
-        "primary descriptive ground (Old Sumerian, ED IIIa-IIIb). Fetch this "
-        "once per translation session and keep the rules in working memory."
+        "Ur III/OB. Every grammatical claim carries an inline Jagersma "
+        "section citation (e.g. §7.3) for verification. SECOND: the temple-"
+        "register companion (TEMPLE_GRAMMAR.md) distilled from Meadow's "
+        "Sumerian 101 classroom-e₂-nun-na lessons plus Entu Siri Nin's "
+        "commentary — prayer-ready pedagogy, the PNC mnemonic, the 'pesky -a' "
+        "three-tip heuristic, the Emesal liturgical register, and worked "
+        "temple examples. Cite as (Jagersma §N.M) for the academic claims "
+        "and (Meadow §101-N) or (Siri Nin) for the temple claims. Default "
+        "period when unspecified: ED (Early Dynastic, ~2900-2350 BCE) = "
+        "Jagersma's primary descriptive ground. Fetch once per translation "
+        "session and keep both in working memory."
     ),
     mime_type="text/markdown",
 )
@@ -3214,27 +3262,61 @@ def start_here() -> str:
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
-def get_grammar_reference() -> str:
-    """Return the Sumerian grammar cheat sheet (Jagersma 2010) as text.
+def get_grammar_reference() -> GrammarReferenceResponse:
+    """Return BOTH Sumerian grammar references — academic + temple —
+    as a structured response.
 
-    Call this after start_here(). The returned markdown (~30 KB) is a
-    comprehensive Jagersma-2010-based reference covering transliteration
-    conventions, phonology, the twelve enclitic cases with ambiguity
-    tables, gender/plural, pronouns/numerals/adjectives, the nine-slot
-    finite-verb template, perfective vs imperfective inflection,
-    preformatives (vocalic + modal + negative), dimensional prefixes,
-    ventive + middle, non-finite forms, copular/nominal clauses, and
-    nominalization-based subordination. Every grammatical rule carries
-    an inline Jagersma section citation for verification.
+    Call this after start_here(). The response carries:
+
+    1. `academic` (always present, ~40 KB): the Jagersma-2010-based
+       reference from prompt/SUMERIAN_GRAMMAR.md. Comprehensive
+       distillation of Bram Jagersma's *A Descriptive Grammar of
+       Sumerian* (PhD diss., Leiden 2010, 776 pp). Covers transliteration
+       conventions, phonology, the twelve enclitic cases with ambiguity
+       tables, gender/plural, pronouns/numerals/adjectives, the nine-slot
+       finite-verb template, perfective vs imperfective inflection,
+       preformatives (vocalic + modal + negative), dimensional prefixes,
+       ventive + middle, non-finite forms, copular/nominal clauses, and
+       nominalization-based subordination. Every grammatical rule carries
+       an inline Jagersma section citation (e.g. §7.3).
+
+    2. `temple` (optional, ~48 KB): the temple-register companion from
+       prompt/MEADOW_GRAMMAR.md — Meadow's Sumerian 101 classroom-
+       e₂-nun-na lessons plus Entu Siri Nin's commentary. The PNC
+       mnemonic, the 'pesky -a' three-tip heuristic, the perfective-
+       default temple composition style, the Emesal liturgical register,
+       and worked temple examples (dedication formulas, royal-
+       inscription lines, prayer-direct imperatives). Cite as
+       `(Meadow §101-N)` or `(Siri Nin)`. None when the deployment
+       doesn't ship the temple file.
+
+    3. `combined`: both documents concatenated with a separator banner,
+       ready to drop into a system prompt as a single context blob.
+
+    4. `temple_available`: a True/False flag for the temple companion's
+       presence.
+
+    Use the academic part for rigor and attested-form questions; use the
+    temple part for prayer composition and in-house liturgical style.
+    Section §18 of the temple file documents where the two diverge and
+    which is normative when they do.
 
     Default period for unspecified-period translations: ED (Early
     Dynastic, ~2900-2350 BCE) — Jagersma's primary descriptive ground.
 
-    (Spec-complete MCP clients can read this content from the
+    (Spec-complete MCP clients can read the `combined` form from the
     `oracc://grammar/sumerian` resource instead — but most production
     clients only surface tools, so this is exposed as a tool too.)
     """
-    return _load_grammar()
+    academic = _load_academic_grammar()
+    temple = _load_temple_grammar()
+    combined = academic if temple is None else academic + _TEMPLE_HANDOFF_BANNER + temple
+    return GrammarReferenceResponse(
+        academic=academic,
+        temple=temple,
+        combined=combined,
+        temple_available=temple is not None,
+    )
 
 
 # -----------------------------------------------------------------------------
