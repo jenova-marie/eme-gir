@@ -27,8 +27,8 @@ ETCSL (Sumerian literary corpus + English translations) — Oxford 2006:
     etcsl_search_sumerian(query, limit)    - FTS over Sumerian transliteration; returns bilingual lines
 
 Two resources (fetch both once per session):
-    oracc://grammar/sumerian               - compact Sumerian grammar cheat sheet
-                                             (Edzard 2003)
+    oracc://grammar/sumerian               - comprehensive Sumerian grammar cheat sheet
+                                             (Jagersma 2010)
     oracc://prompt/agent                   - drop-in agent system prompt teaching
                                              the end-to-end workflow over these tools
 
@@ -58,6 +58,7 @@ import text_resolver
 import umami_analytics
 from mcp_models import (
     AnalyzeFormResponse,
+    CDLIArtifact,
     CaseChunk,
     CuneifyResponse,
     ETCSLLinesWithLemmaResponse,
@@ -65,11 +66,13 @@ from mcp_models import (
     ETCSLSearchEnglishResponse,
     ETCSLSearchSumerianResponse,
     ErrorResponse,
+    FindArtifactsResponse,
     FindCollocationsResponse,
     FindCompoundResponse,
     FindPhrasePatternResponse,
     FindVerbFormResponse,
     GetInflectionsResponse,
+    LookupArtifactResponse,
     LookupEntryResponse,
     LookupSignResponse,
     ParsePhraseResponse,
@@ -80,6 +83,12 @@ from mcp_models import (
 )
 from paths import (
     AGENT_PROMPT_DOC,
+    CDLI_ARTIFACT_URL,
+    CDLI_DB,
+    CDLI_LINEART_THUMB_URL,
+    CDLI_LINEART_URL,
+    CDLI_PHOTO_THUMB_URL,
+    CDLI_PHOTO_URL,
     COLLOCATIONS_DB,
     ETCSL_DB,
     GLOSSARY_DB,
@@ -93,6 +102,11 @@ from paths import (
 ETCSL_ATTRIBUTION = (
     "ETCSL: Black, J.A. et al., The Electronic Text Corpus of Sumerian "
     "Literature (etcsl.orinst.ox.ac.uk), Oxford 1998-2006. CC BY 3.0 UK."
+)
+CDLI_ATTRIBUTION = (
+    "CDLI: Cuneiform Digital Library Initiative (cdli.earth), "
+    "catalogue data CC0 / public domain. Hosted by Max Planck Institute "
+    "for the History of Science (Berlin) since 2022."
 )
 
 # Logs go to TWO places so they're visible no matter how the server is run:
@@ -404,12 +418,16 @@ mcp = FastMCP(
         "  • oracc://prompt/agent      — your full system prompt: the workflow, "
         "the required output format, the ETCSL attribution rule, and a worked "
         "example. Read this FIRST so the rest of the instructions make sense.\n"
-        "  • oracc://grammar/sumerian  — compact Sumerian grammar reference "
-        "(case suffixes, ḫamṭu/marû aspect, verbal prefix chain, conjugation "
-        "patterns, compound verbs). Read this SECOND so you can reason about "
-        "morphology when tool results return inflected forms.\n"
-        "Both resources are markdown, ~10–15 KB each, and only need to be "
-        "fetched ONCE per session — keep them in working memory thereafter.\n"
+        "  • oracc://grammar/sumerian  — comprehensive Jagersma-2010-based "
+        "grammar reference (twelve enclitic cases, phonology, the nine-slot "
+        "finite-verb template, perfective vs imperfective inflection, modal/"
+        "negative preformatives, non-finite forms, nominalization-based "
+        "subordination). Every grammatical rule carries an inline Jagersma "
+        "§-citation for verification. Read this SECOND so you can reason "
+        "about morphology when tool results return inflected forms.\n"
+        "Both resources are markdown — the agent prompt is ~10–15 KB, the "
+        "grammar is ~30 KB. They only need to be fetched ONCE per session — "
+        "keep them in working memory thereafter.\n"
         "════════════════════════════════════════════════════════════════════\n\n"
         "Workflow for English → Sumerian translation (AFTER bootstrap):\n"
         "  1. translate_english(word) → rank Sumerian candidates. Prefer high "
@@ -426,7 +444,9 @@ mcp = FastMCP(
         "spellings, periods, compounds.\n"
         "  5. get_inflections(oid) → see real attested morphology before "
         "constructing a new form.\n"
-        "  6. see_examples(oid, period='Ur III') → cite primary-source lines.\n"
+        "  6. see_examples(oid, period='Early Dynastic') → cite primary-source "
+        "lines (default to Early Dynastic = ED IIIa/IIIb when the user has not "
+        "specified a period; this is Jagersma's primary descriptive ground).\n"
         "  7. cuneify(spelling) → render the final composition in Unicode "
         "cuneiform.\n\n"
         "For Sumerian → English: translate_sumerian(transliteration) parses "
@@ -851,7 +871,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
             (i for i, w in enumerate(words) if w["is_target"]), None
         )
         target_frag = words[target_pos]["frag"] if target_pos is not None else None
-        lines.append({
+        line: dict[str, Any] = {
             "text_id": r["text_id"],
             "project": r["project"],
             "line_label": r["line_label"],
@@ -860,7 +880,15 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
             "transliteration": " ".join(w["frag"] for w in words),
             "target": target_frag,
             "target_position": target_pos,
-        })
+        }
+        # CDLI enrichment — splat in cdli_url, photo/lineart URLs, and
+        # museum metadata so the caller can offer "see the actual
+        # tablet" links without a follow-up tool call. None when the
+        # CDLI catalogue isn't built or doesn't know this artifact.
+        cdli = _cdli_enrichment(r["text_id"])
+        if cdli:
+            line.update(cdli)
+        lines.append(line)
         if len(lines) >= limit:
             break
     diagnostic: str | None = None
@@ -2398,7 +2426,7 @@ def find_verb_form(
                         None,
                     )
                     example = {
-                        "p_id": line["text_id"],
+                        "text_id": line["text_id"],
                         "project": line["project"],
                         "line_label": line["line_label"],
                         "designation": line.get("designation"),
@@ -2406,6 +2434,10 @@ def find_verb_form(
                         "transliteration": " ".join(w["frag"] for w in line["words"]),
                         "target_position": target_pos,
                     }
+                    # CDLI enrichment — same pattern as see_examples
+                    cdli = _cdli_enrichment(line["text_id"])
+                    if cdli:
+                        example.update(cdli)
 
             matches.append({
                 "morph": morph_n,
@@ -2776,6 +2808,273 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianRes
 
 
 # -----------------------------------------------------------------------------
+# CDLI artifact catalogue — provenience, museum holdings, image links
+# -----------------------------------------------------------------------------
+#
+# CDLI (Cuneiform Digital Library Initiative, cdli.earth) maintains the
+# canonical per-artifact metadata catalogue: 353K+ tablets with their
+# provenience (find spot), period, museum custody, dimensions, and
+# bibliographic citations. Oracc references CDLI's P-numbers as the
+# primary text identifier, but doesn't redistribute CDLI's full
+# catalogue — that's what cdli.sqlite is for.
+#
+# We DON'T host any imagery. The image URLs we surface point straight
+# to cdli.earth so callers (and end users they're serving) navigate
+# to CDLI's hosted JPEGs directly. Saves us multi-GB of image bytes
+# and keeps CDLI as the source of truth for artifact reproductions.
+
+
+def _cdli_connect() -> sqlite3.Connection | None:
+    """Open the CDLI catalogue SQLite. Returns None when the DB hasn't
+    been built yet — callers should fall back to the catalogue-less
+    code path. Cheap to call repeatedly; SQLite reuses the file handle."""
+    if not CDLI_DB.exists():
+        return None
+    con = sqlite3.connect(CDLI_DB)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def _build_cdli_artifact(row: sqlite3.Row) -> CDLIArtifact:
+    """Convert a cdli.artifacts SQLite row into the response model,
+    computing image + page URLs from the p_id + has_photo / has_lineart
+    flags. URL fields are None when the corresponding flag is false so
+    agents can tell whether the link will actually return an image
+    (vs. a 404 because CDLI never had the imagery for that artifact)."""
+    p_id = row["p_id"]
+    cdli_id = row["cdli_id"]
+    has_photo = bool(row["has_photo"])
+    has_lineart = bool(row["has_lineart"])
+    return CDLIArtifact(
+        p_id=p_id,
+        cdli_id=cdli_id,
+        cdli_url=CDLI_ARTIFACT_URL.format(cdli_id=cdli_id),
+        photo_url=CDLI_PHOTO_URL.format(p_id=p_id) if has_photo else None,
+        photo_thumb_url=CDLI_PHOTO_THUMB_URL.format(p_id=p_id) if has_photo else None,
+        lineart_url=CDLI_LINEART_URL.format(p_id=p_id) if has_lineart else None,
+        lineart_thumb_url=CDLI_LINEART_THUMB_URL.format(p_id=p_id) if has_lineart else None,
+        has_photo=has_photo,
+        has_lineart=has_lineart,
+        designation=row["designation"],
+        primary_publication=row["primary_publication"],
+        publication_history=row["publication_history"],
+        citation=row["citation"],
+        composite_id=row["composite_id"],
+        period=row["period"],
+        period_remarks=row["period_remarks"],
+        accounting_period=row["accounting_period"],
+        dates_referenced=row["dates_referenced"],
+        provenience=row["provenience"],
+        provenience_remarks=row["provenience_remarks"],
+        findspot_remarks=row["findspot_remarks"],
+        findspot_square=row["findspot_square"],
+        excavation_no=row["excavation_no"],
+        museum_collection=row["museum_collection"],
+        museum_no=row["museum_no"],
+        accession_no=row["accession_no"],
+        genre=row["genre"],
+        subgenre=row["subgenre"],
+        language=row["language"],
+        material=row["material"],
+        object_type=row["object_type"],
+        height=row["height"],
+        width=row["width"],
+        thickness=row["thickness"],
+        condition_description=row["condition_description"],
+        object_remarks=row["object_remarks"],
+    )
+
+
+def _cdli_enrichment(p_id: str) -> dict | None:
+    """Cheap lookup helper for see_examples / find_verb_form. Returns
+    a dict of CDLI URL fields + museum metadata for one P-id, or None
+    when CDLI doesn't know the artifact OR the catalogue isn't built.
+
+    Kept narrow on purpose — see_examples shouldn't return the whole
+    CDLI record per line; just the URLs and the museum bits agents
+    most often want to display alongside an attestation."""
+    con = _cdli_connect()
+    if con is None:
+        return None
+    try:
+        row = con.execute(
+            "SELECT cdli_id, has_photo, has_lineart, museum_collection, museum_no "
+            "FROM artifacts WHERE p_id=?",
+            (p_id,),
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return None
+    has_photo = bool(row["has_photo"])
+    has_lineart = bool(row["has_lineart"])
+    return {
+        "cdli_url": CDLI_ARTIFACT_URL.format(cdli_id=row["cdli_id"]),
+        "photo_url": CDLI_PHOTO_URL.format(p_id=p_id) if has_photo else None,
+        "photo_thumb_url": CDLI_PHOTO_THUMB_URL.format(p_id=p_id) if has_photo else None,
+        "lineart_url": CDLI_LINEART_URL.format(p_id=p_id) if has_lineart else None,
+        "lineart_thumb_url": CDLI_LINEART_THUMB_URL.format(p_id=p_id) if has_lineart else None,
+        "museum_collection": row["museum_collection"],
+        "museum_no": row["museum_no"],
+    }
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+@_log_call
+def lookup_artifact(p_id: str) -> LookupArtifactResponse | ErrorResponse:
+    """Look up the full CDLI catalogue record for a single cuneiform
+    artifact by its P-id (P-number).
+
+    Returns provenience (find spot), period, museum custody, dimensions,
+    citations, AND links to CDLI's hosted photographs / line drawings
+    when available. Use this to ground an attested line in its
+    archaeological + custodial context — "this tablet is from Drehem,
+    Ur III period (~2050 BCE), now at the British Museum (BM 103437),
+    photographed at <link>".
+
+    Args:
+        p_id: P-id like 'P347156' or just '347156' (numeric form OK,
+              we normalize). Returned by see_examples / find_verb_form
+              as `text_id`.
+
+    Returns LookupArtifactResponse on hit, ErrorResponse when:
+      - cdli.sqlite hasn't been built (run build_cdli_db.py)
+      - the P-id isn't in CDLI's catalogue (rare — CDLI is comprehensive)
+
+    The image URLs in the response are None when CDLI doesn't have the
+    corresponding asset, so you can tell up front whether a "see the
+    actual tablet" link will work without making a wasted HTTP request.
+    """
+    # Normalize the P-id — accept '347156', 'P347156', 'p347156', etc.
+    s = (p_id or "").strip().lstrip("Pp")
+    if not s.isdigit():
+        return ErrorResponse(
+            error=f"p_id must be 'P{{nnnnnn}}' or a bare integer (got {p_id!r})",
+            hint="Try the text_id from a see_examples result, e.g. 'P347156'.",
+        )
+    canonical = f"P{int(s):06d}"
+
+    con = _cdli_connect()
+    if con is None:
+        return ErrorResponse(
+            error=f"cdli.sqlite missing at {CDLI_DB}",
+            hint="Run `python3 build_cdli_db.py` to build it (~15s after a 147 MB download).",
+        )
+    try:
+        row = con.execute(
+            "SELECT * FROM artifacts WHERE p_id=?", (canonical,)
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return ErrorResponse(
+            error=f"no CDLI artifact with p_id={canonical!r}",
+            hint=(
+                "CDLI's catalogue covers ~353K artifacts but the August "
+                "2022 snapshot we ingested may not include very recent "
+                "additions. Verify at https://cdli.earth/search."
+            ),
+        )
+    return LookupArtifactResponse(
+        artifact=_build_cdli_artifact(row),
+        attribution=CDLI_ATTRIBUTION,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+@_log_call
+def find_artifacts(
+    provenience: str | None = None,
+    period: str | None = None,
+    museum_collection: str | None = None,
+    genre: str | None = None,
+    language: str | None = None,
+    limit: int = 20,
+) -> FindArtifactsResponse | ErrorResponse:
+    """Filter the CDLI catalogue by archaeological / curatorial criteria.
+
+    Use this for "show me every artifact matching X" questions that
+    Oracc's lemma-centric tools don't answer:
+      - "Every Ur III tablet from Drehem in the British Museum"
+      - "Every Old Babylonian literary tablet from Nippur"
+      - "Every Akkadian text in the Yale Babylonian Collection"
+
+    Each filter argument is matched as a case-insensitive SUBSTRING
+    against the corresponding catalogue column, so partial values work:
+      - provenience='Drehem'      matches 'Drehem (mod. Puzriš-Dagan)'
+      - period='Ur III'           matches 'Ur III (ca. 2100-2000 BC)'
+      - museum_collection='Berlin' matches 'Vorderasiatisches Museum, Berlin, Germany'
+
+    All filter arguments are optional — pass none to get an unfiltered
+    sample (useful for browsing what CDLI looks like). Filters AND
+    together when multiple are supplied.
+
+    Args:
+        provenience: find-spot substring, e.g. 'Drehem', 'Nippur', 'Uruk'.
+        period: historical period substring, e.g. 'Ur III', 'Old Babylonian'.
+        museum_collection: holding institution substring, e.g. 'British
+                          Museum', 'Yale', 'Berlin'.
+        genre: text genre substring, e.g. 'Administrative', 'Literary',
+               'Lexical', 'Royal Inscription'.
+        language: language substring, e.g. 'Sumerian', 'Akkadian', 'Hittite'.
+        limit: max artifacts to return (default 20, cap 200).
+
+    Each result carries the same image / page URLs as lookup_artifact,
+    so the agent can offer "see the actual tablet" links for any item
+    in the list without a follow-up call.
+    """
+    limit = max(1, min(200, int(limit)))
+
+    con = _cdli_connect()
+    if con is None:
+        return ErrorResponse(
+            error=f"cdli.sqlite missing at {CDLI_DB}",
+            hint="Run `python3 build_cdli_db.py` to build it (~15s after a 147 MB download).",
+        )
+
+    where: list[str] = []
+    params: list[str] = []
+    for col, needle in (
+        ("provenience", provenience),
+        ("period", period),
+        ("museum_collection", museum_collection),
+        ("genre", genre),
+        ("language", language),
+    ):
+        if needle and needle.strip():
+            where.append(f"{col} LIKE ?")
+            params.append(f"%{needle.strip()}%")
+
+    sql_where = ("WHERE " + " AND ".join(where)) if where else ""
+    filter_spec = {
+        "provenience": provenience,
+        "period": period,
+        "museum_collection": museum_collection,
+        "genre": genre,
+        "language": language,
+    }
+
+    try:
+        total = con.execute(
+            f"SELECT COUNT(*) FROM artifacts {sql_where}", params
+        ).fetchone()[0]
+        rows = con.execute(
+            f"SELECT * FROM artifacts {sql_where} "
+            "ORDER BY p_id LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+    finally:
+        con.close()
+
+    return FindArtifactsResponse(
+        filter_spec=filter_spec,
+        total_matches=total,
+        results=[_build_cdli_artifact(r) for r in rows],
+        attribution=CDLI_ATTRIBUTION,
+    )
+
+
+# -----------------------------------------------------------------------------
 # Resources
 # -----------------------------------------------------------------------------
 
@@ -2812,16 +3111,27 @@ def _load_agent_prompt() -> str:
 @mcp.resource(
     "oracc://grammar/sumerian",
     name="Sumerian grammar cheat sheet",
-    title="Sumerian grammar (Edzard 2003) — compact reference",
+    title="Sumerian grammar (Jagersma 2010) — comprehensive reference",
     description=(
-        "A scannable Sumerian grammar reference distilled from D. O. Edzard, "
-        "Sumerian Grammar (Brill HdO 71, 2003). Covers transliteration "
-        "conventions, SOV/ergative word order, the 10 noun cases with suffixes, "
-        "possessive/demonstrative clitics, ḫamṭu vs marû verbal aspect, the "
-        "verbal prefix chain, conjugation patterns 1/2a/2b, compound verbs, "
-        "pronouns, conjunctions, period-flavor notes, and a 9-step "
-        "translation workflow tailored to the tools in this server. Fetch "
-        "this once per translation session and keep the rules in working memory."
+        "A comprehensive Sumerian grammar reference distilled from Bram "
+        "Jagersma, A Descriptive Grammar of Sumerian (PhD dissertation, "
+        "Universiteit Leiden, 2010, 776 pp). Covers transliteration "
+        "conventions, phonology (consonant + vowel inventories, the OS "
+        "vowel-harmony rule, syllable-final stop loss, stress), the twelve "
+        "enclitic cases with surface-form ambiguity tables, gender + plural, "
+        "pronouns + numerals + adjectives, the nine-slot finite-verb template, "
+        "perfective vs imperfective inflection patterns (ergative + accusative "
+        "+ tripartite alignments by subsystem), all preformatives (vocalic + "
+        "modal + negative), the dimensional prefixes (IO/OO/local/comitative/"
+        "ablative/terminative), the ventive {mu} and middle {ba}, the four "
+        "non-finite forms, copular and nominal clauses, nominalization-based "
+        "subordination via {÷a}, period notes for ED/Old Akkadian/Lagash II/"
+        "Ur III/OB, and a translation workflow tailored to the tools in this "
+        "server. Every grammatical claim carries an inline Jagersma section "
+        "citation (e.g. §7.3) for verification. Default period when "
+        "unspecified: ED (Early Dynastic, ~2900-2350 BCE) = Jagersma's "
+        "primary descriptive ground (Old Sumerian, ED IIIa-IIIb). Fetch this "
+        "once per translation session and keep the rules in working memory."
     ),
     mime_type="text/markdown",
 )
@@ -2905,14 +3215,20 @@ def start_here() -> str:
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 @_log_call
 def get_grammar_reference() -> str:
-    """Return the Sumerian grammar cheat sheet (Edzard 2003) as text.
+    """Return the Sumerian grammar cheat sheet (Jagersma 2010) as text.
 
-    Call this after start_here(). The returned markdown covers
-    transliteration conventions, the 10 noun cases with suffixes,
-    ḫamṭu vs marû verbal aspect, the verbal prefix chain, conjugation
-    patterns, common compound verbs, and pronouns — everything you
-    need to reason about Sumerian morphology and choose well-formed
-    inflections.
+    Call this after start_here(). The returned markdown (~30 KB) is a
+    comprehensive Jagersma-2010-based reference covering transliteration
+    conventions, phonology, the twelve enclitic cases with ambiguity
+    tables, gender/plural, pronouns/numerals/adjectives, the nine-slot
+    finite-verb template, perfective vs imperfective inflection,
+    preformatives (vocalic + modal + negative), dimensional prefixes,
+    ventive + middle, non-finite forms, copular/nominal clauses, and
+    nominalization-based subordination. Every grammatical rule carries
+    an inline Jagersma section citation for verification.
+
+    Default period for unspecified-period translations: ED (Early
+    Dynastic, ~2900-2350 BCE) — Jagersma's primary descriptive ground.
 
     (Spec-complete MCP clients can read this content from the
     `oracc://grammar/sumerian` resource instead — but most production

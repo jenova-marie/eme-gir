@@ -121,6 +121,32 @@ class AttestationLine(_Permissive):
     target_position: int | None = Field(
         None, description="Zero-indexed position of the target word in the line."
     )
+    # CDLI enrichment — populated when the artifact appears in our
+    # cdli.sqlite catalogue. Lets the agent offer "see the actual tablet"
+    # links to the user. None when CDLI doesn't know the artifact OR the
+    # corresponding image flag is false in CDLI's catalogue.
+    cdli_url: str | None = Field(
+        None,
+        description="CDLI artifact page URL (always set when CDLI knows the P-id).",
+    )
+    photo_url: str | None = Field(
+        None, description="High-res photograph (None if CDLI has no photo)."
+    )
+    photo_thumb_url: str | None = Field(
+        None, description="Thumbnail photograph for inline display."
+    )
+    lineart_url: str | None = Field(
+        None, description="High-res line drawing (None if CDLI has none)."
+    )
+    lineart_thumb_url: str | None = Field(
+        None, description="Thumbnail line drawing."
+    )
+    museum_collection: str | None = Field(
+        None, description="Holding institution per CDLI, e.g. 'British Museum, London, UK'."
+    )
+    museum_no: str | None = Field(
+        None, description="Museum catalog number, e.g. 'BM 103437'."
+    )
 
 
 class MorphRow(_Permissive):
@@ -623,3 +649,89 @@ class ETCSLSearchSumerianResponse(_Permissive):
     attribution: str = Field(
         ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
     )
+
+
+# ──────────────────────────────────────────────────────────────────
+# CDLI artifact catalogue — lookup_artifact / find_artifacts
+# ──────────────────────────────────────────────────────────────────
+
+
+class CDLIArtifact(_Permissive):
+    """One artifact's full CDLI catalogue record + computed image links.
+
+    Returned by lookup_artifact (one record) and find_artifacts (a list).
+    Most fields are nullable because CDLI's catalogue is sparse — only
+    well-published artifacts have every column populated.
+    """
+
+    p_id: str = Field(..., description="Canonical P-id, e.g. 'P347156'. Use as the key for cross-references with Oracc texts.")
+    cdli_id: int = Field(..., description="Bare integer id used in cdli.earth URL paths.")
+    cdli_url: str = Field(..., description="Browser-facing CDLI artifact page (always present).")
+    photo_url: str | None = Field(None, description="High-res photograph (None when CDLI has no photo for this artifact).")
+    photo_thumb_url: str | None = Field(None, description="Photograph thumbnail for inline display.")
+    lineart_url: str | None = Field(None, description="High-res line drawing (None when CDLI has none).")
+    lineart_thumb_url: str | None = Field(None, description="Line drawing thumbnail.")
+    has_photo: bool = Field(..., description="Whether CDLI has a photograph available.")
+    has_lineart: bool = Field(..., description="Whether CDLI has a line drawing available.")
+
+    # Citation / publication
+    designation: str | None = Field(None, description="Bibliographic shorthand, e.g. 'YOS 14, 341'.")
+    primary_publication: str | None = Field(None, description="Where the text was first published.")
+    publication_history: str | None = Field(None, description="Full publication chronology.")
+    citation: str | None = Field(None, description="CDLI's recommended citation string.")
+    composite_id: str | None = Field(None, description="Q-id reference if part of a composite reconstruction.")
+
+    # Period + dating
+    period: str | None = Field(None, description="Historical period with dates, e.g. 'Ur III (ca. 2100-2000 BC)'.")
+    period_remarks: str | None = Field(None, description="Caveats or refinements on the period assignment.")
+    accounting_period: str | None = Field(None, description="For Ur III administrative texts: the year-name period.")
+    dates_referenced: str | None = Field(None, description="Specific dates mentioned in the text (Šulgi yr X, etc.).")
+
+    # Provenience (find context)
+    provenience: str | None = Field(None, description="Find spot, e.g. 'Drehem (mod. Puzriš-Dagan)'.")
+    provenience_remarks: str | None = Field(None, description="Notes on certainty / circumstances of the find.")
+    findspot_remarks: str | None = Field(None, description="Excavator's notes on the immediate find context.")
+    findspot_square: str | None = Field(None, description="Excavation grid reference.")
+    excavation_no: str | None = Field(None, description="Excavator's field number, e.g. 'W 06435,a'.")
+
+    # Custody (museum)
+    museum_collection: str | None = Field(None, description="Holding institution, e.g. 'British Museum, London, UK'.")
+    museum_no: str | None = Field(None, description="Museum catalog number, e.g. 'BM 103437'.")
+    accession_no: str | None = Field(None, description="Museum accession number.")
+
+    # Classification
+    genre: str | None = Field(None, description="Text genre, e.g. 'Administrative', 'Lexical', 'Literary'.")
+    subgenre: str | None = Field(None, description="Finer classification within the genre.")
+    language: str | None = Field(None, description="Sumerian / Akkadian / Hittite / undetermined / etc.")
+    material: str | None = Field(None, description="Physical material, e.g. 'clay', 'stone'.")
+    object_type: str | None = Field(None, description="Tablet / cone / cylinder / brick / etc.")
+
+    # Physical
+    height: str | None = Field(None, description="Height (free-form string; CDLI uses mm but format varies).")
+    width: str | None = Field(None, description="Width.")
+    thickness: str | None = Field(None, description="Thickness.")
+    condition_description: str | None = Field(None, description="Physical condition / preservation notes.")
+    object_remarks: str | None = Field(None, description="Free-text remarks about the artifact.")
+
+
+class LookupArtifactResponse(_Permissive):
+    """Response shape for lookup_artifact (one P-id → one record)."""
+
+    artifact: CDLIArtifact
+    attribution: str = Field(
+        ...,
+        description=(
+            "Source attribution for the catalogue data. CDLI publishes its "
+            "catalogue as CC0 (no attribution legally required), but it's "
+            "good practice to credit them anyway."
+        ),
+    )
+
+
+class FindArtifactsResponse(_Permissive):
+    """Response shape for find_artifacts (filtered list)."""
+
+    filter_spec: dict = Field(..., description="Echo of the filter the caller supplied.")
+    total_matches: int = Field(..., description="Total artifacts matching the filter (may exceed `len(results)` if `limit` clipped).")
+    results: list[CDLIArtifact]
+    attribution: str = Field(..., description="CC0 catalogue attribution for CDLI.")

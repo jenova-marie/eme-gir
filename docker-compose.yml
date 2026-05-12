@@ -38,7 +38,13 @@ services:
       # Toggle off to skip the longer optional builds; defaults are ON
       # because the MCP server's tool surface is incomplete without them.
       EPSD2_BUILD_COLLOCATIONS: "${EPSD2_BUILD_COLLOCATIONS:-1}"
+      EPSD2_BUILD_INFLECTED_COLLOCATIONS: "${EPSD2_BUILD_INFLECTED_COLLOCATIONS:-1}"
       EPSD2_BUILD_ETCSL: "${EPSD2_BUILD_ETCSL:-1}"
+      # CDLI catalogue (~157 MB, 30s build, 147 MB CSV download from
+      # GitHub LFS). Powers lookup_artifact + find_artifacts AND the
+      # CDLI photo/lineart URL enrichment on see_examples /
+      # find_verb_form. Default ON — high-value, modest cost.
+      EPSD2_BUILD_CDLI: "${EPSD2_BUILD_CDLI:-1}"
     volumes:
       - ./corpus:/app/corpus     # init writes here on first boot
       - ./data:/app/data         # init wipes + populates

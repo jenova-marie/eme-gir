@@ -33,6 +33,7 @@ TEXT_INDEX_DB = DATA_DIR / "text_index.sqlite"
 COLLOCATIONS_DB = DATA_DIR / "collocations.sqlite"
 INFLECTED_COLLOCATIONS_DB = DATA_DIR / "inflected_collocations.sqlite"
 ETCSL_DB = DATA_DIR / "etcsl.sqlite"
+CDLI_DB = DATA_DIR / "cdli.sqlite"
 
 # ETCSL bulk corpus — fetched from Oxford Text Archive.
 ETCSL_ZIP = DATA_DIR / "etcsl.zip"
@@ -40,6 +41,26 @@ ETCSL_ZIP_URL = (
     "https://ota.bodleian.ox.ac.uk/repository/xmlui/bitstream/handle/"
     "20.500.12024/2518/etcsl.zip?sequence=11&isAllowed=y"
 )
+
+# CDLI bulk catalogue — fetched from the cdli-gh GitHub mirror.
+# The repo file at cdli-gh/data/cdli_cat.csv is a Git LFS pointer; the
+# actual blob lives on media.githubusercontent.com (no auth, no git-lfs
+# install required). Last meaningful data update was Aug 2022 — stale
+# but acceptable for catalogue metadata (provenience, museum, period
+# don't change once an artifact is excavated and accessioned).
+CDLI_CSV = DATA_DIR / "cdli_cat.csv"
+CDLI_CSV_URL = (
+    "https://media.githubusercontent.com/media/cdli-gh/data/master/cdli_cat.csv"
+)
+# Public-facing image + artifact-page URL templates. CDLI moved hosting
+# from cdli.ucla.edu → cdli.mpiwg-berlin.mpg.de → cdli.earth.
+# Artifact page uses the BARE numeric id (no 'P' prefix); image paths
+# use the zero-padded 'P{nnnnnn}' form.
+CDLI_ARTIFACT_URL = "https://cdli.earth/artifacts/{cdli_id}"
+CDLI_PHOTO_URL = "https://cdli.earth/dl/photo/{p_id}.jpg"
+CDLI_PHOTO_THUMB_URL = "https://cdli.earth/dl/tn_photo/{p_id}.jpg"
+CDLI_LINEART_URL = "https://cdli.earth/dl/lineart/{p_id}_l.jpg"
+CDLI_LINEART_THUMB_URL = "https://cdli.earth/dl/tn_lineart/{p_id}_l.jpg"
 
 # Logs.
 MCP_SERVER_LOG = LOG_DIR / "mcp_server.log"

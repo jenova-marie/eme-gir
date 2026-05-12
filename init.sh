@@ -33,16 +33,19 @@
 set -euo pipefail
 
 INIT_FILE="/app/data/.initialized"
-INIT_VERSION="3"
+INIT_VERSION="4"
 
 # Optional builds — toggle off via env to skip. Defaults are ON because
 # the MCP server's tool surface is incomplete without them
 # (find_collocations degrades gracefully; the four etcsl_* tools error
 # if etcsl.sqlite is absent; find_phrase_pattern errors on v2/v3 syntax
-# when inflected_collocations.sqlite is absent).
+# when inflected_collocations.sqlite is absent; lookup_artifact /
+# find_artifacts AND the CDLI enrichment on see_examples / find_verb_form
+# error / degrade if cdli.sqlite is absent).
 : "${EPSD2_BUILD_COLLOCATIONS:=1}"
 : "${EPSD2_BUILD_INFLECTED_COLLOCATIONS:=1}"
 : "${EPSD2_BUILD_ETCSL:=1}"
+: "${EPSD2_BUILD_CDLI:=1}"
 
 log() { printf '[init %s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
@@ -109,20 +112,30 @@ fi
 
 # 6. ETCSL (~31 MB). Optional but cheap — etcsl_* MCP tools require it.
 if [[ "$EPSD2_BUILD_ETCSL" != "1" ]]; then
-    log "[6/7] etcsl.sqlite: skipped (EPSD2_BUILD_ETCSL=$EPSD2_BUILD_ETCSL)"
+    log "[6/8] etcsl.sqlite: skipped (EPSD2_BUILD_ETCSL=$EPSD2_BUILD_ETCSL)"
 else
-    log "[6/7] etcsl.sqlite: building (~10 s, downloads 4.9 MB from OTA)"
+    log "[6/8] etcsl.sqlite: building (~10 s, downloads 4.9 MB from OTA)"
     python3 /app/build_etcsl_db.py
 fi
 
-# 7. Pre-warm the Flask sort + casefold migrations on glossary.sqlite.
+# 7. CDLI catalogue (~157 MB). Optional but high-value — lookup_artifact
+#    and find_artifacts require it; see_examples / find_verb_form
+#    silently skip the CDLI URL enrichment when absent.
+if [[ "$EPSD2_BUILD_CDLI" != "1" ]]; then
+    log "[7/8] cdli.sqlite: skipped (EPSD2_BUILD_CDLI=$EPSD2_BUILD_CDLI)"
+else
+    log "[7/8] cdli.sqlite: building (~30s, downloads 147 MB from GitHub LFS)"
+    python3 /app/build_cdli_db.py
+fi
+
+# 8. Pre-warm the Flask sort + casefold migrations on glossary.sqlite.
 #    Both are version-gated and run idempotently inside Flask's
 #    create_app() during gunicorn's worker boot, but doing them HERE
 #    means the MCP server's startup check (which requires
 #    meta.casefold_version) passes immediately when mcp boots in
 #    parallel with web. Without this pre-warm, the MCP server would
 #    race gunicorn's first worker for the migration lock.
-log "[7/7] pre-warming Flask SQLite migrations (sort + casefold columns)"
+log "[8/8] pre-warming Flask SQLite migrations (sort + casefold columns)"
 python3 -c "
 import sqlite3
 from paths import GLOSSARY_DB
@@ -142,5 +155,6 @@ hostname=$(hostname)
 collocations=$EPSD2_BUILD_COLLOCATIONS
 inflected_collocations=$EPSD2_BUILD_INFLECTED_COLLOCATIONS
 etcsl=$EPSD2_BUILD_ETCSL
+cdli=$EPSD2_BUILD_CDLI
 SENTINEL
 log "==== initialization complete; sentinel written to $INIT_FILE ===="

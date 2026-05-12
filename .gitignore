@@ -9,6 +9,11 @@
 data/missing_corpora.json
 data/.initialized
 
+# Cached source download for build_cdli_db.py (~147 MB CSV from
+# cdli-gh/data via media.githubusercontent.com). Regenerable; never
+# checked in.
+data/cdli_cat.csv
+
 # Per-deployment env files — Auth0 tenant URLs, audiences, allowed
 # hosts, and any client secrets. docker-compose auto-loads .env from
 # the project root; never commit it.
