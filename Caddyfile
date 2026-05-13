@@ -1,0 +1,122 @@
+# Caddyfile for eme-gir.recoverysky.org
+#
+# Fronts the eight-service docker-compose stack with a single HTTPS hostname.
+# Automatic TLS via Let's Encrypt (ACME HTTP-01) — no cert config needed.
+#
+#   /                       →  Flask glossary browser   (eme-gir-web:5050)
+#   /epsd2/mcp/*            →  ePSD2 MCP                (eme-gir-epsd2:5052)
+#   /etcsl/mcp/*            →  ETCSL MCP                (eme-gir-etcsl:5053)
+#   /cdli/mcp/*             →  CDLI MCP                 (eme-gir-cdli:5054)
+#   /ogsl/mcp/*             →  OGSL MCP                 (eme-gir-ogsl:5055)
+#   /translator/mcp/*       →  Translator MCP           (eme-gir-translator:5056)
+#
+# `handle_path` strips the matched prefix before proxying, so a request to
+# /epsd2/mcp/foo arrives at the backend as /mcp/foo — which is exactly where
+# FastMCP's streamable-HTTP transport listens.
+#
+# Deployment requirements:
+#   1. Caddy must resolve the container names (eme-gir-epsd2, etc.). The
+#      simplest way is to run Caddy as a sidecar in the same docker-compose
+#      stack — add the snippet at the bottom of this file to docker-compose.yml
+#      and Caddy joins the `eme-gir_default` network automatically.
+#   2. Each MCP service needs EME_GIR_ALLOWED_HOSTS=eme-gir.recoverysky.org
+#      in its environment. The compose file's &mcp-environment anchor already
+#      reads this from your .env file — just add:
+#          EME_GIR_ALLOWED_HOSTS=eme-gir.recoverysky.org
+#      to .env at the repo root. Without it, the MCP SDK's DNS-rebinding
+#      middleware rejects every request with 421 "Misdirected Request".
+#   3. DNS for eme-gir.recoverysky.org must point at the host running Caddy
+#      BEFORE first start, so ACME HTTP-01 can validate the domain.
+#   4. When EME_GIR_REQUIRE_AUTH=1: the OAuth Protected Resource Metadata
+#      endpoint (RFC 9728) is served at the HOST APEX, not under any
+#      /<server>/ prefix — https://eme-gir.recoverysky.org/.well-known/
+#      oauth-protected-resource. All five MCP servers share the same
+#      Auth0 tenant + audience + scope and advertise the same resource
+#      identifier, so one token works on all five. See the
+#      EME_GIR_AUTH0_RESOURCE_SERVER_URL default in docker-compose.yml.
+{
+	
+}
+
+eme-gir.recoverysky.org {
+	# Per-domain MCP routes — declared FIRST so they win over the catch-all below.
+	# `handle_path` is the prefix-stripping variant: /epsd2/mcp/foo → backend sees /mcp/foo.
+	handle_path /epsd2/* {
+		reverse_proxy eme-gir-epsd2:5052 {
+			# MCP streamable-HTTP is long-lived chunked; disable response buffering
+			# so the client sees tool-call output as the server writes it.
+			flush_interval -1
+		}
+	}
+
+	handle_path /etcsl/* {
+		reverse_proxy eme-gir-etcsl:5053 {
+			flush_interval -1
+		}
+	}
+
+	handle_path /cdli/* {
+		reverse_proxy eme-gir-cdli:5054 {
+			flush_interval -1
+		}
+	}
+
+	handle_path /ogsl/* {
+		reverse_proxy eme-gir-ogsl:5055 {
+			flush_interval -1
+		}
+	}
+
+	handle_path /translator/* {
+		reverse_proxy eme-gir-translator:5056 {
+			flush_interval -1
+		}
+	}
+
+	# OAuth 2.0 Protected Resource Metadata (RFC 9728) — served at the
+	# host APEX because all five MCP servers share the same Auth0
+	# tenant + audience + scope, and therefore advertise the same
+	# resource identifier (https://eme-gir.recoverysky.org). The
+	# metadata document is identical across servers; we proxy to one
+	# canonical backend (epsd2) for the body.
+	#
+	# MCP-spec-compliant clients follow the WWW-Authenticate header
+	# that 401 responses return — which the server builds from
+	# EME_GIR_AUTH0_RESOURCE_SERVER_URL + /.well-known/oauth-
+	# protected-resource, i.e. the same apex URL handled here.
+	#
+	# Per RFC 9728 §3 the metadata URL is constructed by inserting
+	# /.well-known/oauth-protected-resource between host and path.
+	# Our resource identifier has no path, so the constructed URL is
+	# just the host apex — no /<server>/.well-known/... variant
+	# exists in the spec.
+	#
+	# This route is INTENTIONALLY unauthenticated — the metadata
+	# endpoint must be publicly fetchable so unauthenticated clients
+	# can discover the auth requirements. FastMCP's middleware
+	# excludes it from RequireAuthMiddleware automatically.
+	handle /.well-known/oauth-protected-resource {
+		reverse_proxy eme-gir-epsd2:5052 {
+			flush_interval -1
+		}
+	}
+
+	# Catch-all → Flask glossary browser. Anything not under an MCP path lands here:
+	#   /                        → 302 to /eme-gir/sux
+	#   /eme-gir/sux             → glossary landing
+	#   /eme-gir/o0023086        → entry detail
+	#   /static/img/jenova.png   → asset
+	handle {
+		reverse_proxy eme-gir-web:5050
+	}
+
+	# Structured access log to host-mounted file (rotated by docker logging driver
+	# OR by Caddy's own rotation depending on how you run it; see compose snippet below).
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+		format json
+	}
+}
