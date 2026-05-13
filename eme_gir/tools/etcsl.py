@@ -121,6 +121,15 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaRe
     inscriptions, wisdom). Often surfaces collocational patterns the
     administrative corpus misses.
 
+    **Homograph caveat:** ETCSL's word-level annotation uses Sumerian
+    citation forms, NOT ePSD2 OIDs. Searching `lemma="gu"` returns
+    lines with ANY `gu`-lemma (eat / thread / neck / voice / etc. — see
+    `lookup_entry` for the homograph set on any given cf). Filter the
+    results by checking the line context against the sense you actually
+    want, or query a more disambiguating citation form when possible
+    (e.g. `lemma="ki-aŋ₂"` instead of `lemma="aŋ"`). The compound-noun
+    cf form often disambiguates where the simple-verb form can't.
+
     Args:
         lemma: the citation form (cf) to search for, e.g. 'lugal',
                'inana', 'ŋeš' (use ŋ not 'j' or 'g'). Case-insensitive.

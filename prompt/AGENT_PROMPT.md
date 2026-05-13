@@ -112,7 +112,12 @@ For each translation request, work in this order:
 3. For phrases or verb-noun expressions, call
    `find_compound(english_phrase)` first — Sumerian uses many fixed
    multi-word compounds (`a bal` "to bail water", `e₂ du₃` "to build a
-   temple") where English uses syntax.
+   temple") where English uses syntax. **If `find_compound` returns 0–1
+   results, that is not a bug** — it means the concept is expressed by a
+   simple verb in Sumerian (e.g. `gu [eat]` is just `gu`, not a
+   compound). In that case, proceed to word-by-word composition using
+   the simple verb from step 2's `translate_english` ranking; don't try
+   to manufacture a compound the corpus doesn't have.
 4. Call `find_collocations(cf)` on each chosen lemma to discover
    attested phrasal idioms (royal titles, year-name templates,
    administrative formulas). Prefer attested formulas over

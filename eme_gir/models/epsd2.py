@@ -212,7 +212,17 @@ class PatternToken(_Permissive):
     gw: str | None = Field(None, description="English guide-word / gloss of the matching lemma.")
     case: str | None = Field(
         None,
-        description="Detected outermost case suffix role from the inflected-collocations index, e.g. 'ergative', 'dative', 'locative', 'equative'. None means either zero-marked (absolutive / no case marker) OR the legacy cf-only index was used (no case info available).",
+        description=(
+            "Detected outermost case suffix role from the inflected-"
+            "collocations index, e.g. 'ergative', 'dative', 'locative', "
+            "'equative'. None means zero-marked (absolutive — no overt "
+            "case suffix on the visible spelling). All rows in one "
+            "response come from the same index, so a null `case` within "
+            "a response is NOT a signal that the legacy cf-only index was "
+            "used as fallback — that fallback only kicks in when the "
+            "entire inflected-collocations DB is absent, in which case "
+            "the WHOLE response carries null cases."
+        ),
     )
 
 
@@ -249,7 +259,21 @@ class VerbFormMatch(_Permissive):
     )
     count: int = Field(..., description="Attestation count for this morph row.")
     share_pct: float = Field(..., description="Share of the entry's total attestations (0-100).")
-    forms_table_count: int = Field(..., description="Attestation count from the matching forms-table row.")
+    # None when the synthesized spelling doesn't match a forms-table row
+    # exactly — common, because Sumerian phonology fills in vowels that
+    # the morph-token concatenation can't synthesize (e.g. `mu.n:~` for
+    # `du₃` synthesizes `mu-n-du₃` but the attested form is `mu-un-du₃`).
+    # The `count` field is authoritative regardless; `forms_table_count`
+    # is just the optional secondary-confirmation signal from forms.n.
+    forms_table_count: int | None = Field(
+        None,
+        description=(
+            "Attestation count from the matching forms-table row; "
+            "None when the synthesized spelling doesn't exactly match a "
+            "forms-table row (common, because the morph synthesis doesn't "
+            "fill in vowels that Sumerian phonology requires)."
+        ),
+    )
     cuneiform: str = Field(..., description="Unicode cuneiform glyphs for the spelling.")
     example: AttestationLine | None = Field(
         None, description="One cited corpus line showing this form in real use."
