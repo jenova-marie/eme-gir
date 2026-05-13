@@ -28,19 +28,35 @@ from ..models.ogsl import CuneifyResponse, LookupSignResponse
 from ..paths import OGSL_PROMPT_DOC
 from ..prompts import load_prompt
 
+# OGSL stores sign names and phonetic values with Unicode subscript
+# digits (E₂, gu₇, lu₂). Users commonly type the ASCII-digit form
+# (E2, gu7, lu2) carried over from older transliteration conventions.
+# Translate the query to OGSL convention before searching so both
+# spellings find their sign.
+_ASCII_TO_SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
 
 @log_call
 def lookup_sign(query: str, limit: int = 10) -> LookupSignResponse | ErrorResponse:
-    """Look up a cuneiform sign by name (e.g. 'LUGAL') or phonetic value
-    (e.g. 'lugal', 'lu₂', 'gal'), returning the Unicode glyph, sign name,
-    and all phonetic values that map to that sign.
+    """Look up a cuneiform sign by name (e.g. 'LUGAL', 'E₂') or phonetic
+    value (e.g. 'lugal', 'lu₂', 'gal', 'gu₇'), returning the Unicode
+    glyph, sign name, Unicode metadata, and all phonetic values that
+    map to that sign.
 
-    Useful for: verifying which sign a transliteration syllable corresponds
-    to; finding all phonetic readings of a logographic spelling; looking up
-    a glyph the agent sees in attested text.
+    **Subscript normalization:** ASCII-digit forms like `E2`, `gu7`,
+    `lu2` are auto-converted to OGSL's Unicode-subscript convention
+    (`E₂`, `gu₇`, `lu₂`) before lookup, so both spellings find their
+    sign. The `matched_by` field reflects OGSL's canonical form, not
+    the input convention.
+
+    Useful for: verifying which sign a transliteration syllable
+    corresponds to; finding all phonetic readings of a logographic
+    spelling; looking up a glyph the agent sees in attested text.
 
     Args:
-        query: sign name or phonetic value
+        query: sign name (uppercase, e.g. 'LUGAL', 'E2') or phonetic
+               value (lowercase, e.g. 'lugal', 'e2'). ASCII or Unicode
+               subscript digits both work.
         limit: max matches (default 10, cap 30)
     """
     limit = max(1, min(30, int(limit)))
@@ -53,7 +69,9 @@ def lookup_sign(query: str, limit: int = 10) -> LookupSignResponse | ErrorRespon
     with zipfile.ZipFile(_cuneify.OGSL_ZIP) as z, z.open(_cuneify.OGSL_MEMBER) as f:
         signs = json.load(f).get("signs", {})
 
-    needle = query.strip()
+    # Normalize ASCII digits → Unicode subscripts so users can type
+    # 'E2', 'gu7', 'lu2' and still match OGSL's 'E₂', 'gu₇', 'lu₂'.
+    needle = query.strip().translate(_ASCII_TO_SUBSCRIPT)
     needle_lower = needle.casefold()
     results: list[dict[str, Any]] = []
 
