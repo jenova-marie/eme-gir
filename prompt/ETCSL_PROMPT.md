@@ -7,8 +7,9 @@ Eleanor Robson, Gábor Zólyomi et al. at Oxford (1998–2006). The data
 is **per-word lemmatized** AND **English-translated**, which is what
 makes this corpus uniquely useful: every result you get back is
 **bilingual** — Sumerian transliteration alongside its English
-rendering. Data is **CC BY 3.0 UK**; no network calls; FTS5-indexed
-SQLite.
+rendering. **ETCSL is NOT under any Creative Commons license** — it
+carries traditional academic copyright with a citation request (see
+the next section). No network calls; FTS5-indexed SQLite.
 
 **Corpus shape:**
 
@@ -28,14 +29,23 @@ King List — reach for **this** server first.
 
 ---
 
-## ⚠️ REQUIRED: Oxford attribution under CC BY 3.0 UK
+## ⚠️ REQUIRED: Oxford citation per the project's terms
 
-**ETCSL data carries a legally-required attribution clause.** Every
-tool response includes an `attribution` field with the canonical
+**ETCSL is NOT released under any Creative Commons license.** Despite
+widespread treatment of the corpus as "openly licensed" in the digital
+humanities community, the project has never granted explicit
+redistribution rights. The Oxford editors hold traditional academic
+copyright and have asserted their moral rights. The project's standing
+citation request is the closest thing to a license grant — and that
+request is non-optional when ETCSL content is quoted.
+
+Every tool response includes an `attribution` field with the canonical
 citation:
 
-> *Black, J.A. et al., The Electronic Text Corpus of Sumerian
-> Literature (etcsl.orinst.ox.ac.uk), Oxford 1998-2006. CC BY 3.0 UK.*
+> *Black, J.A., Cunningham, G., Robson, E., and Zólyomi, G., The
+> Electronic Text Corpus of Sumerian Literature
+> (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. © The Authors; used per
+> the project's academic citation convention.*
 
 **Pass this string through to the user verbatim** when:
 - You quote a Sumerian line from ETCSL
@@ -44,13 +54,10 @@ citation:
 - You cite an ETCSL `text_id`
 - You use ETCSL data internally to verify something even if the final reply doesn't show ETCSL text directly
 
-The attribution is **not optional** — it's a license condition.
-Voice-only outputs can use the shortened form *"via ETCSL, Oxford"*
-inline, but full-text replies should carry the canonical citation.
-
-When you mix ETCSL data with Oracc/Eme-gir data (which is CC0 and
-needs no attribution), separate them in your reply so it's clear
-which material the Oxford credit covers.
+When you mix ETCSL data with Oracc/Eme-gir data (which has its OWN
+attribution requirement under CC BY-SA 3.0 — see eme-gir-epsd2 and
+eme-gir-ogsl prompts), separate them in your reply so the user sees
+both credits clearly.
 
 ---
 
@@ -249,8 +256,9 @@ Canonical citation block:
 > "From the great heaven Inana set her mind on the great below."
 >
 > — Inana's Descent to the Underworld (ETCSL c.1.4.1, line 3).
->   Via Black, J.A. et al., The Electronic Text Corpus of Sumerian
->   Literature (etcsl.orinst.ox.ac.uk), Oxford 1998-2006. CC BY 3.0 UK.
+>   Via Black, J.A., Cunningham, G., Robson, E., and Zólyomi, G., The
+>   Electronic Text Corpus of Sumerian Literature
+>   (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. © The Authors.
 ```
 
 ---

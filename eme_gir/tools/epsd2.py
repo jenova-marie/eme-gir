@@ -28,6 +28,16 @@ import re
 import sqlite3
 from typing import Any
 
+EPSD2_ATTRIBUTION = (
+    "ePSD2 / Oracc: electronic Pennsylvania Sumerian Dictionary, 2nd "
+    "edition (oracc.museum.upenn.edu/epsd2), prepared by Steve Tinney and "
+    "the Oracc team at the University of Pennsylvania. Data licensed under "
+    "Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0); "
+    "see oracc.museum.upenn.edu/doc/about/licensing. Attribution is "
+    "required; substantial reuses must propagate the ShareAlike license."
+)
+
+
 # Unicode subscript digits used by Oracc to disambiguate sign readings
 # (e.g. `gu` vs `gu₇` are different signs sharing the same phonetic
 # root). Stripped when comparing a cf to a form-prefix to tell apart
@@ -185,7 +195,7 @@ from eme_gir.sumerian_morphology import (
 # -----------------------------------------------------------------------------
 #
 # All tools are read-only point-lookups against local SQLite indexes built
-# from the CC0 Oracc / ETCSL corpora. No network calls. No writes. Same
+# from the Oracc (CC BY-SA 3.0) corpus. No network calls. No writes. Same
 # Note: READ_ONLY_ANNOTATIONS is set by the server entry point at
 # registration time; the tool functions here just provide the
 # implementation + @log_call instrumentation.
@@ -282,6 +292,7 @@ def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
         con.close()
 
     return TranslateEnglishResponse(
+        attribution=EPSD2_ATTRIBUTION,
         query=query,
         total_matches=total,
         results=[_entry_payload(con, r) for r in rows],
@@ -345,6 +356,7 @@ def lookup_entry(oid: str) -> LookupEntryResponse | ErrorResponse:
         con.close()
 
     return LookupEntryResponse(
+        attribution=EPSD2_ATTRIBUTION,
         oid=entry["id"],
         cf=entry["cf"],
         gw=entry["gw"],
@@ -407,7 +419,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
         if not entry:
             return ErrorResponse(error=f"no entry with oid={oid!r}")
         if not entry["xis"]:
-            return SeeExamplesResponse(oid=oid, lines=[], note="entry has no instance refs")
+            return SeeExamplesResponse(attribution=EPSD2_ATTRIBUTION, oid=oid, lines=[], note="entry has no instance refs")
         # Pull all refs upfront when filtering — small DB op, lets us slim
         # the resolve pass to only candidates from period-matching texts.
         # No-filter case bumped to 5000 (was 500) because for heavily
@@ -436,6 +448,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
         period_names = _resolve_period_filter(period_needle)
         if not period_names:
             return SeeExamplesResponse(
+                attribution=EPSD2_ATTRIBUTION,
                 oid=oid, cf=entry["cf"], gw=entry["gw"],
                 period_filter=period, lines=[],
                 note=f"no periods matched filter {period!r}",
@@ -522,6 +535,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
             f"a different period, or download the missing project zips."
         )
     return SeeExamplesResponse(
+        attribution=EPSD2_ATTRIBUTION,
         oid=oid,
         cf=entry["cf"],
         gw=entry["gw"],
@@ -662,6 +676,7 @@ def find_compound(english_phrase: str, limit: int = 10) -> FindCompoundResponse:
     combined.sort(key=lambda r: r["entry_total"] or 0, reverse=True)
     results = [dict(r) for r in combined[:limit]]
     return FindCompoundResponse(
+        attribution=EPSD2_ATTRIBUTION,
         query=english_phrase,
         total_matches=len(results),
         results=results,
@@ -760,6 +775,7 @@ def get_inflections(
             )
 
     return GetInflectionsResponse(
+        attribution=EPSD2_ATTRIBUTION,
         oid=oid,
         cf=entry["cf"],
         gw=entry["gw"],
@@ -823,6 +839,7 @@ def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
     finally:
         con.close()
     return AnalyzeFormResponse(
+        attribution=EPSD2_ATTRIBUTION,
         spelling=spelling,
         matches=[{
             "matched_in": r["source"],
@@ -959,6 +976,7 @@ def translate_sumerian(transliteration: str, limit_per_token: int = 3) -> Transl
     finally:
         con.close()
     return TranslateSumerianResponse(
+        attribution=EPSD2_ATTRIBUTION,
         transliteration=transliteration,
         tokens=results,
     )
@@ -1204,6 +1222,7 @@ def parse_phrase(transliteration: str) -> ParsePhraseResponse:
         con.close()
 
     return ParsePhraseResponse(
+        attribution=EPSD2_ATTRIBUTION,
         transliteration=transliteration,
         chunks=chunks,
         skeleton=" ".join(skeleton_parts) if skeleton_parts else "(empty input)",
@@ -1297,6 +1316,7 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
             "collocations index is keyed by cf, not by spelling."
         )
     return FindCollocationsResponse(
+        attribution=EPSD2_ATTRIBUTION,
         word=word,
         word_unigram_count=unigram,
         results=results,
@@ -1584,6 +1604,7 @@ def _find_phrase_pattern_inflected(
         con.close()
 
     return FindPhrasePatternResponse(
+        attribution=EPSD2_ATTRIBUTION,
         pattern=pattern,
         n=n,
         total_matches=total,
@@ -1685,6 +1706,7 @@ def _find_phrase_pattern_legacy(
         con.close()
 
     return FindPhrasePatternResponse(
+        attribution=EPSD2_ATTRIBUTION,
         pattern=pattern,
         n=n,
         total_matches=total,
@@ -2071,6 +2093,7 @@ def find_verb_form(
         )
 
     return FindVerbFormResponse(
+        attribution=EPSD2_ATTRIBUTION,
         cf=entry["cf"],
         pos=entry["pos"],
         gw=entry["gw"],

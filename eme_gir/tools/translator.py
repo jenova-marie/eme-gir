@@ -144,8 +144,8 @@ def start_here() -> str:
         see_examples → cuneify)
       • Reverse direction (Sumerian → English) tools
       • The four etcsl_* literary tools and when to reach for them
-      • REQUIRED Oxford attribution for any ETCSL-derived data
-        (CC BY 3.0 UK)
+      • Required Oxford citation for any ETCSL-derived data; required
+        Oracc CC BY-SA 3.0 attribution for ePSD2/OGSL data
       • Required output format and a fully worked example
 
     The prompt also instructs you to call `get_grammar_reference()`

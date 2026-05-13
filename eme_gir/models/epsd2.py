@@ -285,12 +285,24 @@ class VerbFormMatch(_Permissive):
 # ──────────────────────────────────────────────────────────────────
 
 
+# Shared description for the `attribution` field added to every ePSD2
+# response. Oracc data (including ePSD2 and OGSL) is licensed CC BY-SA 3.0
+# Unported, so attribution is REQUIRED on every quotation and the
+# ShareAlike clause propagates to substantial reuses. The tool layer
+# sets this via EPSD2_ATTRIBUTION; agents must pass it through verbatim.
+_ATTRIBUTION_DESC = (
+    "REQUIRED to display: Oracc CC BY-SA 3.0 attribution string for ePSD2 "
+    "data. The ShareAlike clause propagates to substantial reuses."
+)
+
+
 class TranslateEnglishResponse(_Permissive):
     """Response shape for translate_english."""
 
     query: str
     total_matches: int = Field(..., description="Total entries that matched (may exceed `len(results)` if `limit` clipped).")
     results: list[LemmaCandidate]
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class LookupEntryResponse(_Permissive):
@@ -308,6 +320,7 @@ class LookupEntryResponse(_Permissive):
     compounds: list[Compound] = Field(
         ..., description="See-compounds: idiomatic compounds containing this word."
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class SeeExamplesResponse(_Permissive):
@@ -322,6 +335,7 @@ class SeeExamplesResponse(_Permissive):
     )
     note: str | None = None
     diagnostic: str | None = None
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class FindCompoundResponse(_Permissive):
@@ -333,6 +347,7 @@ class FindCompoundResponse(_Permissive):
         ...,
         description="Compound-entry rows. Each row carries: id, headword, cf, gw, pos, icount, ipct, plus internal indexing columns.",
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class GetInflectionsResponse(_Permissive):
@@ -352,6 +367,7 @@ class GetInflectionsResponse(_Permissive):
         description="Per-kind truncation note, only present where filtering removed rows.",
     )
     filters: dict = Field(..., description="Echo of {min_count, limit_per_kind} the caller used.")
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class AnalyzeFormResponse(_Permissive):
@@ -361,6 +377,7 @@ class AnalyzeFormResponse(_Permissive):
     matches: list[AnalyzeMatch] = Field(
         ..., description="Candidate decompositions, ranked by attestation count."
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class TranslateSumerianResponse(_Permissive):
@@ -370,6 +387,7 @@ class TranslateSumerianResponse(_Permissive):
     tokens: list[TokenAnalysis] = Field(
         ..., description="Per-token candidate analyses, in input order."
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class FindCollocationsResponse(_Permissive):
@@ -384,6 +402,7 @@ class FindCollocationsResponse(_Permissive):
     note: str | None = Field(
         None, description="Diagnostic note (only present when resolved_from is set)."
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class FindPhrasePatternResponse(_Permissive):
@@ -408,6 +427,7 @@ class FindPhrasePatternResponse(_Permissive):
     results: list[PhrasePatternHit] = Field(
         ..., description="Attested n-grams matching the pattern, ranked by corpus frequency."
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class FindVerbFormResponse(_Permissive):
@@ -423,6 +443,7 @@ class FindVerbFormResponse(_Permissive):
     filter_spec: VerbFormFilterSpec = Field(..., description="Echo of the filter spec the caller supplied.")
     matches: list[VerbFormMatch]
     warnings: list[str] = Field(default_factory=list, description="Free-text caveats about the result.")
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
 class ParsePhraseResponse(_Permissive):
@@ -447,3 +468,4 @@ class ParsePhraseResponse(_Permissive):
         default_factory=list,
         description="Heuristic remarks the parser noticed, e.g. 'ergative subject + absolutive object + transitive verb → transitive clause'. Empty when no patterns matched.",
     )
+    attribution: str = Field(..., description=_ATTRIBUTION_DESC)

@@ -26,11 +26,15 @@ is not an acceptable shortcut — it is the failure mode this server
 exists to eliminate.
 
 You **must** credit Oxford for any data drawn from the ETCSL literary
-corpus (anything returned by an `etcsl_*` tool). It's CC BY 3.0 UK
-and attribution is legally required — every `etcsl_*` tool result
-includes an `attribution` field; pass it through to the user. Oracc /
-Eme-gir data is CC0 and doesn't require attribution. See "ETCSL
-attribution is REQUIRED" below for the canonical citation string.
+corpus (anything returned by an `etcsl_*` tool). ETCSL is NOT under a
+Creative Commons license — it carries traditional academic copyright
+with a citation request that this server treats as mandatory. You
+**must also** credit Oracc for any data drawn from ePSD2 / OGSL —
+the Oracc project is licensed **CC BY-SA 3.0** and attribution is
+required (ShareAlike propagates to substantial reuses). Every tool
+result on every server includes an `attribution` field; pass it
+through to the user verbatim. See "Attribution rules per server"
+below for the canonical citation strings.
 
 ## Before your first translation
 
@@ -321,28 +325,39 @@ Prefer `etcsl_*` whenever the user says "literary", "hymn",
 "composition", "Inana", "Gilgameš", "proverb", "King List", "Šulgi",
 or asks how a poet/scribe would have phrased something.
 
-### ETCSL attribution is REQUIRED, not optional
+### Attribution rules per server
 
-The ETCSL corpus is licensed **CC BY 3.0 UK**, which legally requires
-attribution to the Oxford team that produced it. Whenever ANY data in
-your reply originated from an `etcsl_*` tool call — a transliteration
-line, an English translation, a composition title, even a paraphrase
-or summary — you MUST credit Oxford. The canonical citation string is
-returned in the `attribution` field of every `etcsl_*` result; pass it
-through verbatim:
+Every data MCP server has its OWN license and its OWN required
+attribution string. Pass each one through verbatim in any reply that
+drew on that server's data.
 
-> *Black, J.A. et al., The Electronic Text Corpus of Sumerian
-> Literature (etcsl.orinst.ox.ac.uk), Oxford 1998-2006. CC BY 3.0 UK.*
+**ePSD2 / OGSL (Oracc):** Licensed **CC BY-SA 3.0 Unported**.
+Attribution is required, AND the ShareAlike clause propagates to
+substantial reuses. The canonical citation lives in every response's
+`attribution` field. Source: oracc.museum.upenn.edu/doc/about/licensing
 
-This holds even if you only used ETCSL data internally (e.g. to verify
-a Sumerian-literary collocation that you ultimately presented from a
-different source) — if it shaped your answer, cite it. When mixing
-ETCSL data with Oracc/Eme-gir data (which is CC0 and doesn't require
-attribution), separate the two in your response so it's clear which
-material the Oxford credit covers.
+**ETCSL (Oxford):** NOT under any Creative Commons license. The
+Oxford editors hold traditional academic copyright and have asserted
+their moral rights. The project's citation request is honored by
+treating attribution as mandatory:
+
+> *Black, J.A., Cunningham, G., Robson, E., and Zólyomi, G., The
+> Electronic Text Corpus of Sumerian Literature
+> (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. © The Authors.*
+
+**CDLI:** Catalogue text reusable with citation per "fair academic
+practice"; imagery is non-commercial only. Both reuse conditions are
+honored by passing the response's `attribution` field through.
+
+This holds even if you used a server's data only internally (e.g. to
+verify a collocation that you ultimately presented from a different
+source) — if it shaped your answer, cite it. When mixing data from
+multiple servers in one reply, separate the credits so the reader can
+see which material is governed by which license.
 
 If your output medium can't render a full citation block (e.g. a
-voice-only reply), at minimum say "via ETCSL, Oxford" inline.
+voice-only reply), at minimum name each source inline ("via Oracc",
+"via ETCSL Oxford", "via CDLI").
 
 ## Quality and citation
 
@@ -367,13 +382,14 @@ voice-only reply), at minimum say "via ETCSL, Oxford" inline.
 - **Prefer attested forms over plausible reconstructions.** If
   `get_inflections` doesn't show the form you want, find a closer
   attested alternative; don't invent.
-- **Cite Oxford for any ETCSL-derived data.** ETCSL is CC BY 3.0 UK
-  and attribution is legally required. Any reply that draws on the
-  `etcsl_*` tools — even indirectly — must include the citation
-  string returned in the `attribution` field of those tool results.
-  See the "ETCSL attribution is REQUIRED" subsection above for the
-  canonical citation. (Oracc/Eme-gir data is CC0 and needs no
-  attribution, but it's good practice to credit it too.)
+- **Cite every server you drew from.** ETCSL carries traditional
+  academic copyright with a citation request; Oracc (ePSD2/OGSL) is
+  CC BY-SA 3.0 with required attribution AND a ShareAlike obligation
+  on substantial reuses; CDLI catalogue text is reusable-with-citation
+  and its imagery is non-commercial only. Every tool result includes
+  an `attribution` field — pass it through verbatim for each server
+  whose data informed the reply, even indirectly. See "Attribution
+  rules per server" above.
 - **Cite Jagersma sections for non-trivial grammatical claims.**
   When your reasoning about case selection, prefix-chain
   construction, aspect choice, agreement, voice, subordination, or
@@ -464,5 +480,7 @@ You:
 > grammatically licit ED Sumerian.
 >
 > *(All cited Sumerian data above is from the Oracc / Eme-gir corpus,
-> CC0. No ETCSL data was used in this example; if it had been, the
-> Oxford citation would appear here.)*
+> licensed CC BY-SA 3.0 — the canonical attribution string is returned
+> in every tool response's `attribution` field. No ETCSL data was used
+> in this example; if it had been, the Oxford citation would appear
+> here as well.)*

@@ -32,6 +32,13 @@ class LookupSignResponse(_Permissive):
 
     query: str
     results: list[SignInfo]
+    attribution: str = Field(
+        ...,
+        description=(
+            "REQUIRED to display: Oracc CC BY-SA 3.0 attribution string for OGSL "
+            "data. The ShareAlike clause propagates to substantial reuses."
+        ),
+    )
 
 
 class CuneifyResponse(_Permissive):
@@ -45,4 +52,11 @@ class CuneifyResponse(_Permissive):
     )
     placeholder_count: int = Field(
         ..., description="Count of '□' (PLACEHOLDER) characters in the output."
+    )
+    attribution: str = Field(
+        ...,
+        description=(
+            "REQUIRED to display: Oracc CC BY-SA 3.0 attribution string for OGSL "
+            "data. The ShareAlike clause propagates to substantial reuses."
+        ),
     )

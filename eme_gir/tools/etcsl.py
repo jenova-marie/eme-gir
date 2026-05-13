@@ -8,8 +8,10 @@ Sumerian transliteration AND its English translation paragraph):
 - `etcsl_search_sumerian(query, limit)` — FTS5 over Sumerian transliterations
 
 `ETCSL_ATTRIBUTION` is exposed alongside the tools and is REQUIRED to
-be passed through to the user verbatim under the corpus's CC BY 3.0 UK
-license.
+be passed through to the user verbatim. ETCSL is NOT released under any
+Creative Commons license — © Black, Cunningham, Robson, Zólyomi 1998-2006;
+the authors asserted their moral rights. The project's citation request
+is honored by passing this attribution through with every quotation.
 
 Unlike CDLI, ETCSL has no cross-domain helpers — the connection and the
 paragraph-lines join helper are private to this module. Hence no
@@ -32,8 +34,13 @@ from ..paths import ETCSL_DB, ETCSL_PROMPT_DOC
 from ..prompts import load_prompt
 
 ETCSL_ATTRIBUTION = (
-    "ETCSL: Black, J.A. et al., The Electronic Text Corpus of Sumerian "
-    "Literature (etcsl.orinst.ox.ac.uk), Oxford 1998-2006. CC BY 3.0 UK."
+    "ETCSL: Black, J.A., Cunningham, G., Robson, E., and Zólyomi, G., "
+    "The Electronic Text Corpus of Sumerian Literature "
+    "(etcsl.orinst.ox.ac.uk), Oxford 1998-2006. © The Authors; the "
+    "authors have asserted their moral rights. The ETCSL project has NOT "
+    "released this corpus under any Creative Commons license; redistribution "
+    "is governed by traditional academic copyright with a citation request. "
+    "When quoting an ETCSL line or paragraph, cite this attribution verbatim."
 )
 
 
@@ -334,8 +341,8 @@ def start_here() -> str:
     for the rest of this session — without it, your `etcsl_*` calls
     will use guesswork about ETCSL's text-id conventions, FTS5 query
     syntax, and the homograph-disambiguation limits of its lemma
-    index. Critically, you will not know about the LEGALLY REQUIRED
-    Oxford attribution rule that applies to ETCSL data.
+    index. Critically, you will not know about the required Oxford
+    citation that ETCSL's terms expect when its data is quoted.
 
     The prompt covers:
       • The four tools this server exposes (`etcsl_search_english`,
@@ -352,9 +359,10 @@ def start_here() -> str:
         word-level annotation uses citation forms, NOT ePSD2 OIDs,
         so `lemma="gu"` returns ALL `gu`-lemmas (eat / thread /
         neck / voice).
-      • THE REQUIRED CC BY 3.0 UK Oxford attribution rule: every
-        result carries an `attribution` field that must be passed
-        through verbatim to the user. Not optional.
+      • The Oxford citation policy: ETCSL is NOT released under a
+        Creative Commons license; every result carries an `attribution`
+        field with the canonical citation that must be passed through
+        verbatim when any line or paragraph is quoted to the user.
 
     Re-call this tool any time your working context drifts and you
     want to re-anchor on this server's guidance.

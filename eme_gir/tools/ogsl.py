@@ -28,6 +28,16 @@ from ..models.ogsl import CuneifyResponse, LookupSignResponse
 from ..paths import OGSL_PROMPT_DOC
 from ..prompts import load_prompt
 
+OGSL_ATTRIBUTION = (
+    "OGSL: Oracc Global Sign List, maintained by Steve Tinney and the "
+    "Oracc team, distributed via oracc.museum.upenn.edu. Data licensed "
+    "under Creative Commons Attribution-ShareAlike 3.0 Unported "
+    "(CC BY-SA 3.0); see oracc.museum.upenn.edu/doc/about/licensing. "
+    "Attribution is required; substantial reuses must propagate the "
+    "ShareAlike license."
+)
+
+
 # OGSL stores sign names and phonetic values with Unicode subscript
 # digits (E₂, gu₇, lu₂). Users commonly type the ASCII-digit form
 # (E2, gu7, lu2) carried over from older transliteration conventions.
@@ -115,6 +125,7 @@ def lookup_sign(query: str, limit: int = 10) -> LookupSignResponse | ErrorRespon
     return LookupSignResponse(
         query=query,
         results=deduped[:limit],
+        attribution=OGSL_ATTRIBUTION,
     )
 
 
@@ -145,6 +156,7 @@ def cuneify(spelling: str) -> CuneifyResponse:
         cuneiform=glyphs,
         complete=not has_placeholder,
         placeholder_count=glyphs.count("□"),
+        attribution=OGSL_ATTRIBUTION,
     )
 
 

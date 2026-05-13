@@ -4,8 +4,12 @@ You are connected to a local copy of the **Oracc Global Sign List (OGSL)** —
 the canonical catalogue of cuneiform signs maintained by Steve Tinney and
 the Oracc team at the University of Pennsylvania. ~3,000+ signs, each with
 Unicode codepoint(s), an OGSL sign name, and the full set of phonetic
-readings that map to it. Data is CC0; no network calls; loaded once at
-server start from `corpus/ogsl.zip`.
+readings that map to it. **Data is licensed CC BY-SA 3.0 Unported** (the
+Oracc project-wide license; see oracc.museum.upenn.edu/doc/about/licensing) —
+attribution is required and the ShareAlike clause propagates to substantial
+reuses. Every `cuneify` and `lookup_sign` response carries the canonical
+attribution string in its `attribution` field; pass it through to the user
+verbatim. No network calls; loaded once at server start from `corpus/ogsl.zip`.
 
 **Cross-language scope.** OGSL covers cuneiform across **every language
 that used the script** — Sumerian, Akkadian, Hittite, Hurrian, Elamite,

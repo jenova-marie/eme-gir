@@ -119,7 +119,7 @@ The four `etcsl_*` tools query the Oxford [Electronic Text Corpus of Sumerian Li
 - **`etcsl_lines_with_lemma(lemma)`** — grounds a specific Sumerian lemma in literary use. The agent uses this when the user asks *"how would a poet phrase this"* rather than *"how would an Ur III scribe record this."*
 - **`etcsl_lookup_text(text_id, start, line_limit)`** — read a whole composition end-to-end, paginated, bilingual. Famous IDs: `c.1.4.1` (Inana's Descent), `c.1.8.1.4` (Gilgameš and the Underworld), `c.2.1.1` (Sumerian King List).
 
-Every `etcsl_*` result carries an `attribution` field with the canonical citation: *Black, J.A. et al., The Electronic Text Corpus of Sumerian Literature (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. CC BY 3.0 UK.* Attribution is required under the ETCSL license; the agent passes it through to the user verbatim.
+Every `etcsl_*` result carries an `attribution` field with the canonical citation: *Black, J.A., Cunningham, G., Robson, E., and Zólyomi, G., The Electronic Text Corpus of Sumerian Literature (etcsl.orinst.ox.ac.uk), Oxford 1998–2006. © The Authors.* ETCSL is **not** released under any Creative Commons license — the Oxford editors hold traditional academic copyright and the project's citation request is honored as a non-optional condition of reuse. The agent passes the attribution through to the user verbatim. See [`LICENSE-DATA.md`](LICENSE-DATA.md).
 
 ### Artifact catalogue (via CDLI)
 
@@ -128,7 +128,7 @@ The two CDLI-backed tools query the **Cuneiform Digital Library Initiative**'s a
 - **`lookup_artifact(p_id)`** — one P-id → one record. Upgrades a bare "P347156" citation into a proper "VS 24, 037 (VAT 16439, Berlin Vorderasiatisches Museum), Old Babylonian, from Babylon" reference. Returns provenience (with remarks and excavation field number), period (with refinement remarks), museum (collection + catalog number + accession number), dimensions, genre/subgenre, language, material, object type, publication history, and computed image URLs (`photo_url`, `lineart_url`, plus `photo_thumb_url` / `lineart_thumb_url` for inline display).
 - **`find_artifacts(provenience=…, period=…, museum_collection=…, genre=…, language=…, has_photo=…, has_lineart=…, …)`** — filtered query over the 353K-row catalogue. For structural questions about the corpus: *"every Ur III tablet from Drehem held by the British Museum"*, *"all Lagash II votive inscriptions"*, *"every Sumerian literary fragment in the Yale Babylonian Collection that has a photograph"*. Useful when the user wants representative coverage rather than a single example.
 
-Every artifact result carries the CDLI catalogue attribution. CDLI publishes its catalogue as **CC0** so attribution isn't legally required, but we pass it through anyway because the catalogue represents decades of meticulous scholarship by the CDLI team (originally UCLA, now MPIWG Berlin). We do **not** host any CDLI imagery — every `photo_url` and `lineart_url` we return points straight to cdli.earth, so CDLI remains the source of truth for tablet reproductions.
+Every artifact result carries the CDLI catalogue attribution. **CDLI is NOT CC0** despite being widely treated that way: the catalogue text is freely reusable with citation per CDLI's "fair academic practice" terms, and the imagery on cdli.earth is non-commercial only (image copyright rests variously with CDLI, photographers, and holding museums). We do **not** host any CDLI imagery — every `photo_url` and `lineart_url` we return points straight to cdli.earth, so image-licensing remains CDLI's domain. The `attribution` field on every response carries the canonical credit; pass it through. See [`LICENSE-DATA.md`](LICENSE-DATA.md) for the full statement.
 
 For the recommended end-to-end agent workflow that stitches these tools together (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md) — a drop-in system prompt that teaches the workflow with worked examples. The same content is also served by the MCP server itself as `oracc://prompt/agent` so a connecting agent can self-bootstrap without operator-side configuration.
 
@@ -172,18 +172,24 @@ The five per-domain MCP servers + the Flask web app share the same `eme_gir/` Py
 
 ## Data and attributions
 
+> **TL;DR:** All four data sources have meaningful reuse conditions. None of them is unconditionally public-domain, despite being widely treated as such in casual reuse. See [`LICENSE-DATA.md`](LICENSE-DATA.md) for the full statement.
+
 | Source | License | What we use |
 |---|---|---|
-| **Oracc / Eme-gir** (Tinney, Robson, Veldhuis, et al.) | **CC0** | Sumerian glossary; ~138K corpusjson texts; OGSL sign list |
-| **ETCSL** (Black, Cunningham, Robson, Zólyomi, et al., Oxford 1998–2006) | **CC BY 3.0 UK** | 394 lemmatized literary texts with English translations |
-| **CDLI** (Cuneiform Digital Library Initiative, originally UCLA, now MPIWG Berlin / cdli.earth) | **CC0** | 353K-row artifact catalogue: provenience, period, museum custody, dimensions, citations, and the URLs to CDLI-hosted photographs we link out to |
-| **OGSL** (Tinney) | CC0, distributed inside Oracc | Cuneiform sign → Unicode mapping |
+| **Oracc / ePSD2** (Tinney, Robson, Veldhuis, et al., U Penn) | **CC BY-SA 3.0 Unported** — attribution required, ShareAlike propagates | Sumerian glossary; ~138K corpusjson texts |
+| **OGSL** (Tinney, distributed via Oracc) | **CC BY-SA 3.0** (same as Oracc) | Cuneiform sign → Unicode mapping |
+| **ETCSL** (Black, Cunningham, Robson, Zólyomi, et al., Oxford 1998–2006) | **NO Creative Commons license** — traditional academic copyright; citation request honored as a non-optional reuse condition | 394 lemmatized literary texts with English translations |
+| **CDLI** (Cuneiform Digital Library Initiative, originally UCLA, now MPIWG Berlin / cdli.earth) | **Catalogue text** freely reusable with citation (CDLI's "fair academic practice" terms); **imagery non-commercial only** | 353K-row artifact catalogue. We do NOT host any imagery — all photo/lineart URLs link to cdli.earth |
 
-The Oracc, OGSL, and CDLI data is dedicated to the public domain (CC0) and so requires no attribution, but cite it anyway — it represents decades of meticulous scholarship by international teams. The ETCSL license formally requires attribution; every MCP tool that returns ETCSL data carries an `attribution` field with the canonical citation string for downstream propagation. We do **not** host any CDLI-hosted imagery — every photo / line drawing URL the MCP server returns points straight to cdli.earth, so CDLI remains the source of truth for tablet reproductions.
+Every MCP tool returns an `attribution` field containing the canonical citation for its server's data. **Pass it through to the user verbatim** — this is mandatory under all three license regimes (Oracc's CC BY-SA requires attribution, ETCSL's citation request is non-optional, CDLI's terms require citation for catalogue reuse).
+
+**The CC BY-SA 3.0 ShareAlike consideration** for Oracc-derived bundles (`data/glossary.sqlite` and friends): the ShareAlike clause means substantial reuses of the data layer must propagate the CC BY-SA 3.0 license to their derivative. The code in this repo is MIT (see below), but the *data layer* built from Oracc carries the copyleft inheritance. If you redistribute this repo's `data/` directory or use it as the foundation of a downstream service, the data half of your project must remain CC BY-SA 3.0-compatible. [`LICENSE-DATA.md`](LICENSE-DATA.md) documents this and how it interacts with the MIT-licensed code.
 
 ## License
 
-The code in this repository is released under the **MIT License** — see [`LICENSE`](LICENSE). Use it however you like, including commercially; the only requirement is that you carry the copyright notice forward in copies or substantial portions. The license applies to *the code*, not to the underlying linguistic data, which is governed separately by Oracc / Eme-gir (CC0) and ETCSL (CC BY 3.0 UK) as documented in the table above.
+The **code** in this repository is released under the **MIT License** — see [`LICENSE`](LICENSE). Use it however you like, including commercially; the only requirement is that you carry the copyright notice forward in copies or substantial portions.
+
+The **data** bundled or built by this code has separate, more restrictive terms — see [`LICENSE-DATA.md`](LICENSE-DATA.md). In particular: Oracc data (which forms the bulk of `data/glossary.sqlite`) is CC BY-SA 3.0 with a ShareAlike inheritance clause, and ETCSL data carries traditional academic copyright with a required Oxford citation. MIT applies to *the code*, not to the linguistic data the code processes.
 
 ## A note on the data itself
 

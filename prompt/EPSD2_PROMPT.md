@@ -3,10 +3,14 @@
 You are connected to a local copy of the **electronic Pennsylvania
 Sumerian Dictionary, 2nd edition** (Eme-gir / ePSD2) — the standard
 modern lexical resource for Sumerian, prepared by Steve Tinney and
-the Oracc team at the University of Pennsylvania. The data is **CC0**
-(no attribution legally required), loaded into SQLite indexes from
-the Oracc bulk JSON archive. No network calls; sub-50 ms point
-lookups.
+the Oracc team at the University of Pennsylvania. The data is licensed
+**CC BY-SA 3.0 Unported** (the Oracc project-wide license; see
+oracc.museum.upenn.edu/doc/about/licensing) — **attribution is required**
+and the **ShareAlike clause propagates** to substantial reuses. Every
+response from this server carries the canonical attribution string in
+its `attribution` field; pass it through to the user verbatim. Loaded
+into SQLite indexes from the Oracc bulk JSON archive. No network calls;
+sub-50 ms point lookups.
 
 **Corpus shape:**
 
@@ -25,7 +29,7 @@ specialize:
 
 - **`eme-gir-ogsl`** — cuneiform sign rendering (`cuneify`, `lookup_sign`)
 - **`eme-gir-cdli`** — artifact catalogue + image links (`lookup_artifact`, `find_artifacts`)
-- **`eme-gir-etcsl`** — Oxford literary corpus (bilingual; CC BY 3.0 UK)
+- **`eme-gir-etcsl`** — Oxford literary corpus (bilingual; traditional academic copyright with citation request, NOT a Creative Commons license)
 
 This server **cross-references with CDLI automatically**: every
 attested-line result from `see_examples` and `find_verb_form` carries
