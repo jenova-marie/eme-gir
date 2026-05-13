@@ -35,9 +35,14 @@ from ..paths import (
 from ..prompts import load_prompt
 
 CDLI_ATTRIBUTION = (
-    "CDLI: Cuneiform Digital Library Initiative (cdli.earth), "
-    "catalogue data CC0 / public domain. Hosted by Max Planck Institute "
-    "for the History of Science (Berlin) since 2022."
+    "CDLI: Cuneiform Digital Library Initiative (cdli.earth), hosted by "
+    "Max Planck Institute for the History of Science (Berlin) since 2022. "
+    "Catalogue text is freely reusable per CDLI's terms of use with "
+    "citation to CDLI as the source. Imagery on cdli.earth is NOT openly "
+    "licensed — non-commercial use only, with image copyright resting "
+    "variously with CDLI, the photographer, and the holding museum. "
+    "This server hosts no imagery; all image URLs link directly to "
+    "cdli.earth (see https://cdli.mpiwg-berlin.mpg.de/about for terms)."
 )
 
 
@@ -159,6 +164,7 @@ def find_artifacts(
     museum_collection: str | None = None,
     genre: str | None = None,
     language: str | None = None,
+    subgenre: str | None = None,
     limit: int = 20,
 ) -> FindArtifactsResponse | ErrorResponse:
     """Filter the CDLI catalogue by archaeological / curatorial criteria.
@@ -168,12 +174,14 @@ def find_artifacts(
       - "Every Ur III tablet from Drehem in the British Museum"
       - "Every Old Babylonian literary tablet from Nippur"
       - "Every Akkadian text in the Yale Babylonian Collection"
+      - "Every manuscript witness of nin-me-šara (Inana B)" via subgenre
 
     Each filter argument is matched as a case-insensitive SUBSTRING
     against the corresponding catalogue column, so partial values work:
       - provenience='Drehem'      matches 'Drehem (mod. Puzriš-Dagan)'
       - period='Ur III'           matches 'Ur III (ca. 2100-2000 BC)'
       - museum_collection='Berlin' matches 'Vorderasiatisches Museum, Berlin, Germany'
+      - subgenre='4.07.02'        matches 'ETCSL 4.07.02 Inanna B (witness)'
 
     All filter arguments are optional — pass none to get an unfiltered
     sample (useful for browsing what CDLI looks like). Filters AND
@@ -191,6 +199,19 @@ def find_artifacts(
                'Mathematical', 'Omen', 'Ritual'. Use 'Royal' as a substring
                to catch both 'Royal/Monumental' and any subgenres.
         language: language substring, e.g. 'Sumerian', 'Akkadian', 'Hittite'.
+        subgenre: finer classification within `genre`. For literary tablets
+                  this column carries the ETCSL composition ID, so it's the
+                  ONLY surgical way to pull manuscript witnesses of a
+                  specific composition. ~72K of 353K rows are populated
+                  across 4,619 distinct values. Common patterns:
+                    subgenre='4.07.02'    → ETCSL Inana B (nin-me-šara) — 106 tablets
+                    subgenre='Decad'      → all ten OB-curriculum compositions
+                    subgenre='1.06.02'    → ETCSL Ninurta's Exploits — 160 tablets
+                    subgenre='Ninurta'    → any Ninurta-themed literary witness
+                    subgenre='liturgy'    → liturgical compositions (case-insensitive)
+                    subgenre='incantation' → magical / ritual speech
+                  Pair with genre='Literary' to narrow to the relevant
+                  partition. Substring-match is case-insensitive.
         limit: max artifacts to return (default 20, cap 200).
 
     Each result carries the same image / page URLs as lookup_artifact,
@@ -214,6 +235,7 @@ def find_artifacts(
         ("museum_collection", museum_collection),
         ("genre", genre),
         ("language", language),
+        ("subgenre", subgenre),
     ):
         if needle and needle.strip():
             where.append(f"{col} LIKE ?")
@@ -226,6 +248,7 @@ def find_artifacts(
         "museum_collection": museum_collection,
         "genre": genre,
         "language": language,
+        "subgenre": subgenre,
     }
 
     try:
