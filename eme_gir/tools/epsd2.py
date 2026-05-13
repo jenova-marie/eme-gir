@@ -24,8 +24,20 @@ Cross-domain dependencies:
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Any
+
+# Unicode subscript digits used by Oracc to disambiguate sign readings
+# (e.g. `gu` vs `gu₇` are different signs sharing the same phonetic
+# root). Stripped when comparing a cf to a form-prefix to tell apart
+# "true orthographic compound" (different signs joined: e₂-gal, dub-sar)
+# from "subscript variant of cf with a case suffix" (gu₇-a, e₂-bi).
+_SUBSCRIPT_RE = re.compile(r"[₀-₉]")
+
+
+def _strip_subscripts(s: str) -> str:
+    return _SUBSCRIPT_RE.sub("", s)
 
 from .. import cdli as _cdli
 from .. import cuneify as _cuneify
@@ -523,20 +535,44 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
 def find_compound(english_phrase: str, limit: int = 10) -> FindCompoundResponse:
     """Find Sumerian compound expressions matching an English phrase.
 
-    Critical for translation because Sumerian uses fixed multi-word compounds
-    for many concepts that English expresses as single verbs / phrases:
-        "to spread the arms"  -> a bad
-        "to bail water"        -> a bal [BAIL]
-        "to pour out water"    -> a bala [POUR OUT WATER]
-        "to draw water"        -> a bala (same)
-        "in the presence of the king" -> lugal kura
+    Critical for translation because Sumerian uses fixed multi-word
+    compounds for many concepts that English expresses as single
+    verbs/phrases. ePSD2 stores compounds in TWO orthographic flavors,
+    both of which this tool returns:
 
-    Searches across compound headwords AND English glosses of compound
-    entries. Results have full entry info so the agent can immediately
-    use the matched compound.
+    1. **Multi-word cf** — the lemma's citation form has a literal space
+       in it, e.g.
+           "to spread the arms"     -> a bad
+           "to bail water"           -> a bal
+           "in the presence of the king" -> lugal kura
+           "to eat" (rare idiom)     -> zu gub
+       These are explicitly marked as compounds by ePSD2's lexicographers.
+
+    2. **Hyphen-joined orthographic compound** — the cf is contiguous but
+       the most-attested spelling is hyphen-joined and the part before the
+       first hyphen does NOT match the cf (so the hyphen is a sign
+       boundary, not a case-suffix boundary). Catches:
+           "palace"     -> egal     (written e₂-gal)
+           "scribe"     -> dubsar   (written dub-sar)
+           "majesty"    -> nammah   (written nam-mah)
+           "supervisor" -> kingal   (written kin-gal)
+       These have been lexicalized into single-cf entries even though
+       the writing system reveals their compound structure.
+
+    The hyphen-vs-suffix test (`prefix-before-first-hyphen != cf`)
+    filters out spellings like `lugal-e` (cf=lugal, hyphen prefix matches
+    cf → case suffix, not a compound) while keeping `e₂-gal` (cf=egal,
+    `e₂` ≠ `egal` → sign boundary, true compound). The orthographic
+    branch requires a top spelling with icount ≥ 5 to filter out
+    incidental one-off hyphenated variants.
+
+    Searches across BOTH compound headwords (gw_cf LIKE) AND English
+    glosses of compound entries (senses.mng_cf LIKE). Each result has
+    full entry info so the agent can immediately drop into
+    `lookup_entry(oid)` for the structured view.
 
     Args:
-        english_phrase: e.g. "build temple", "bail water", "swear oath"
+        english_phrase: e.g. "build temple", "bail water", "palace"
         limit: max results (default 10, cap 25)
     """
     limit = max(1, min(25, int(limit)))
@@ -545,9 +581,9 @@ def find_compound(english_phrase: str, limit: int = 10) -> FindCompoundResponse:
     con = _connect()
     try:
         _check_casefold_columns(con)
-        # A "compound entry" is one whose cf has a space (e.g. "a bad", "a bala").
-        # We also surface entries that have see-compounds matching the phrase.
-        rows = con.execute(
+        # Branch A: explicit multi-word cf (a bal, zu gub, lugal kura, ...).
+        # No post-filter needed — these are unambiguous compounds.
+        multi_word = con.execute(
             """
             SELECT DISTINCT e.id AS oid, e.cf, e.gw, e.pos, e.icount AS entry_total
             FROM entries e
@@ -556,14 +592,75 @@ def find_compound(english_phrase: str, limit: int = 10) -> FindCompoundResponse:
                    OR EXISTS (SELECT 1 FROM senses s
                               WHERE s.entry_id=e.id AND s.mng_cf LIKE ?))
             ORDER BY e.icount DESC NULLS LAST
-            LIMIT ?
             """,
-            (needle, needle, limit),
+            (needle, needle),
         ).fetchall()
+
+        # Branch B: orthographic-compound candidates — contiguous cf but
+        # at least one top-attested form is hyphen-joined. We over-fetch
+        # candidates here and then post-filter in Python to apply the
+        # subscript-normalized comparison (SQL has no clean regex).
+        # **Excludes verbs** (POS starting with 'V'): for verbs, hyphenated
+        # forms encode the conjugation-prefix chain (`mu-na-du₃`, `i₃-du₃-e`),
+        # NOT a compound-sign etymology. Noun and adjective compounds
+        # (egal, dubsar, šudu, nammah) are what this branch is for.
+        candidates = con.execute(
+            """
+            SELECT DISTINCT e.id AS oid, e.cf, e.gw, e.pos, e.icount AS entry_total
+            FROM entries e
+            WHERE instr(e.cf, ' ') = 0
+              AND (e.pos IS NULL OR e.pos NOT LIKE 'V%')
+              AND EXISTS (
+                    SELECT 1 FROM forms f
+                    WHERE f.entry_id = e.id
+                      AND instr(f.n, '-') > 0
+                      AND f.icount >= 5
+              )
+              AND (e.gw_cf LIKE ?
+                   OR EXISTS (SELECT 1 FROM senses s
+                              WHERE s.entry_id=e.id AND s.mng_cf LIKE ?))
+            ORDER BY e.icount DESC NULLS LAST
+            """,
+            (needle, needle),
+        ).fetchall()
+
+        # Post-filter the orthographic-compound candidates: keep only
+        # those where the top hyphenated spelling's prefix-before-the-
+        # first-hyphen differs from the cf EVEN AFTER stripping Unicode
+        # subscript digits from both. This filters out subscript-only
+        # variants like `gu₇-a` (cf=gu) where the hyphen marks a case
+        # suffix, while keeping true compounds like `e₂-gal` (cf=egal)
+        # where the prefix is a different sign entirely.
+        ortho: list[sqlite3.Row] = []
+        seen = {r["oid"] for r in multi_word}
+        for r in candidates:
+            if r["oid"] in seen:
+                continue
+            top = con.execute(
+                """
+                SELECT n FROM forms
+                WHERE entry_id=? AND instr(n,'-')>0 AND icount>=5
+                ORDER BY icount DESC LIMIT 1
+                """,
+                (r["oid"],),
+            ).fetchone()
+            if top is None:
+                continue
+            form = top["n"]
+            prefix = form[: form.index("-")]
+            if _strip_subscripts(prefix) != _strip_subscripts(r["cf"]):
+                ortho.append(r)
+                seen.add(r["oid"])
     finally:
         con.close()
 
-    results = [dict(r) for r in rows]
+    # Order: rank by icount across BOTH branches so the most-attested
+    # compound wins regardless of which branch surfaced it (otherwise
+    # rare multi-word lexemes like `kišib mu sara` outrank `dubsar` at
+    # 24K attestations, which is the opposite of what an agent wants).
+    combined = list(multi_word) + ortho
+    combined.sort(key=lambda r: r["entry_total"] or 0, reverse=True)
+    results = [dict(r) for r in combined[:limit]]
     return FindCompoundResponse(
         query=english_phrase,
         total_matches=len(results),
