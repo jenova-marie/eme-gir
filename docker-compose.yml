@@ -1,28 +1,98 @@
-# Three-service layout: a one-shot `init` service handles first-boot
-# data setup (download Oracc corpus, build SQLite indexes), then exits.
-# `web` (gunicorn + Flask) and `mcp` (FastMCP HTTP transport) both
-# depend on `init` completing successfully and start in parallel.
+# Eight-service layout post-Phase-5:
+#
+#   init        — one-shot data setup (download corpus, build SQLite indexes)
+#   web         — gunicorn + Flask glossary browser  (port 5050)
+#   mcp         — legacy all-in-one MCP server      (port 5051)
+#                 [kept for backwards compatibility with pre-Phase-5 clients;
+#                  new deployments should prefer the per-domain servers below]
+#   mcp-epsd2   — per-domain MCP: ePSD2 dictionary  (port 5052)  — 11 tools
+#   mcp-etcsl   — per-domain MCP: ETCSL literary    (port 5053)  — 4  tools
+#   mcp-cdli    — per-domain MCP: CDLI catalogue    (port 5054)  — 2  tools
+#   mcp-ogsl    — per-domain MCP: OGSL sign rendering (port 5055) — 2  tools
+#   mcp-translator — per-domain MCP: Translator bootstrap (port 5056) — 2 tools + 2 resources
+#
+# All 6 MCP services share the same image and the same shared-config
+# anchors at the top of this file (x-mcp-base, x-mcp-environment) so
+# Auth0 / DNS-rebinding / Umami env vars stay DRY.
 #
 # Why the dedicated init service vs an entrypoint wrapper: first-boot
 # init can take 5-15 minutes. Wrapping it inside web's startup would
 # either:
 #   (a) require a 30+ minute healthcheck start_period (ugly), or
-#   (b) make `mcp` (which depends_on web: service_healthy) wait that
-#       same 5-15 min before booting at all.
-# A separate init service lets web + mcp keep tight ~30s healthchecks,
-# and lets compose's `service_completed_successfully` condition gate
-# both servers on the same one-time setup.
+#   (b) make every dependent service wait that same 5-15 min before
+#       booting at all.
+# A separate init service lets web + the six MCP servers keep tight ~30s
+# healthchecks, and lets compose's `service_completed_successfully`
+# condition gate everything on the same one-time setup.
 #
 # corpus/, data/, log/ are bind-mounted from the host so:
 #   1. The 6+ GB of indexes don't bake into the image;
-#   2. Logs persist across container restarts (`tail -F log/mcp_server.log`);
+#   2. Logs persist across container restarts
+#      (`tail -F log/eme-gir-*.log` watches all six servers at once);
 #   3. Manual rebuilds (`python3 build_*.py` on the host) are visible
 #      to running services without an image rebuild — the fast path
 #      for active development.
 #
 # Ports publish to 127.0.0.1 only by default. Front the stack with
 # nginx/caddy/traefik (sample fragment in README) for TLS + auth before
-# binding to 0.0.0.0. There is NO in-app authentication on /mcp.
+# binding to 0.0.0.0. There is NO in-app authentication on /mcp by
+# default — opt in via EME_GIR_REQUIRE_AUTH=1 (Auth0 RS256 bearer
+# tokens; see eme_gir/auth0_verifier.py).
+
+# ---------------------------------------------------------------------
+# Shared config anchors for the six MCP services.
+# Each MCP service `<<: *mcp-base` + overrides `command`, `container_name`,
+# `ports`, `healthcheck`, and `environment.EME_GIR_UMAMI_HOSTNAME`.
+# ---------------------------------------------------------------------
+
+x-mcp-environment: &mcp-environment
+  # OAuth 2.1 / Auth0 bearer-token auth. OFF by default — leave
+  # EME_GIR_REQUIRE_AUTH unset (or "0") and HTTP transport runs
+  # unauthenticated, expecting a reverse proxy to handle access
+  # control. Set EME_GIR_REQUIRE_AUTH=1 to enforce in-app: tokens are
+  # validated as RS256 JWTs from the configured Auth0 tenant. See
+  # START.md "Adding Auth0 OAuth" for the full setup.
+  EME_GIR_REQUIRE_AUTH: "${EME_GIR_REQUIRE_AUTH:-0}"
+  EME_GIR_AUTH0_TENANT_URL: "${EME_GIR_AUTH0_TENANT_URL:-}"
+  EME_GIR_AUTH0_AUDIENCE: "${EME_GIR_AUTH0_AUDIENCE:-}"
+  # Single logical OAuth Protected Resource shared by all five MCP
+  # servers. All servers verify tokens against the same Auth0 tenant
+  # + audience, so per RFC 9728 a single metadata document at
+  # https://eme-gir.recoverysky.org/.well-known/oauth-protected-resource
+  # describes the entire eme-gir API — no per-server sub-path. Caddy
+  # routes that apex path to one canonical MCP backend (see Caddyfile).
+  # Override for local development with a different domain.
+  EME_GIR_AUTH0_RESOURCE_SERVER_URL: "${EME_GIR_AUTH0_RESOURCE_SERVER_URL:-https://eme-gir.recoverysky.org}"
+  EME_GIR_AUTH0_REQUIRED_SCOPE: "${EME_GIR_AUTH0_REQUIRED_SCOPE:-mcp:access}"
+  # MCP SDK DNS-rebinding protection. Default allowlist is localhost +
+  # 127.0.0.1 only — behind a reverse proxy that passes the public
+  # Host header through, MUST add the proxy's hostname here or every
+  # request returns 421. Comma-separated. localhost / 127.0.0.1 / ::1
+  # are added automatically — only list public hostnames.
+  EME_GIR_ALLOWED_HOSTS: "${EME_GIR_ALLOWED_HOSTS:-}"
+  EME_GIR_ALLOWED_ORIGINS: "${EME_GIR_ALLOWED_ORIGINS:-}"
+  EME_GIR_DISABLE_DNS_REBINDING_PROTECTION: "${EME_GIR_DISABLE_DNS_REBINDING_PROTECTION:-0}"
+  # Umami analytics — fire-and-forget per-tool-call telemetry. Off
+  # when EME_GIR_UMAMI_URL or EME_GIR_UMAMI_WEBSITE_ID is unset. Per
+  # service we override EME_GIR_UMAMI_HOSTNAME to identify which MCP
+  # the event came from.
+  EME_GIR_UMAMI_URL: "${EME_GIR_UMAMI_URL:-}"
+  EME_GIR_UMAMI_WEBSITE_ID: "${EME_GIR_UMAMI_WEBSITE_ID:-}"
+  EME_GIR_UMAMI_API_KEY: "${EME_GIR_UMAMI_API_KEY:-}"
+
+x-mcp-base: &mcp-base
+  image: eme-gir:latest
+  depends_on:
+    init:
+      condition: service_completed_successfully
+  volumes:
+    - ./corpus:/app/corpus:ro
+    # NOT :ro despite the MCP server only doing SELECTs — SQLite
+    # needs a writable directory next to the DB to create its
+    # `-journal` (or `-wal`) file even for read-only transactions.
+    - ./data:/app/data
+    - ./log:/app/log
+  restart: unless-stopped
 
 services:
   # One-shot data initializer. Runs before web/mcp on every `up` —
@@ -87,70 +157,146 @@ services:
       start_period: 15s          # init pre-warmed migrations, gunicorn
                                  # workers come up in <5s
 
+  # Legacy all-in-one MCP server (mcp_server.py). Registers all 21
+  # tools and 2 resources in a single FastMCP instance. Kept for
+  # backwards compatibility with pre-Phase-5 clients pointed at 5051;
+  # new deployments should prefer the per-domain MCP services below.
   mcp:
-    image: eme-gir:latest
+    <<: *mcp-base
     container_name: eme-gir-mcp
-    depends_on:
-      init:
-        condition: service_completed_successfully
     command: >
       python3 mcp_server.py
       --transport http
       --host 0.0.0.0
       --port 5051
     environment:
-      # OAuth 2.1 / Auth0 bearer-token auth. OFF by default — leave
-      # EME_GIR_REQUIRE_AUTH unset (or "0") and the HTTP transport runs
-      # unauthenticated as before, expecting a reverse proxy to handle
-      # access control. Set EME_GIR_REQUIRE_AUTH=1 to enforce in-app:
-      # tokens are validated as RS256 JWTs from the configured Auth0
-      # tenant. See START.md "Adding Auth0 OAuth" for the full setup.
-      EME_GIR_REQUIRE_AUTH: "${EME_GIR_REQUIRE_AUTH:-0}"
-      EME_GIR_AUTH0_TENANT_URL: "${EME_GIR_AUTH0_TENANT_URL:-}"
-      EME_GIR_AUTH0_AUDIENCE: "${EME_GIR_AUTH0_AUDIENCE:-}"
-      EME_GIR_AUTH0_RESOURCE_SERVER_URL: "${EME_GIR_AUTH0_RESOURCE_SERVER_URL:-}"
-      EME_GIR_AUTH0_REQUIRED_SCOPE: "${EME_GIR_AUTH0_REQUIRED_SCOPE:-mcp:access}"
-      # MCP SDK DNS-rebinding protection. Default allowlist is
-      # localhost + 127.0.0.1 only — behind a reverse proxy that
-      # passes the public Host header through, MUST add the proxy's
-      # hostname here or every request returns 421. Comma-separated.
-      # localhost / 127.0.0.1 / ::1 are added automatically — only
-      # list the public hostnames the proxy will use.
-      EME_GIR_ALLOWED_HOSTS: "${EME_GIR_ALLOWED_HOSTS:-}"
-      # Cross-origin Origin headers to accept (browser MCP clients).
-      # Comma-separated; no auto-additions.
-      EME_GIR_ALLOWED_ORIGINS: "${EME_GIR_ALLOWED_ORIGINS:-}"
-      # Escape hatch — set truthy to disable DNS-rebinding checks
-      # entirely. Only safe when the reverse proxy enforces Host
-      # validation upstream.
-      EME_GIR_DISABLE_DNS_REBINDING_PROTECTION: "${EME_GIR_DISABLE_DNS_REBINDING_PROTECTION:-0}"
-      # Umami analytics — fire-and-forget per-tool-call telemetry.
-      # Off when EME_GIR_UMAMI_URL or EME_GIR_UMAMI_WEBSITE_ID is unset.
-      # When enabled, every tool invocation produces one event with
-      # tool name + duration + success/error + arg-key names + result
-      # count. Tool argument VALUES are never sent — see
-      # umami_analytics.py for the privacy boundary.
-      EME_GIR_UMAMI_URL: "${EME_GIR_UMAMI_URL:-}"
-      EME_GIR_UMAMI_WEBSITE_ID: "${EME_GIR_UMAMI_WEBSITE_ID:-}"
+      <<: *mcp-environment
       EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME:-eme-gir-mcp}"
-      EME_GIR_UMAMI_API_KEY: "${EME_GIR_UMAMI_API_KEY:-}"
     ports:
       - "${MCP_BIND:-127.0.0.1}:5051:5051"
-    volumes:
-      - ./corpus:/app/corpus:ro
-      # NOT :ro despite the MCP server only doing SELECTs — SQLite
-      # needs a writable directory next to the DB to create its
-      # `-journal` (or `-wal`) file even for read-only transactions.
-      # `:ro` here yields `sqlite3.OperationalError: unable to open
-      # database file` on the first tool call. Mark the SQLite files
-      # `chmod a-w` on the host if you really need write protection;
-      # the journal mechanism only needs the *directory* writable.
-      - ./data:/app/data
-      - ./log:/app/log
-    restart: unless-stopped
     healthcheck:
       # /mcp returns 307 redirect to /mcp/; --fail accepts 3xx.
       test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5051/mcp/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
+
+  # ePSD2 dictionary + corpus tools (11 tools). The biggest of the
+  # per-domain servers and the primary surface for English ↔ Sumerian
+  # translation. Requires data/glossary.sqlite + data/text_index.sqlite
+  # (built by the init service).
+  mcp-epsd2:
+    <<: *mcp-base
+    container_name: eme-gir-epsd2
+    command: >
+      python3 -m servers.epsd2
+      --transport http
+      --host 0.0.0.0
+      --port 5052
+    environment:
+      <<: *mcp-environment
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_EPSD2:-eme-gir-epsd2}"
+    ports:
+      - "${MCP_EPSD2_BIND:-127.0.0.1}:5052:5052"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5052/mcp/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
+
+  # ETCSL Oxford literary corpus (4 tools, bilingual). CC BY 3.0 UK —
+  # attribution returned in every tool response. Requires
+  # data/etcsl.sqlite (built by the init service when
+  # EME_GIR_BUILD_ETCSL=1, the default).
+  mcp-etcsl:
+    <<: *mcp-base
+    container_name: eme-gir-etcsl
+    command: >
+      python3 -m servers.etcsl
+      --transport http
+      --host 0.0.0.0
+      --port 5053
+    environment:
+      <<: *mcp-environment
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_ETCSL:-eme-gir-etcsl}"
+    ports:
+      - "${MCP_ETCSL_BIND:-127.0.0.1}:5053:5053"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5053/mcp/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
+
+  # CDLI artifact catalogue (2 tools). Provenience, museum custody,
+  # publication history, photo/lineart links. Requires data/cdli.sqlite
+  # (built by the init service when EME_GIR_BUILD_CDLI=1, the default).
+  mcp-cdli:
+    <<: *mcp-base
+    container_name: eme-gir-cdli
+    command: >
+      python3 -m servers.cdli
+      --transport http
+      --host 0.0.0.0
+      --port 5054
+    environment:
+      <<: *mcp-environment
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_CDLI:-eme-gir-cdli}"
+    ports:
+      - "${MCP_CDLI_BIND:-127.0.0.1}:5054:5054"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5054/mcp/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
+
+  # OGSL cuneiform sign rendering (2 tools — cuneify, lookup_sign).
+  # Loaded once from corpus/ogsl.zip on startup. Cross-language —
+  # covers Akkadian, Hittite, Hurrian, Elamite, Eblaite too.
+  mcp-ogsl:
+    <<: *mcp-base
+    container_name: eme-gir-ogsl
+    command: >
+      python3 -m servers.ogsl
+      --transport http
+      --host 0.0.0.0
+      --port 5055
+    environment:
+      <<: *mcp-environment
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_OGSL:-eme-gir-ogsl}"
+    ports:
+      - "${MCP_OGSL_BIND:-127.0.0.1}:5055:5055"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5055/mcp/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 15s
+
+  # Translator bootstrap surface (no data tools). Exposes the agent
+  # system prompt + dual-register Sumerian grammar reference via the
+  # oracc://prompt/agent and oracc://grammar/sumerian MCP resources,
+  # plus tool wrappers (start_here, get_grammar_reference) for clients
+  # that don't surface resources directly. Composes with the four data
+  # MCPs above — agents are expected to connect to all five.
+  mcp-translator:
+    <<: *mcp-base
+    container_name: eme-gir-translator
+    command: >
+      python3 -m servers.translator
+      --transport http
+      --host 0.0.0.0
+      --port 5056
+    environment:
+      <<: *mcp-environment
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_TRANSLATOR:-eme-gir-translator}"
+    ports:
+      - "${MCP_TRANSLATOR_BIND:-127.0.0.1}:5056:5056"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5056/mcp/"]
       interval: 30s
       timeout: 7s
       retries: 3

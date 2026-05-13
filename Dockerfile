@@ -65,10 +65,19 @@ RUN install -d -o eme-gir -g eme-gir /app/data /app/log \
 
 USER eme-gir
 
-# Both services listen on these ports inside the container; compose
-# decides what to publish on the host (default: 127.0.0.1 only, so
-# nothing is exposed beyond localhost without a reverse proxy).
-EXPOSE 5050 5051
+# Service ports inside the container. Compose decides what to publish
+# on the host (default: 127.0.0.1 only — nothing escapes localhost
+# without a reverse proxy in front).
+#
+#   5050  Flask web (gunicorn)
+#   5051  Legacy all-in-one MCP    (mcp_server.py — kept for backwards
+#                                   compatibility with pre-Phase-5 clients)
+#   5052  Per-domain MCP: ePSD2    (python -m servers.epsd2)
+#   5053  Per-domain MCP: ETCSL    (python -m servers.etcsl)
+#   5054  Per-domain MCP: CDLI     (python -m servers.cdli)
+#   5055  Per-domain MCP: OGSL     (python -m servers.ogsl)
+#   5056  Per-domain MCP: Translator (python -m servers.translator)
+EXPOSE 5050 5051 5052 5053 5054 5055 5056
 
 # No CMD — services pick their own command in docker-compose.yml.
 # Run directly: `docker run --rm eme-gir python3 mcp_server.py --help`.
