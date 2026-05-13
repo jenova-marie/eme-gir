@@ -14,7 +14,7 @@ from __future__ import annotations
 from eme_gir.log import init_logging
 from eme_gir.paths import CDLI_DB
 from eme_gir.server import READ_ONLY_ANNOTATIONS, make_server, run_server
-from eme_gir.tools.cdli import find_artifacts, lookup_artifact
+from eme_gir.tools.cdli import find_artifacts, lookup_artifact, start_here
 
 log = init_logging("eme-gir-cdli")
 
@@ -36,7 +36,8 @@ mcp = make_server(
     ),
 )
 
-# Register the two CDLI tools.
+# Register the two CDLI tools + the server's start_here bootstrap.
+mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(lookup_artifact)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(find_artifacts)
 

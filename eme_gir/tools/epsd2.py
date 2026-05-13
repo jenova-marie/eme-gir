@@ -62,10 +62,12 @@ from ..models.epsd2 import (
 )
 from ..paths import (
     COLLOCATIONS_DB,
+    EPSD2_PROMPT_DOC,
     GLOSSARY_DB,
     INFLECTED_COLLOCATIONS_DB,
     TEXT_INDEX_DB,
 )
+from ..prompts import load_prompt
 from ..sumerian_morphology import (
     SUMERIAN_SUFFIX_TABLE,
     VERBAL_PREFIXES,
@@ -1991,3 +1993,50 @@ def find_verb_form(
         matches=matches,
         warnings=warnings,
     )
+
+
+@log_call
+def start_here() -> str:
+    """⭐ CALL THIS FIRST, BEFORE ANY OTHER TOOL ON THIS SERVER.
+
+    Returns the bootstrap prompt for the `eme-gir-epsd2` MCP server.
+    Read the returned markdown in full and keep it in working memory
+    for the rest of this session — without it, your dictionary and
+    corpus calls will use guesswork about Sumerian morphology, the
+    ranking semantics of `sense_count` vs `sense_pct`, the case-
+    aware syntax of `find_phrase_pattern`, the period strings that
+    `see_examples` accepts, and the attestation-first principle that
+    distinguishes this server's design (real attested forms with
+    cited tablet sources, not synthesized morphology).
+
+    The prompt covers:
+      • The 11 tools this server exposes (`translate_english`,
+        `translate_sumerian`, `lookup_entry`, `see_examples`,
+        `find_compound`, `find_collocations`, `find_phrase_pattern`,
+        `get_inflections`, `analyze_form`, `find_verb_form`,
+        `parse_phrase`) and when to reach for each.
+      • The recommended English ↔ Sumerian workflow inside this
+        server alone: decompose query → `translate_english` → pick
+        winner by `sense_count` + `sense_pct` → `lookup_entry` to
+        verify → `find_compound` / `find_collocations` for fixed
+        idioms → `get_inflections` / `find_verb_form` for attested
+        morphology → `see_examples` to cite primary-source lines.
+      • The reverse direction: `translate_sumerian` for per-token
+        glossing, `parse_phrase` for case-aware grammatical
+        pre-annotation, `analyze_form` for one-spelling deep dive.
+      • Valid `period` filter strings for `see_examples` (`'Early
+        Dynastic'`, `'Ur III'`, `'Old Babylonian'`, `'Lagash II'`,
+        etc. — substring-matched against the actual catalogue
+        period strings).
+      • `find_phrase_pattern`'s slot grammar: each slot is
+        `TARGET[gw]:case` where TARGET is a cf / POS code / `*`,
+        `[gw]` disambiguates homographs, `:case` constrains the
+        case marker (with `!` for negation).
+      • The homograph-handling rule: a high `sense_count` with low
+        `sense_pct` means the meaning is fringe; prefer entries
+        with high `sense_pct` for the canonical reading.
+
+    Re-call this tool any time your working context drifts and you
+    want to re-anchor on this server's guidance.
+    """
+    return load_prompt(EPSD2_PROMPT_DOC)

@@ -25,6 +25,7 @@ from eme_gir.tools.etcsl import (
     etcsl_lookup_text,
     etcsl_search_english,
     etcsl_search_sumerian,
+    start_here,
 )
 
 log = init_logging("eme-gir-etcsl")
@@ -54,6 +55,7 @@ mcp = make_server(
     ),
 )
 
+mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(etcsl_search_english)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(etcsl_lines_with_lemma)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(etcsl_lookup_text)

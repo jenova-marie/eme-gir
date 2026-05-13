@@ -30,7 +30,9 @@ from ..paths import (
     CDLI_LINEART_URL,
     CDLI_PHOTO_THUMB_URL,
     CDLI_PHOTO_URL,
+    CDLI_PROMPT_DOC,
 )
+from ..prompts import load_prompt
 
 CDLI_ATTRIBUTION = (
     "CDLI: Cuneiform Digital Library Initiative (cdli.earth), "
@@ -182,8 +184,12 @@ def find_artifacts(
         period: historical period substring, e.g. 'Ur III', 'Old Babylonian'.
         museum_collection: holding institution substring, e.g. 'British
                           Museum', 'Yale', 'Berlin'.
-        genre: text genre substring, e.g. 'Administrative', 'Literary',
-               'Lexical', 'Royal Inscription'.
+        genre: text genre substring. Common CDLI values: 'Administrative',
+               'Literary', 'Lexical', 'Royal/Monumental' (royal inscriptions
+               + monumental statuary, with a slash, NOT 'Royal Inscription'),
+               'School' (school exercises), 'Letter', 'Legal', 'Lexical',
+               'Mathematical', 'Omen', 'Ritual'. Use 'Royal' as a substring
+               to catch both 'Royal/Monumental' and any subgenres.
         language: language substring, e.g. 'Sumerian', 'Akkadian', 'Hittite'.
         limit: max artifacts to return (default 20, cap 200).
 
@@ -240,3 +246,34 @@ def find_artifacts(
         results=[_build_cdli_artifact(r) for r in rows],
         attribution=CDLI_ATTRIBUTION,
     )
+
+
+@log_call
+def start_here() -> str:
+    """⭐ CALL THIS FIRST, BEFORE ANY OTHER TOOL ON THIS SERVER.
+
+    Returns the bootstrap prompt for the `eme-gir-cdli` MCP server.
+    Read the returned markdown in full and keep it in working memory
+    for the rest of this session — without it, your `lookup_artifact`
+    and `find_artifacts` calls will rely on guesswork about CDLI's
+    actual catalogue conventions and you will hit dead-end filters
+    (e.g. asking for `genre='Royal Inscription'` when CDLI files
+    royal inscriptions under `'Royal/Monumental'`).
+
+    The prompt covers:
+      • The two tools this server exposes (`lookup_artifact`,
+        `find_artifacts`) and when to reach for each.
+      • The actual CDLI catalogue enumeration values for the
+        `genre`, `period`, `language`, `museum_collection`, and
+        `provenience` filter parameters — so you can compose
+        filters that actually return rows.
+      • CDLI image URL semantics (when `has_photo` / `has_lineart`
+        are reliable, when the Aug 2022 snapshot lags behind
+        cdli.earth's current state).
+      • How to surface CDLI links as Markdown hyperlinks in your
+        replies so the user can click through to the actual tablet.
+
+    Re-call this tool any time your working context drifts and you
+    want to re-anchor on this server's guidance.
+    """
+    return load_prompt(CDLI_PROMPT_DOC)

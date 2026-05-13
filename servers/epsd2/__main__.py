@@ -34,6 +34,7 @@ from eme_gir.tools.epsd2 import (
     lookup_entry,
     parse_phrase,
     see_examples,
+    start_here,
     translate_english,
     translate_sumerian,
 )
@@ -73,6 +74,7 @@ mcp = make_server(
     ),
 )
 
+mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(translate_english)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(lookup_entry)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(see_examples)

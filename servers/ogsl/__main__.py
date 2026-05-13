@@ -14,7 +14,7 @@ from __future__ import annotations
 from eme_gir.cuneify import OGSL_ZIP
 from eme_gir.log import init_logging
 from eme_gir.server import READ_ONLY_ANNOTATIONS, make_server, run_server
-from eme_gir.tools.ogsl import cuneify, lookup_sign
+from eme_gir.tools.ogsl import cuneify, lookup_sign, start_here
 
 log = init_logging("eme-gir-ogsl")
 
@@ -36,6 +36,7 @@ mcp = make_server(
     ),
 )
 
+mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(cuneify)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(lookup_sign)
 

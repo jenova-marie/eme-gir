@@ -28,7 +28,8 @@ from ..models.etcsl import (
     ETCSLSearchEnglishResponse,
     ETCSLSearchSumerianResponse,
 )
-from ..paths import ETCSL_DB
+from ..paths import ETCSL_DB, ETCSL_PROMPT_DOC
+from ..prompts import load_prompt
 
 ETCSL_ATTRIBUTION = (
     "ETCSL: Black, J.A. et al., The Electronic Text Corpus of Sumerian "
@@ -322,3 +323,40 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianRes
         results=results,
         attribution=ETCSL_ATTRIBUTION,
     )
+
+
+@log_call
+def start_here() -> str:
+    """⭐ CALL THIS FIRST, BEFORE ANY OTHER TOOL ON THIS SERVER.
+
+    Returns the bootstrap prompt for the `eme-gir-etcsl` MCP server.
+    Read the returned markdown in full and keep it in working memory
+    for the rest of this session — without it, your `etcsl_*` calls
+    will use guesswork about ETCSL's text-id conventions, FTS5 query
+    syntax, and the homograph-disambiguation limits of its lemma
+    index. Critically, you will not know about the LEGALLY REQUIRED
+    Oxford attribution rule that applies to ETCSL data.
+
+    The prompt covers:
+      • The four tools this server exposes (`etcsl_search_english`,
+        `etcsl_lines_with_lemma`, `etcsl_search_sumerian`,
+        `etcsl_lookup_text`) and the bilingual-result model.
+      • Valid `text_id` conventions (`c.N.M.K` numbering scheme;
+        the famous compositions: c.1.4.1 = Inana's Descent,
+        c.1.8.1.4 = Gilgameš and the Underworld, c.2.1.1 = Sumerian
+        King List, c.6.1.* = proverb collections).
+      • FTS5 query syntax for `etcsl_search_english` and
+        `etcsl_search_sumerian` (single words, AND/OR/NOT,
+        "exact phrases", prefix* wildcards).
+      • The homograph caveat for `etcsl_lines_with_lemma`: ETCSL's
+        word-level annotation uses citation forms, NOT ePSD2 OIDs,
+        so `lemma="gu"` returns ALL `gu`-lemmas (eat / thread /
+        neck / voice).
+      • THE REQUIRED CC BY 3.0 UK Oxford attribution rule: every
+        result carries an `attribution` field that must be passed
+        through verbatim to the user. Not optional.
+
+    Re-call this tool any time your working context drifts and you
+    want to re-anchor on this server's guidance.
+    """
+    return load_prompt(ETCSL_PROMPT_DOC)

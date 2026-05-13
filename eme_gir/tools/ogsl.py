@@ -25,6 +25,8 @@ from .. import cuneify as _cuneify
 from ..log import log_call
 from ..models.common import ErrorResponse
 from ..models.ogsl import CuneifyResponse, LookupSignResponse
+from ..paths import OGSL_PROMPT_DOC
+from ..prompts import load_prompt
 
 
 @log_call
@@ -126,3 +128,39 @@ def cuneify(spelling: str) -> CuneifyResponse:
         complete=not has_placeholder,
         placeholder_count=glyphs.count("□"),
     )
+
+
+@log_call
+def start_here() -> str:
+    """⭐ CALL THIS FIRST, BEFORE ANY OTHER TOOL ON THIS SERVER.
+
+    Returns the bootstrap prompt for the `eme-gir-ogsl` MCP server.
+    Read the returned markdown in full and keep it in working memory
+    for the rest of this session — without it, your `cuneify` and
+    `lookup_sign` calls will rely on guesswork about Oracc's
+    transliteration conventions (which subscripts disambiguate which
+    sign, how compound graphemes are written, how determinatives are
+    bracketed) and you will misread placeholder squares (□) in
+    `cuneify` output as bugs rather than as the documented missing-
+    sign signal.
+
+    The prompt covers:
+      • The two tools this server exposes (`cuneify`, `lookup_sign`)
+        and when each is appropriate.
+      • Oracc transliteration conventions handled by `cuneify`:
+        hyphen-joined sign sequences (`lu₂-gal`), braced
+        determinatives (`{d}inana`, `lugal{mušen}`), morphology
+        tails after backslash (`lugal-bi\\a` drops `\\a`), compound
+        graphemes with pipes (`muₓ(|KA×GAN₂@t|)`).
+      • The subscript-normalization behavior of `lookup_sign`:
+        ASCII `gu7` and Unicode `gu₇` both find the sign.
+      • Placeholder-square semantics: `□` in `cuneify` output means
+        the sign is missing from OGSL — not a bug, but a gap to
+        disclose in your reply rather than silently render.
+      • This server is reusable beyond Sumerian — OGSL covers
+        cuneiform across Akkadian, Hittite, Hurrian, and Elamite.
+
+    Re-call this tool any time your working context drifts and you
+    want to re-anchor on this server's guidance.
+    """
+    return load_prompt(OGSL_PROMPT_DOC)
