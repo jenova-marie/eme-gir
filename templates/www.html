@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eme-gir — Sumerian dictionary + cuneiform corpus tools</title>
+  <link rel="icon" href="/static/img/jenova.png" type="image/png">
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --panel: #ffffff;
+      --ink: #2b2118;
+      --muted: #6b5f53;
+      --accent: #8b3e2f;
+      --border: #e6dccd;
+      --cuneiform: #3a2f25;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+    header { text-align: center; padding: 3rem 0 2rem; }
+    header h1 {
+      font-size: 3.5rem;
+      margin: 0 0 .5rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    header .cuneiform-banner {
+      font-family: "Noto Sans Cuneiform", "Akkadian", serif;
+      font-size: 3rem;
+      color: var(--cuneiform);
+      margin: 1rem 0;
+      letter-spacing: 0.1em;
+    }
+    header .tagline {
+      font-size: 1.2rem;
+      color: var(--muted);
+      max-width: 36rem;
+      margin: 0 auto;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      margin: 2.5rem 0;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1rem;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      display: block;
+      line-height: 1.1;
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0.4rem;
+      display: block;
+    }
+    section { margin: 3rem 0; }
+    section h2 {
+      font-size: 1.5rem;
+      margin: 0 0 1rem;
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 0.4rem;
+      display: inline-block;
+    }
+    .services {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .service {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-decoration: none;
+      color: var(--ink);
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .service:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .service h3 {
+      margin: 0 0 0.4rem;
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+    .service p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .samples {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    .sample {
+      padding: 0.75rem 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .sample:last-child { border-bottom: none; }
+    .sample .glyphs {
+      font-family: "Noto Sans Cuneiform", "Akkadian", serif;
+      font-size: 1.8rem;
+      color: var(--cuneiform);
+      line-height: 1;
+    }
+    .sample .translit {
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin: 0.4rem 0 0.2rem;
+    }
+    .sample .gloss {
+      font-style: italic;
+      color: var(--ink);
+    }
+    .attribution {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      font-size: 0.9rem;
+    }
+    .attribution table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+    }
+    .attribution th, .attribution td {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .attribution th {
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    .attribution a { color: var(--accent); }
+    footer {
+      text-align: center;
+      padding: 2rem 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 3rem;
+    }
+    footer a { color: var(--accent); }
+    code {
+      background: rgba(139, 62, 47, 0.08);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 0.88em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <div class="cuneiform-banner">𒅴𒂠</div>
+      <h1>Eme-gir</h1>
+      <p class="tagline">
+        A local Sumerian dictionary, literary corpus reader, and
+        artifact-catalogue lookup — exposed to language models as MCP servers
+        so AI agents can read 3,000-year-old clay tablets alongside you.
+      </p>
+    </header>
+
+    <section>
+      <h2>The corpus</h2>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-value">{% if stats.lemmas %}{{ "{:,}".format(stats.lemmas) }}{% else %}—{% endif %}</span>
+          <span class="stat-label">Sumerian lemmas</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{% if stats.spellings %}{{ "{:,}".format(stats.spellings) }}{% else %}—{% endif %}</span>
+          <span class="stat-label">attested spellings</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{% if stats.attestations %}{{ "{:,}".format(stats.attestations) }}{% else %}—{% endif %}</span>
+          <span class="stat-label">attestations</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{% if stats.etcsl_texts %}{{ "{:,}".format(stats.etcsl_texts) }}{% else %}—{% endif %}</span>
+          <span class="stat-label">ETCSL literary texts</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{% if stats.etcsl_lines %}{{ "{:,}".format(stats.etcsl_lines) }}{% else %}—{% endif %}</span>
+          <span class="stat-label">literary lines</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{% if stats.cdli_artifacts %}{{ "{:,}".format(stats.cdli_artifacts) }}{% else %}—{% endif %}</span>
+          <span class="stat-label">CDLI artifacts</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Services</h2>
+      <div class="services">
+        <a class="service" href="https://epsd2.eme-gir.org/">
+          <h3>📖 Dictionary browser</h3>
+          <p>Local mirror of the electronic Pennsylvania Sumerian Dictionary
+             (ePSD2), browsable by letter, searchable, with cuneiform glyphs
+             rendered inline.</p>
+        </a>
+        <a class="service" href="https://mcp.eme-gir.org/epsd2/mcp">
+          <h3>🔌 MCP endpoints</h3>
+          <p>Five per-domain Model Context Protocol servers exposing the
+             dictionary, the Oxford literary corpus, the CDLI artifact
+             catalogue, and the Oracc sign list to AI agents.</p>
+        </a>
+        <a class="service" href="https://github.com/jenova-marie/eme-gir">
+          <h3>📂 GitHub</h3>
+          <p>Source code, build scripts, agent prompts, full setup guide.
+             Open source under MIT (code) with data layers separately
+             licensed — see <code>LICENSE-DATA.md</code>.</p>
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Cuneiform sampler</h2>
+      <div class="samples">
+        {% for sample in samples %}
+        <div class="sample">
+          <div class="glyphs">{{ sample.cuneiform }}</div>
+          <div class="translit">{{ sample.transliteration }}</div>
+          <div class="gloss">"{{ sample.gloss }}"</div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section>
+      <h2>Data sources & licenses</h2>
+      <div class="attribution">
+        <p>None of these datasets is unconditionally public-domain. All three
+        have meaningful reuse conditions surfaced in every tool response and
+        documented in
+        <a href="https://github.com/jenova-marie/eme-gir/blob/main/LICENSE-DATA.md">LICENSE-DATA.md</a>.</p>
+        <table>
+          <thead>
+            <tr><th>Source</th><th>License</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="https://oracc.museum.upenn.edu">Oracc / ePSD2 / OGSL</a></td>
+              <td><strong>CC BY-SA 3.0</strong></td>
+              <td>Attribution required; ShareAlike propagates to substantial reuses</td>
+            </tr>
+            <tr>
+              <td><a href="https://etcsl.orinst.ox.ac.uk">ETCSL (Oxford)</a></td>
+              <td>Academic copyright</td>
+              <td>NOT under any Creative Commons license; citation is non-optional</td>
+            </tr>
+            <tr>
+              <td><a href="https://cdli.mpiwg-berlin.mpg.de">CDLI</a></td>
+              <td>Mixed</td>
+              <td>Catalogue text reusable-with-citation; imagery non-commercial only. We host no imagery — all links point to cdli.earth</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        Built by <a href="https://github.com/jenova-marie">Jenova Marie</a> ·
+        Code MIT · Data layered (see above) ·
+        <a href="https://github.com/jenova-marie/eme-gir">Source on GitHub</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>
