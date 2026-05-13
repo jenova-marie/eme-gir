@@ -75,3 +75,12 @@ OGSL_ZIP = CORPUS_DIR / "ogsl.zip"
 GRAMMAR_DOC = PROMPT_DIR / "SUMERIAN_GRAMMAR.md"
 MEADOW_GRAMMAR_DOC = PROMPT_DIR / "MEADOW_GRAMMAR.md"
 AGENT_PROMPT_DOC = PROMPT_DIR / "AGENT_PROMPT.md"
+
+# Per-server start_here prompts — each data-MCP server has its own
+# scoped bootstrap document. Files are created on demand; the loader
+# at `eme_gir.prompts.load_prompt` falls back to a placeholder when
+# they're missing.
+EPSD2_PROMPT_DOC = PROMPT_DIR / "EPSD2_PROMPT.md"
+ETCSL_PROMPT_DOC = PROMPT_DIR / "ETCSL_PROMPT.md"
+CDLI_PROMPT_DOC = PROMPT_DIR / "CDLI_PROMPT.md"
+OGSL_PROMPT_DOC = PROMPT_DIR / "OGSL_PROMPT.md"
