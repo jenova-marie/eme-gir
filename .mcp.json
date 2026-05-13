@@ -7,12 +7,6 @@
     "so a bare `python3` resolves to /usr/bin/python3 which doesn't have the `mcp` package installed."
   ],
   "mcpServers": {
-    "eme-gir": {
-      "type": "stdio",
-      "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
-      "args": ["/Users/jenova/projects/jenova-marie/eme-gir/mcp_server.py"],
-      "_comment": "Legacy all-in-one — registers all 21 tools. Backwards compatible with pre-Phase-5 setups."
-    },
     "eme-gir-epsd2": {
       "type": "stdio",
       "command": "/Users/jenova/.asdf/installs/python/3.12.11/bin/python3",
