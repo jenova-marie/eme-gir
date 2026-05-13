@@ -1,14 +1,15 @@
-# Eight-service layout post-Phase-5:
+# Nine-service layout post-Phase-5:
 #
 #   init        — one-shot data setup (download corpus, build SQLite indexes)
-#   web         — gunicorn + Flask glossary browser  (port 5050)
-#   mcp         — legacy all-in-one MCP server      (port 5051)
+#   web         — gunicorn + Flask dictionary browser   (port 5050)  — epsd2.eme-gir.org
+#   www         — gunicorn + Flask project landing page (port 5057)  — www.eme-gir.org + apex
+#   mcp         — legacy all-in-one MCP server          (port 5051)
 #                 [kept for backwards compatibility with pre-Phase-5 clients;
 #                  new deployments should prefer the per-domain servers below]
-#   mcp-epsd2   — per-domain MCP: ePSD2 dictionary  (port 5052)  — 11 tools
-#   mcp-etcsl   — per-domain MCP: ETCSL literary    (port 5053)  — 4  tools
-#   mcp-cdli    — per-domain MCP: CDLI catalogue    (port 5054)  — 2  tools
-#   mcp-ogsl    — per-domain MCP: OGSL sign rendering (port 5055) — 2  tools
+#   mcp-epsd2   — per-domain MCP: ePSD2 dictionary      (port 5052)  — 11 tools
+#   mcp-etcsl   — per-domain MCP: ETCSL literary        (port 5053)  — 4  tools
+#   mcp-cdli    — per-domain MCP: CDLI catalogue        (port 5054)  — 2  tools
+#   mcp-ogsl    — per-domain MCP: OGSL sign rendering   (port 5055)  — 2  tools
 #   mcp-translator — per-domain MCP: Translator bootstrap (port 5056) — 2 tools + 2 resources
 #
 # All 6 MCP services share the same image and the same shared-config
@@ -156,6 +157,39 @@ services:
       retries: 3
       start_period: 15s          # init pre-warmed migrations, gunicorn
                                  # workers come up in <5s
+
+  # Project landing page at www.eme-gir.org + apex. Tiny single-route
+  # Flask app (www_app.py) that renders templates/www.html. Live corpus
+  # stats are pulled from the SQLite indexes once at gunicorn-worker boot
+  # and cached for the worker's lifetime — there's no per-request DB
+  # traffic. Sized smaller than `web` because the landing page is mostly
+  # static (one template, one render) and traffic is expected to be light.
+  www:
+    image: eme-gir:latest
+    container_name: eme-gir-www
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command: >
+      gunicorn
+      --workers ${WWW_WORKERS:-2}
+      --bind 0.0.0.0:5057
+      --access-logfile -
+      --error-logfile -
+      'www_app:create_app()'
+    ports:
+      - "${WWW_BIND:-127.0.0.1}:5057:5057"
+    volumes:
+      - ./corpus:/app/corpus:ro
+      - ./data:/app/data:ro      # read-only — landing page only does SELECTs at boot
+      - ./log:/app/log
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5057/healthz"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 10s
 
   # Legacy all-in-one MCP server (mcp_server.py). Registers all 21
   # tools and 2 resources in a single FastMCP instance. Kept for

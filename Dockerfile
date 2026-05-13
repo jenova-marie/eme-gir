@@ -69,15 +69,15 @@ USER eme-gir
 # on the host (default: 127.0.0.1 only — nothing escapes localhost
 # without a reverse proxy in front).
 #
-#   5050  Flask web (gunicorn)
-#   5051  Legacy all-in-one MCP    (mcp_server.py — kept for backwards
-#                                   compatibility with pre-Phase-5 clients)
-#   5052  Per-domain MCP: ePSD2    (python -m servers.epsd2)
-#   5053  Per-domain MCP: ETCSL    (python -m servers.etcsl)
-#   5054  Per-domain MCP: CDLI     (python -m servers.cdli)
-#   5055  Per-domain MCP: OGSL     (python -m servers.ogsl)
+#   5050  Flask web (gunicorn)       — ePSD2 dictionary browser
+#   5051  Legacy all-in-one MCP      (mcp_server.py — backwards-compat)
+#   5052  Per-domain MCP: ePSD2      (python -m servers.epsd2)
+#   5053  Per-domain MCP: ETCSL      (python -m servers.etcsl)
+#   5054  Per-domain MCP: CDLI       (python -m servers.cdli)
+#   5055  Per-domain MCP: OGSL       (python -m servers.ogsl)
 #   5056  Per-domain MCP: Translator (python -m servers.translator)
-EXPOSE 5050 5051 5052 5053 5054 5055 5056
+#   5057  Flask www landing page     (www_app.py — project home page)
+EXPOSE 5050 5051 5052 5053 5054 5055 5056 5057
 
 # No CMD — services pick their own command in docker-compose.yml.
 # Run directly: `docker run --rm eme-gir python3 mcp_server.py --help`.

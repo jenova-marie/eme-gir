@@ -38,7 +38,23 @@
 	
 }
 
-eme-gir.recoverysky.org {
+epsd2.eme-gir.org {
+	handle {
+		reverse_proxy eme-gir-web:5050
+	}
+}
+
+# Project landing page — www subdomain and the bare apex both serve the
+# same content. `www_app.py` is a single-route Flask app (port 5057)
+# that renders the project home page with live corpus stats pulled
+# from the SQLite indexes at gunicorn-worker boot.
+www.eme-gir.org, eme-gir.org {
+	handle {
+		reverse_proxy eme-gir-www:5057
+	}
+}
+
+mcp.eme-gir.org {
 	# Per-domain MCP routes — declared FIRST so they win over the catch-all below.
 	# `handle_path` is the prefix-stripping variant: /epsd2/mcp/foo → backend sees /mcp/foo.
 	handle_path /epsd2/* {
@@ -101,13 +117,8 @@ eme-gir.recoverysky.org {
 		}
 	}
 
-	# Catch-all → Flask glossary browser. Anything not under an MCP path lands here:
-	#   /                        → 302 to /eme-gir/sux
-	#   /eme-gir/sux             → glossary landing
-	#   /eme-gir/o0023086        → entry detail
-	#   /static/img/jenova.png   → asset
 	handle {
-		reverse_proxy eme-gir-web:5050
+        # not found
 	}
 
 	# Structured access log to host-mounted file (rotated by docker logging driver
