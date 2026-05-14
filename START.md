@@ -204,7 +204,7 @@ Tools are listed below by domain — which is also the post-Phase-5 per-server g
 Two MCP resources, both intended to be fetched once at session start so the agent self-bootstraps without operator-side prompt copy-paste:
 
 - `oracc://prompt/agent` — the drop-in system prompt teaching the end-to-end workflow (also lives as the file [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md)).
-- `oracc://grammar/sumerian` — TWO grammar references concatenated (~80 KB): Jagersma 2010 academic + Meadow/Siri Nin temple companion. Lives as [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md) + [`prompt/MEADOW_GRAMMAR.md`](prompt/MEADOW_GRAMMAR.md).
+- `oracc://grammar/sumerian` — TWO grammar references concatenated (~80 KB): Jagersma 2010 academic + Meadow/Siri Nin temple companion. Lives as [`lessons/JAGERSMA_GRAMMAR.md`](lessons/JAGERSMA_GRAMMAR.md) + [`lessons/MEADOW_GRAMMAR.md`](lessons/MEADOW_GRAMMAR.md).
 
 Plus two MCP tool wrappers for tools-only clients that don't surface resources:
 
@@ -524,8 +524,8 @@ The repo is organized into four layers post-Phase-5:
 | `.mcp.json` | Project-scoped MCP server config — 6 entries (legacy + 5 per-domain). Claude Code auto-detects when launched in this directory. |
 | `Dockerfile` + `docker-compose.yml` | Container stack: `python:3.12.11-slim` base, three services (init, web, mcp). |
 | `requirements.txt` | Python deps (ijson, flask, mcp, gunicorn). |
-| `prompt/SUMERIAN_GRAMMAR.md` | ~40 KB Jagersma-2010-based academic grammar reference. Cite as `(Jagersma §N.M)`. |
-| `prompt/MEADOW_GRAMMAR.md` | ~48 KB temple-register grammar companion (Meadow's Sumerian 101 lessons + Siri Nin's commentary). Cite as `(Meadow §101-N)` or `(Siri Nin)`. Combined with SUMERIAN_GRAMMAR.md (~80 KB) by `get_grammar_reference()` and the `oracc://grammar/sumerian` resource. |
+| `lessons/JAGERSMA_GRAMMAR.md` | ~40 KB Jagersma-2010-based academic grammar reference. Cite as `(Jagersma §N.M)`. |
+| `lessons/MEADOW_GRAMMAR.md` | ~48 KB temple-register grammar companion (Meadow's Sumerian 101 lessons + Siri Nin's commentary). Cite as `(Meadow §101-N)` or `(Siri Nin)`. Combined with JAGERSMA_GRAMMAR.md (~80 KB) by `get_grammar_reference()` and the `oracc://grammar/sumerian` resource. |
 | `prompt/AGENT_PROMPT.md` | Drop-in system prompt for an LLM agent connected to the MCP servers. Also served as the `oracc://prompt/agent` resource by the Translator server. |
 | `CLAUDE.md` | Detailed reference for AI coding assistants — schema docs, the Oracc URL surface, the TLS gotcha, project-prefix glossary, the 5-server architecture. |
 | `static/img/jenova.png` | Header avatar / favicon. |

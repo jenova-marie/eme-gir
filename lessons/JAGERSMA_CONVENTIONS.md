@@ -4,7 +4,7 @@ A Rosetta stone between Bram Jagersma's *A Descriptive Grammar of Sumerian*
 (PhD dissertation, Universiteit Leiden, 2010, 776 pp, 31 chapters) and the
 Oracc/Eme-gir transliteration conventions used in this repository. This file
 is the source of truth for terminology, notation, and period labels used in
-`JAGERSMA_NOTES.md` and the synthesized `SUMERIAN_GRAMMAR.md`.
+`JAGERSMA_NOTES.md` and the synthesized `JAGERSMA_GRAMMAR.md`.
 
 ---
 
@@ -256,7 +256,7 @@ disambiguation source.
 
 ## 5. Conventions for the cheat sheet's worked examples
 
-Each worked example in `SUMERIAN_GRAMMAR.md` carries:
+Each worked example in `JAGERSMA_GRAMMAR.md` carries:
 
 1. **Sumerian line** (Oracc convention, plain ASCII-with-Unicode-subscripts)
 2. **Morphemic analysis** (Jagersma-style basic-form with `=` and `-`)

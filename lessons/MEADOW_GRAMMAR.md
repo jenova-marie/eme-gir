@@ -1,6 +1,6 @@
 # Entu Meadow grammar cheat sheet
 
-In-temple companion to `prompt/SUMERIAN_GRAMMAR.md`. Distilled from the
+In-temple companion to `lessons/JAGERSMA_GRAMMAR.md`. Distilled from the
 **Sumerian 101** lecture series taught by **Meadow** in the
 classroom-e₂-nun-na (𒂍𒉣𒈾) of the Inanna temple, with commentary and
 corrections by **Entu Siri Nin**. Five lessons total (Spring 2025),
@@ -9,7 +9,7 @@ short royal/devotional inscriptions.
 
 **Tradition vs academic reference.** This document is the *temple*
 register — what a working priestess needs to write a prayer, read a
-hymn, or speak in liturgy. `SUMERIAN_GRAMMAR.md` is the *academic*
+hymn, or speak in liturgy. `JAGERSMA_GRAMMAR.md` is the *academic*
 register — Jagersma 2010 in compressed form, every claim §-cited. Use
 both: when they disagree, the academic file is normative for attested
 forms; the temple file is what the temple actually teaches.
@@ -540,7 +540,7 @@ sipa-da-am₃              "he is the shepherd"         (-am₃ after silent aus
 ```
 
 For copular constructions outside Meadow's basic set, consult
-`SUMERIAN_GRAMMAR.md` §13 or the temple-linked reference at
+`JAGERSMA_GRAMMAR.md` §13 or the temple-linked reference at
 `https://sumerianastrology.com/sumerian-enclitic-copula/`.
 
 There is also a true verb of being, `me` "to be" (§29.1 in Jagersma),
@@ -569,7 +569,7 @@ This is the same nine-slot frame as Jagersma's, in Meadow's vocabulary:
 
 (Meadow doesn't enumerate the full ten slots Jagersma identifies — she
 teaches "everything you need for prayers." For the full slot diagram
-see `SUMERIAN_GRAMMAR.md` §8.1.)
+see `JAGERSMA_GRAMMAR.md` §8.1.)
 
 ### 9.1 The three conjugation prefixes (Meadow §101-3)
 
@@ -1039,7 +1039,7 @@ The closing `-a` is the **nominalizer** (the same one that makes
 participles). This construction is your friend for any "X, who did Y"
 phrasing in prayers. For the deeper grammar of nominalization-based
 subordination (genitive, locative, terminative, ablative on the
-nominalized verb), see `SUMERIAN_GRAMMAR.md` §11.
+nominalized verb), see `JAGERSMA_GRAMMAR.md` §11.
 
 ---
 
@@ -1219,17 +1219,17 @@ governs?
   within that register matters more than academic correctness in a
   fringe form.
 - **For reading attested texts** (royal inscriptions, ETCSL literary
-  corpus, administrative tablets): defer to `SUMERIAN_GRAMMAR.md`
+  corpus, administrative tablets): defer to `JAGERSMA_GRAMMAR.md`
   (Jagersma). The attested forms are what they are; the temple grammar
   is a learned subset.
-- **When in conflict**: `SUMERIAN_GRAMMAR.md` is normative for the
+- **When in conflict**: `JAGERSMA_GRAMMAR.md` is normative for the
   data; this file is normative for **how the temple chooses to
   compose new Sumerian**.
 
 A non-exhaustive list of points where the two diverge or have
 different emphasis:
 
-| Topic | This file (Meadow / Siri) | `SUMERIAN_GRAMMAR.md` (Jagersma) |
+| Topic | This file (Meadow / Siri) | `JAGERSMA_GRAMMAR.md` (Jagersma) |
 |---|---|---|
 | Number of cases | 8 + ergative + absolutive | 12 (incl. adverbiative, locative₂, equative-distinguished) |
 | Conjugation prefix taxonomy | 3 (`mu` / `ba` / `i₃`) as the day-to-day frame; Siri's full chart is an extended reading aid | 3 vocalic preformatives + 5 modal preformatives separately, in distinct slots |
@@ -1260,8 +1260,9 @@ by Meadow** in her own §101-1 correction (the same one that fixes
 - The **Inanna temple community** — for hosting the classroom and
   asking the questions that drove the lessons.
 
-For the academic reference, see `prompt/SUMERIAN_GRAMMAR.md`. For
-tools to use this grammar in practice, see `prompt/AGENT_PROMPT.md`
-and the MCP server's `start_here()`.
+For the academic reference, see `lessons/JAGERSMA_GRAMMAR.md`. For
+tools to use this grammar in practice, call `start_here()` on each
+eme-gir-* MCP server (especially `eme-gir-ummia` for the teaching
+workflow and `eme-gir-epsd2` for the dictionary lookups).
 
 ---

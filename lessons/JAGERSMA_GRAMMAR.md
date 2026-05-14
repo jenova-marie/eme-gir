@@ -20,7 +20,7 @@ large context window. If you only need a quick orientation, start with
 **Conventions used.** Oracc / Eme-gir transliteration throughout
 (subscript digits for sign-value disambiguation; `ŋ` for /ŋ/; `ḫ` for
 /x/; determinatives in braces like `{d}inanna`). See
-`prompt/JAGERSMA_CONVENTIONS.md` for the full notation map between
+`lessons/JAGERSMA_CONVENTIONS.md` for the full notation map between
 Jagersma's linguistic transliteration and Oracc.
 
 ---

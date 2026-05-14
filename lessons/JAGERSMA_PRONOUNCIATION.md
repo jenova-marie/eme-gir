@@ -14,8 +14,8 @@ himself center their description. Later-period pronunciation drifts
 in some specific ways noted in §11 below.
 
 **Companion document.** Use this alongside the cheat sheet
-`prompt/SUMERIAN_GRAMMAR.md` (which covers morphology and syntax) and
-the convention map `prompt/JAGERSMA_CONVENTIONS.md` (which translates
+`lessons/JAGERSMA_GRAMMAR.md` (which covers morphology and syntax) and
+the convention map `lessons/JAGERSMA_CONVENTIONS.md` (which translates
 Jagersma's linguistic notation to Oracc/Eme-gir spelling).
 
 ---
@@ -640,7 +640,7 @@ Section citations have been kept inline. For verification:
 > "Phonology", pp. 31–68.
 
 Companion files in this directory:
-- `prompt/SUMERIAN_GRAMMAR.md` — the morphology + syntax cheat sheet
-- `prompt/JAGERSMA_CONVENTIONS.md` — Jagersma → Oracc notation map
-- `prompt/JAGERSMA_NOTES.md` — per-chapter digest of all 31 chapters
-- `prompt/JAGERSMA_VERIFICATION.md` — audit trail for grammatical claims
+- `lessons/JAGERSMA_GRAMMAR.md` — the morphology + syntax cheat sheet
+- `lessons/JAGERSMA_CONVENTIONS.md` — Jagersma → Oracc notation map
+- `lessons/JAGERSMA_NOTES.md` — per-chapter digest of all 31 chapters
+- `lessons/JAGERSMA_VERIFICATION.md` — audit trail for grammatical claims

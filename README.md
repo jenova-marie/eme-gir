@@ -214,6 +214,6 @@ For setup, build, and deployment instructions — including the Docker compose s
 
 For a complete LLM-agent system prompt that teaches the recommended translation workflow (decompose English → rank candidates → check compounds and collocations → choose aspect → apply cases → verify with attestations → render cuneiform), see [`prompt/AGENT_PROMPT.md`](prompt/AGENT_PROMPT.md). The MCP server also exposes it as the `oracc://prompt/agent` resource so a connecting agent can self-bootstrap.
 
-For the Sumerian grammar cheat sheet that the MCP server also exposes as the `oracc://grammar/sumerian` resource, see [`prompt/SUMERIAN_GRAMMAR.md`](prompt/SUMERIAN_GRAMMAR.md).
+For the Sumerian grammar cheat sheet that the MCP server also exposes as the `oracc://grammar/sumerian` resource, see [`lessons/JAGERSMA_GRAMMAR.md`](lessons/JAGERSMA_GRAMMAR.md).
 
 For an in-depth reference aimed at AI coding assistants extending this project — schema documentation, the Oracc URL surface, the InCommon TLS gotcha, the cuneiform-rendering pipeline, the Docker layout — see [`CLAUDE.md`](CLAUDE.md).

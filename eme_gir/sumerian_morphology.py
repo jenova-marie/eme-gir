@@ -6,7 +6,7 @@ ingest). Extracted into its own module so both can use them without
 duplication and so the suffix table is the single source of truth.
 
 The canonical reference for what these helpers encode is
-`prompt/SUMERIAN_GRAMMAR.md` §3 (noun cases), §5.2 (possessives), §7.2
+`lessons/JAGERSMA_GRAMMAR.md` §3 (noun cases), §5.2 (possessives), §7.2
 (verbal prefix chain). Detection is heuristic — many surface forms are
 genuinely ambiguous (`-e` is ergative on a noun OR directive case OR
 3sg verbal-agreement on a verb; `-a` is locative on a noun OR

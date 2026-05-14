@@ -3,7 +3,7 @@
 Per-chapter structured digest of Bram Jagersma, *A Descriptive Grammar of
 Sumerian* (PhD dissertation, Universiteit Leiden, 2010, 776 pp).
 
-Every grammatical claim in `SUMERIAN_GRAMMAR.md` should be traceable to a
+Every grammatical claim in `JAGERSMA_GRAMMAR.md` should be traceable to a
 citation in this file. Examples retain Jagersma's notation; the cheat sheet
 translates to Oracc convention per `JAGERSMA_CONVENTIONS.md`.
 

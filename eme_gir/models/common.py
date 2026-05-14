@@ -105,7 +105,7 @@ class Suffix(_Permissive):
     and parse_phrase (per-chunk role labeling). The suffix table that
     produces these is documented in eme_gir/sumerian_morphology.py
     SUMERIAN_SUFFIX_TABLE and mirrors §3 + §5.2 of
-    prompt/SUMERIAN_GRAMMAR.md.
+    lessons/JAGERSMA_GRAMMAR.md.
 
     Some suffixes are AMBIGUOUS by surface form alone — most famously `-e`
     (ergative on a noun OR directive case OR 3sg ergative verbal agreement)
