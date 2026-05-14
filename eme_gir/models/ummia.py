@@ -1,15 +1,11 @@
-"""Response models for the Translator MCP server.
+"""Response models for the Ummia MCP server.
 
-The Translator server is the opinionated workflow surface. Its main job
-is hosting the agent bootstrap resources (`oracc://prompt/agent`,
-`oracc://grammar/sumerian`) and their corresponding tool wrappers
-(`start_here`, `get_grammar_reference`) for tools-only MCP clients.
-Substantive translation work happens via the four data MCPs
-(ePSD2, ETCSL, CDLI, Signs) which agents compose under the workflow
-the Translator server documents.
-
-Currently only `get_grammar_reference()` has a structured response
-worth a Pydantic model; `start_here()` returns plain markdown.
+Ummia is the teaching surface for Meadow's Sumerian 101 lesson series
+plus the dual-register Sumerian grammar reference (Jagersma 2010
+academic + Meadow/Siri Nin temple companion). Most of Ummia's tools
+return plain markdown strings — the lesson prompts and the persona
+prompt. `get_grammar_reference()` is the one tool with a structured
+response, modeled here.
 """
 
 from __future__ import annotations
@@ -26,11 +22,11 @@ class GrammarReferenceResponse(_Permissive):
     bootstrap pipeline:
 
     - `academic` (always present): the Jagersma-2010-based reference
-      from prompt/SUMERIAN_GRAMMAR.md. Rigorous, attested, period-aware;
+      from lessons/JAGERSMA_GRAMMAR.md. Rigorous, attested, period-aware;
       every claim §-cited. Use for reading attested texts and for any
       academic correspondence.
     - `temple` (optional): the temple-register companion from
-      prompt/MEADOW_GRAMMAR.md — Meadow's Sumerian 101 classroom-e₂-nun-na
+      lessons/MEADOW_GRAMMAR.md — Meadow's Sumerian 101 classroom-e₂-nun-na
       lessons plus Entu Siri Nin's commentary. Prayer-ready pedagogy,
       the PNC mnemonic, the 'pesky -a' three-tip heuristic, Emesal
       liturgical register, worked temple examples. Use for prayer
@@ -53,11 +49,11 @@ class GrammarReferenceResponse(_Permissive):
 
     academic: str = Field(
         ...,
-        description="Markdown of prompt/SUMERIAN_GRAMMAR.md — the Jagersma-2010-based academic reference. ~40 KB. Every grammatical claim carries an inline §-citation.",
+        description="Markdown of lessons/JAGERSMA_GRAMMAR.md — the Jagersma-2010-based academic reference. ~40 KB. Every grammatical claim carries an inline §-citation.",
     )
     temple: str | None = Field(
         None,
-        description="Markdown of prompt/MEADOW_GRAMMAR.md — Meadow's classroom lessons + Siri Nin's commentary. ~48 KB. None when the file is absent from this deployment.",
+        description="Markdown of lessons/MEADOW_GRAMMAR.md — Meadow's classroom lessons + Siri Nin's commentary. ~48 KB. None when the file is absent from this deployment.",
     )
     combined: str = Field(
         ...,

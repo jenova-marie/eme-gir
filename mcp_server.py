@@ -72,7 +72,6 @@ from eme_gir.models import (
     TranslateSumerianResponse,
 )
 from eme_gir.paths import (
-    AGENT_PROMPT_DOC,
     COLLOCATIONS_DB,
     GLOSSARY_DB,
     GRAMMAR_DOC,
@@ -459,24 +458,22 @@ find_artifacts = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_find_artifacts_imp
 
 
 # -----------------------------------------------------------------------------
-# Translator (bootstrap) — resources + tool wrappers
+# Grammar reference resource + tool wrapper
 # -----------------------------------------------------------------------------
 #
-# Bootstrap content (the agent system prompt + the dual-register
-# Sumerian grammar reference) lives in `eme_gir.tools.translator`. We
-# register both as @mcp.resource and as tool wrappers since most
-# production MCP clients only surface tools.
+# The dual-register Sumerian grammar reference (Jagersma 2010 academic +
+# Meadow / Siri Nin temple companion) lives in `eme_gir.tools.ummia`. We
+# expose it here as both an MCP resource and a tool wrapper for
+# tools-only clients. The per-server `start_here()` bootstraps on the
+# five per-domain MCPs are the canonical entry points; the legacy
+# all-in-one server keeps the grammar surface for backwards compat with
+# pre-Phase-5 clients pointed at port 5051.
 
-from eme_gir.tools.translator import agent_prompt as _agent_prompt_body
-from eme_gir.tools.translator import get_grammar_reference as _get_grammar_reference_impl
-from eme_gir.tools.translator import grammar_cheatsheet as _grammar_cheatsheet_body
-from eme_gir.tools.translator import start_here as _start_here_impl
+from eme_gir.tools.ummia import (
+    get_grammar_reference as _get_grammar_reference_impl,
+)
+from eme_gir.tools.ummia import grammar_cheatsheet as _grammar_cheatsheet_body
 
-
-# Resources: registered with the FastMCP instance, body functions from
-# eme_gir.tools.translator. The resource metadata (uri / name / title /
-# description / mime_type) stays here because it's part of THIS server's
-# MCP protocol surface declaration; the bodies are shared.
 
 grammar_cheatsheet = mcp.resource(
     "oracc://grammar/sumerian",
@@ -496,7 +493,7 @@ grammar_cheatsheet = mcp.resource(
         "subordination via {÷a}, period notes for ED/Old Akkadian/Lagash II/"
         "Ur III/OB. Every grammatical claim carries an inline Jagersma "
         "section citation (e.g. §7.3) for verification. SECOND: the temple-"
-        "register companion (TEMPLE_GRAMMAR.md) distilled from Meadow's "
+        "register companion (MEADOW_GRAMMAR.md) distilled from Meadow's "
         "Sumerian 101 classroom-e₂-nun-na lessons plus Entu Siri Nin's "
         "commentary — prayer-ready pedagogy, the PNC mnemonic, the 'pesky -a' "
         "three-tip heuristic, the Emesal liturgical register, and worked "
@@ -509,32 +506,8 @@ grammar_cheatsheet = mcp.resource(
     mime_type="text/markdown",
 )(_grammar_cheatsheet_body)
 
-agent_prompt = mcp.resource(
-    "oracc://prompt/agent",
-    name="Sumerian translation agent — system prompt",
-    title="Agent system prompt: how to use these tools end-to-end",
-    description=(
-        "A drop-in system prompt teaching an LLM agent the recommended "
-        "workflow for using this server's tools: decompose English → rank "
-        "candidates with translate_english → check find_compound + "
-        "find_collocations for fixed idioms → choose ḫamṭu vs marû aspect "
-        "→ apply case suffixes mirrored in the verbal prefix chain → use "
-        "find_verb_form / get_inflections to pull attested morphology → "
-        "verify with see_examples → render with cuneify. Also covers the "
-        "reverse direction (Sumerian → English), the four etcsl_* "
-        "literary tools, the CC BY 3.0 UK Oxford-attribution requirement "
-        "for any ETCSL-derived data, the required output format "
-        "(transliteration + cuneiform + interlinear gloss + lexical "
-        "justification + cited attestation + caveats), and a fully "
-        "worked example. Fetch once at session start alongside "
-        "oracc://grammar/sumerian to bootstrap the agent's working memory."
-    ),
-    mime_type="text/markdown",
-)(_agent_prompt_body)
-
-# Tool wrappers around the two bootstrap resources (compat shim for
-# tools-only clients that don't surface MCP resources):
-start_here = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_start_here_impl)
+# Tool wrapper around the grammar resource (compat shim for tools-only
+# clients that don't surface MCP resources):
 get_grammar_reference = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_get_grammar_reference_impl)
 
 

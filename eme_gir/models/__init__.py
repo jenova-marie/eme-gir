@@ -15,7 +15,7 @@ Submodule layout (all importable as `eme_gir.models.<submodule>`):
 | `etcsl`  | Oxford literary corpus       | `ETCSLSearchEnglishResponse`, `ETCSLLookupTextResponse`, … |
 | `cdli`   | CDLI artifact catalogue      | `CDLIArtifact`, `LookupArtifactResponse`, `FindArtifactsResponse` |
 | `ogsl`   | OGSL sign rendering          | `SignInfo`, `LookupSignResponse`, `CuneifyResponse` |
-| `translator` | Translator MCP            | `GrammarReferenceResponse` |
+| `ummia`  | Ummia teaching MCP           | `GrammarReferenceResponse` |
 
 The flat re-exports below preserve the pre-split import surface:
 existing callers can keep writing `from eme_gir.models import X` for
@@ -90,7 +90,7 @@ from .ogsl import (
     LookupSignResponse,
     SignInfo,
 )
-from .translator import GrammarReferenceResponse
+from .ummia import GrammarReferenceResponse
 
 __all__ = [
     # common
@@ -143,6 +143,6 @@ __all__ = [
     "CuneifyResponse",
     "LookupSignResponse",
     "SignInfo",
-    # translator
+    # ummia
     "GrammarReferenceResponse",
 ]

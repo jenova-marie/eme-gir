@@ -68,7 +68,7 @@ def init_logging(server_name: str = "mcp_server") -> logging.Logger:
 
     The rotating file handler writes to `log/{server_name}.log` so
     multiple MCP servers running in parallel get distinct files (e.g.
-    `log/epsd2.log`, `log/etcsl.log`, `log/translator.log`). 5 MB ×
+    `log/epsd2.log`, `log/etcsl.log`, `log/ummia.log`). 5 MB ×
     3 backups gives a ~15 MB ceiling per file.
     """
     global _INITIALIZED

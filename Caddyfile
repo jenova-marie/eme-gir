@@ -8,7 +8,7 @@
 #   /etcsl/mcp/*            →  ETCSL MCP                (eme-gir-etcsl:5053)
 #   /cdli/mcp/*             →  CDLI MCP                 (eme-gir-cdli:5054)
 #   /ogsl/mcp/*             →  OGSL MCP                 (eme-gir-ogsl:5055)
-#   /translator/mcp/*       →  Translator MCP           (eme-gir-translator:5056)
+#   /ummia/mcp/*            →  Ummia teaching MCP       (eme-gir-ummia:5058)
 #
 # `handle_path` strips the matched prefix before proxying, so a request to
 # /epsd2/mcp/foo arrives at the backend as /mcp/foo — which is exactly where
@@ -83,8 +83,8 @@ mcp.eme-gir.org {
 		}
 	}
 
-	handle_path /translator/* {
-		reverse_proxy eme-gir-translator:5056 {
+	handle_path /ummia/* {
+		reverse_proxy eme-gir-ummia:5058 {
 			flush_interval -1
 		}
 	}

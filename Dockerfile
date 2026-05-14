@@ -75,9 +75,9 @@ USER eme-gir
 #   5053  Per-domain MCP: ETCSL      (python -m servers.etcsl)
 #   5054  Per-domain MCP: CDLI       (python -m servers.cdli)
 #   5055  Per-domain MCP: OGSL       (python -m servers.ogsl)
-#   5056  Per-domain MCP: Translator (python -m servers.translator)
 #   5057  Flask www landing page     (www_app.py — project home page)
-EXPOSE 5050 5051 5052 5053 5054 5055 5056 5057
+#   5058  Per-domain MCP: Ummia      (python -m servers.ummia — teaching surface + grammar)
+EXPOSE 5050 5051 5052 5053 5054 5055 5057 5058
 
 # No CMD — services pick their own command in docker-compose.yml.
 # Run directly: `docker run --rm eme-gir python3 mcp_server.py --help`.

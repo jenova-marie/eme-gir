@@ -10,7 +10,7 @@
 #   mcp-etcsl   — per-domain MCP: ETCSL literary        (port 5053)  — 4  tools
 #   mcp-cdli    — per-domain MCP: CDLI catalogue        (port 5054)  — 2  tools
 #   mcp-ogsl    — per-domain MCP: OGSL sign rendering   (port 5055)  — 2  tools
-#   mcp-translator — per-domain MCP: Translator bootstrap (port 5056) — 2 tools + 2 resources
+#   mcp-ummia   — per-domain MCP: Ummia teaching surface + grammar (port 5058) — 7 tools + 1 resource
 #
 # All 6 MCP services share the same image and the same shared-config
 # anchors at the top of this file (x-mcp-base, x-mcp-environment) so
@@ -310,27 +310,32 @@ services:
       retries: 3
       start_period: 15s
 
-  # Translator bootstrap surface (no data tools). Exposes the agent
-  # system prompt + dual-register Sumerian grammar reference via the
-  # oracc://prompt/agent and oracc://grammar/sumerian MCP resources,
-  # plus tool wrappers (start_here, get_grammar_reference) for clients
-  # that don't surface resources directly. Composes with the four data
-  # MCPs above — agents are expected to connect to all five.
-  mcp-translator:
+  # Ummia teaching surface (no data tools). Exposes the Ummia
+  # master-teacher persona + the five Sumerian 101 lesson prompts as
+  # MCP tools (start_here + get_lesson_101_1..5). Ummia (𒌝𒈪𒀀 um-mi-a,
+  # 453× attested in the corpus) is the canonical Sumerian word for
+  # the master teacher of the e₂-dub-ba — the Schooldays literary
+  # compositions use this term when a student addresses their teacher.
+  # The lesson prompts are plain markdown under lessons/ — no SQLite
+  # dependencies. Agents compose this server with the four data MCPs
+  # (epsd2/ogsl/etcsl/cdli) for the dictionary lookups + cuneiform
+  # rendering + attested-line citations that the lessons direct them
+  # to pull during teaching.
+  mcp-ummia:
     <<: *mcp-base
-    container_name: eme-gir-translator
+    container_name: eme-gir-ummia
     command: >
-      python3 -m servers.translator
+      python3 -m servers.ummia
       --transport http
       --host 0.0.0.0
-      --port 5056
+      --port 5058
     environment:
       <<: *mcp-environment
-      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_TRANSLATOR:-eme-gir-translator}"
+      EME_GIR_UMAMI_HOSTNAME: "${EME_GIR_UMAMI_HOSTNAME_UMMIA:-eme-gir-ummia}"
     ports:
-      - "${MCP_TRANSLATOR_BIND:-127.0.0.1}:5056:5056"
+      - "${MCP_UMMIA_BIND:-127.0.0.1}:5058:5058"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5056/mcp/"]
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://localhost:5058/mcp/"]
       interval: 30s
       timeout: 7s
       retries: 3

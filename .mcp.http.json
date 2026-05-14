@@ -1,10 +1,10 @@
 {
   "_comment": [
     "HTTP variant of .mcp.json — point Claude Code (or any MCP client) at the remote",
-    "mcp.eme-gir.org reverse-proxied endpoints instead of spawning local stdio subprocesses.",
-    "Each per-domain MCP server is reachable at https://mcp.eme-gir.org/<server>/mcp,",
-    "served by the corresponding container in docker-compose.yml (ports 5052-5056) behind a TLS-",
-    "terminating reverse proxy (caddy/nginx/traefik). No local Python install needed on the client side.",
+    "subdomain-routed endpoints instead of spawning local stdio subprocesses.",
+    "Each per-domain MCP server is reachable at https://<server>.eme-gir.org/mcp,",
+    "served by the corresponding container in docker-compose.yml (ports 5052-5055 for the data MCPs, 5058 for ummia)",
+    "behind a TLS-terminating reverse proxy (caddy/nginx/traefik). No local Python install needed on the client side.",
     "If the deployment enables EME_GIR_REQUIRE_AUTH=1, attach a bearer token via the client's auth config",
     "(Auth0 RS256 JWT scoped to the configured Auth0 tenant); see eme_gir/auth0_verifier.py for the contract.",
     "To swap to local stdio, use .mcp.json instead — both files describe the same five servers and same tools."
@@ -12,7 +12,7 @@
   "mcpServers": {
     "eme-gir-epsd2": {
       "type": "http",
-      "url": "https://mcp.eme-gir.org/epsd2/mcp",
+      "url": "https://epsd2.eme-gir.org/mcp",
       "_comment": "ePSD2 dictionary + corpus tools — the biggest data server, the primary surface for English ↔ Sumerian translation.",
       "_tools": [
         "start_here              ⭐ returns the EPSD2_PROMPT bootstrap doc (sense ranking, period filters, slot grammar). CALL FIRST.",
@@ -31,7 +31,7 @@
     },
     "eme-gir-etcsl": {
       "type": "http",
-      "url": "https://mcp.eme-gir.org/etcsl/mcp",
+      "url": "https://etcsl.eme-gir.org/mcp",
       "_comment": "ETCSL Oxford literary corpus — 394 lemmatized literary texts with English translations. ⚠️ ATTRIBUTION REQUIRED — ETCSL is NOT under any Creative Commons license; traditional academic copyright (© Black, Cunningham, Robson, Zólyomi 1998–2006) with required Oxford citation. Every response carries an `attribution` field; pass it through verbatim.",
       "_tools": [
         "start_here              ⭐ returns the ETCSL_PROMPT bootstrap doc (text-id conventions, FTS5 syntax, attribution rule). CALL FIRST.",
@@ -43,7 +43,7 @@
     },
     "eme-gir-cdli": {
       "type": "http",
-      "url": "https://mcp.eme-gir.org/cdli/mcp",
+      "url": "https://cdli.eme-gir.org/mcp",
       "_comment": "CDLI artifact catalogue — 353K cuneiform-bearing objects with provenience, museum custody, dimensions, photo/lineart URLs. Snapshot date August 2022. Catalogue text reusable-with-citation per CDLI's terms; imagery non-commercial only (we host none, all image URLs link to cdli.earth).",
       "_tools": [
         "start_here              ⭐ returns the CDLI_PROMPT bootstrap doc (filter enums, URL rendering rules, Royal/Monumental gotcha). CALL FIRST.",
@@ -53,7 +53,7 @@
     },
     "eme-gir-ogsl": {
       "type": "http",
-      "url": "https://mcp.eme-gir.org/ogsl/mcp",
+      "url": "https://ogsl.eme-gir.org/mcp",
       "_comment": "OGSL cuneiform sign rendering — the Oracc Global Sign List, ~3,000+ signs with Unicode codepoints and cross-language readings (Sumerian, Akkadian, Hittite, Hurrian, Elamite).",
       "_tools": [
         "start_here              ⭐ returns the OGSL_PROMPT bootstrap doc (transliteration conventions, □ placeholder semantics). CALL FIRST.",
@@ -61,16 +61,20 @@
         "lookup_sign             look up a sign by name (LUGAL) or phonetic value (lugal/šarru); returns glyph + all readings + codepoint"
       ]
     },
-    "eme-gir-translator": {
+    "eme-gir-ummia": {
       "type": "http",
-      "url": "https://mcp.eme-gir.org/translator/mcp",
-      "_comment": "Bootstrap surface only — agent prompt + dual-register Sumerian grammar reference. NO data tools. Composes with the four data MCPs above.",
+      "url": "https://ummia.eme-gir.org/mcp",
+      "_comment": "Ummia (𒌝𒈪𒀀 um-mi-a 'expert / master teacher' — 453× attested across ED, Ur III, OB; the canonical word for the head teacher of the e₂-dub-ba in the Schooldays literary tradition) — master-teacher persona for Meadow's Sumerian 101 lesson series PLUS owner of the dual-register Sumerian grammar reference (Jagersma academic + Meadow temple). Teaching surface, NO data tools. Composes with the four data MCPs.",
       "_tools": [
-        "start_here              ⭐ returns the AGENT_PROMPT — recommended end-to-end English ↔ Sumerian workflow across all five servers",
+        "start_here              ⭐ returns the Ummia persona prompt + lesson menu. CALL FIRST; adopt the persona.",
+        "get_lesson_101_1        Introduction to Sumerian (pronunciation, cuneiform basics, nouns, plurals, adjectives)",
+        "get_lesson_101_2        Basic Verbs (verbal chain, SOV order, simple vs. compound verbs, genitive -ak, the 'pesky -a')",
+        "get_lesson_101_3        Case Markers, Possession & Pronouns (the 8 case endings, ergative, copula, possessives, PNC order)",
+        "get_lesson_101_4        Advanced Verbs (person markers, perfective vs. imperfective, three ways to make imperfective)",
+        "get_lesson_101_5        Advanced Case Markers, Modal Prefixes & Subordination (nu-/ga-/ḫa-/ba-ra-, compound verbs, imperatives, lu₂...-a)",
         "get_grammar_reference   returns the dual Jagersma (academic) + Meadow (temple register) Sumerian grammar (~80 KB combined)"
       ],
       "_resources": [
-        "oracc://prompt/agent       — same content as start_here()",
         "oracc://grammar/sumerian   — same content as get_grammar_reference()"
       ]
     }

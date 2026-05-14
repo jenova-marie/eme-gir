@@ -4,11 +4,11 @@ Five independent FastMCP servers, each exposing ONE conceptual surface:
 
 | Module | Server identifier | Tools | Default HTTP port |
 |---|---|---|---|
-| servers.epsd2 | eme-gir-epsd2 | 13 ePSD2 dictionary + corpus tools | 5052 |
+| servers.epsd2 | eme-gir-epsd2 | 11 ePSD2 dictionary + corpus tools | 5052 |
 | servers.etcsl | eme-gir-etcsl | 4 ETCSL literary corpus tools | 5053 |
 | servers.cdli | eme-gir-cdli | 2 CDLI artifact catalogue tools | 5054 |
 | servers.ogsl | eme-gir-ogsl | 2 OGSL sign rendering tools | 5055 |
-| servers.translator | eme-gir-translator | bootstrap resources + 2 wrappers | 5056 |
+| servers.ummia | eme-gir-ummia | 7 teaching tools + grammar resource | 5058 |
 
 Run any one of them with:
     python -m servers.<name> [--transport stdio|http] [--host HOST] [--port PORT]

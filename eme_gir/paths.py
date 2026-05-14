@@ -71,11 +71,6 @@ MCP_SERVER_LOG = LOG_DIR / "mcp_server.log"
 # Reference data shipped with corpus/.
 OGSL_ZIP = CORPUS_DIR / "ogsl.zip"
 
-# Prompt / grammar artifacts (checked into the repo, not generated).
-GRAMMAR_DOC = PROMPT_DIR / "SUMERIAN_GRAMMAR.md"
-MEADOW_GRAMMAR_DOC = PROMPT_DIR / "MEADOW_GRAMMAR.md"
-AGENT_PROMPT_DOC = PROMPT_DIR / "AGENT_PROMPT.md"
-
 # Per-server start_here prompts — each data-MCP server has its own
 # scoped bootstrap document. Files are created on demand; the loader
 # at `eme_gir.prompts.load_prompt` falls back to a placeholder when
@@ -84,3 +79,31 @@ EPSD2_PROMPT_DOC = PROMPT_DIR / "EPSD2_PROMPT.md"
 ETCSL_PROMPT_DOC = PROMPT_DIR / "ETCSL_PROMPT.md"
 CDLI_PROMPT_DOC = PROMPT_DIR / "CDLI_PROMPT.md"
 OGSL_PROMPT_DOC = PROMPT_DIR / "OGSL_PROMPT.md"
+# Ummia persona prompt — lives in prompt/ alongside the other
+# per-server bootstrap docs (it IS a bootstrap prompt). The lesson
+# markdown files + dual-register grammar references it cycles through
+# live in `lessons/` (see the LESSONS_DIR block below) — semantically
+# all curriculum / teaching content.
+# Ummia (𒌝𒈪𒀀 um-mi-a) is the canonical Sumerian word for the master
+# teacher of the e₂-dub-ba — 453× attested across ED, Ur III, and OB,
+# used by the Schooldays compositions when a student addresses their
+# teacher. Server name: eme-gir-ummia (port 5058).
+UMMIA_PROMPT_DOC = PROMPT_DIR / "UMMIA_PROMPT.md"
+
+# Curriculum content — Sumerian 101 lesson prompts + dual-register
+# grammar references + their Jagersma source-trail companion docs.
+# All owned by the eme-gir-ummia server (see eme_gir/tools/ummia.py).
+LESSONS_DIR = ROOT / "lessons"
+LESSON_101_1_DOC = LESSONS_DIR / "lesson-101-1.md"
+LESSON_101_2_DOC = LESSONS_DIR / "lesson-101-2.md"
+LESSON_101_3_DOC = LESSONS_DIR / "lesson-101-3.md"
+LESSON_101_4_DOC = LESSONS_DIR / "lesson-101-4.md"
+LESSON_101_5_DOC = LESSONS_DIR / "lesson-101-5.md"
+# The Jagersma reference is normative for reading attested texts; the
+# Meadow companion is normative for composing in temple register.
+# Their three Jagersma source-trail companions (CONVENTIONS, NOTES,
+# PRONOUNCIATION) sit alongside them in lessons/ but aren't loaded by
+# any code path — they're audit-trail documentation cross-linked from
+# inside the two grammar files.
+GRAMMAR_DOC = LESSONS_DIR / "JAGERSMA_GRAMMAR.md"
+MEADOW_GRAMMAR_DOC = LESSONS_DIR / "MEADOW_GRAMMAR.md"

@@ -15,7 +15,7 @@ Provides:
   Each entry point passes its own logger + required SQLite paths so
   the missing-data failure mode is server-specific and informative.
 
-Phase 5 entry points (servers/{epsd2,etcsl,cdli,signs,translator}/
+Phase 5 entry points (servers/{epsd2,etcsl,cdli,ogsl,ummia}/
 __main__.py) are thin wrappers: import tools, import this module,
 register tools, call `run_server`. Together with the existing
 mcp_server.py (the legacy all-in-one) they expose every domain at its
@@ -220,8 +220,8 @@ def run_server(
         log: logger to emit the startup banner through.
         default_port: HTTP port when --transport http and no --port given.
                       Suite-wide allocation: 5051 (legacy), 5052 (epsd2),
-                      5053 (etcsl), 5054 (cdli), 5055 (signs), 5056
-                      (translator). Flask web app uses 5050.
+                      5053 (etcsl), 5054 (cdli), 5055 (ogsl), 5058
+                      (ummia). Flask web app uses 5050; www landing 5057.
         required_dbs: list of (Path, build_hint) tuples. Each path must
                       exist before the server can serve any tool —
                       missing-data hint is in `build_hint` (e.g.
