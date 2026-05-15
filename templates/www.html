@@ -375,6 +375,45 @@
     </section>
 
     <section>
+      <h2>Scope &amp; purpose</h2>
+      <div class="lede">
+        <p><em>This project is not a turnkey English-to-Sumerian
+        translation system, and should not be used as one.</em>
+        Sumerian is an extinct, ergative-absolutive language isolate
+        with a four-millennium attestation history spanning multiple
+        dialects, registers, and orthographic conventions; competent
+        translation requires a reader who can adjudicate among
+        homographs, choose a historical period, weigh literary register
+        against administrative register, and recognize when the corpus
+        is silent on a construction. No language model — and no
+        dictionary lookup chain, however well-grounded — can substitute
+        for that judgment.</p>
+
+        <p>What this project <em>does</em> offer is a set of carefully
+        indexed reference surfaces designed to <em>aid</em> the work of
+        a human translator, student, or researcher who already brings
+        (or is acquiring) that judgment. For the working scholar, the
+        MCP servers function as a high-throughput lookup harness:
+        attestation joins, n-gram pattern queries, period filters, and
+        cross-references that would otherwise require hand-scraping
+        Oracc's HTML pages. For students, the
+        <strong>Ummia teaching server</strong> ships a structured
+        five-lesson Sumerian 101 curriculum with a master-teacher
+        persona, drill exercises, and seamless routing into the data
+        servers for live vocabulary lookups and attested examples.
+        For LLM agents, the attestation-first design constrains the
+        model to <em>real</em> corpus forms — surfacing what scribes
+        actually wrote so the human in the loop has authentic material
+        to evaluate, rather than plausible-looking confabulation to
+        cross-check.</p>
+
+        <p>The intended user is, in every case, a person doing the
+        scholarship — the agent is a research instrument, not a
+        replacement for the act of translation.</p>
+      </div>
+    </section>
+
+    <section>
       <h2>The corpus</h2>
       <div class="stats">
         <div class="stat">
@@ -438,12 +477,15 @@
         through a uniform JSON-RPC interface — analogous to what a Language
         Server Protocol does for code editors, but for AI agents. An MCP
         <em>server</em> is the backend system the agent talks to; an MCP
-        <em>client</em> is the agent runtime (Claude Desktop, Claude Code,
-        Cursor, an LLM wrapper of your own, etc.). <em>Eme-gir is that
-        backend system for the Sumerian textual record</em> — five
-        independent MCP servers, one per data source, each surfacing its
-        archive as a coherent set of tools an agent can invoke during a
-        translation or research conversation.
+        <em>client</em> is the agent runtime — Anthropic's
+        Claude Desktop and Claude Code, OpenAI's ChatGPT (desktop and
+        web, via its connectors / custom-MCP interface), Google's Gemini
+        (via Gemini Code Assist and the Gemini CLI's MCP support),
+        Cursor, Zed, or an LLM wrapper of your own.
+        <em>Eme-gir is that backend system for the Sumerian textual
+        record</em> — five independent MCP servers, one per data
+        source, each surfacing its archive as a coherent set of tools
+        the agent can invoke during a research or teaching session.
       </p>
 
       <div class="access-note">
@@ -551,10 +593,10 @@
         <div class="path">
           <p class="path-eyebrow">Path A — Research &amp; translation</p>
           <h3>📚 Load the four data servers</h3>
-          <p>For English ↔ Sumerian translation, lexical research, lemma
-          attestation, literary corpus queries, and artifact lookups.
-          Begin every session by issuing this single bootstrap prompt to
-          your agent:</p>
+          <p>For English ↔ Sumerian dictionary lookup, lexical
+          research, lemma attestation, literary corpus queries, and
+          artifact provenience research. Begin every session by issuing
+          this single bootstrap prompt to your agent:</p>
 
           <div class="prompt-box">use the start_here tool of mcp servers eme-gir-epsd2, eme-gir-etcsl, eme-gir-cdli, eme-gir-ogsl</div>
 
