@@ -9,6 +9,27 @@
   <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/epsd2/css/projcss.css"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/jenova.png') }}"/>
   <title>{% block title %}eme-gir (local){% endblock %}</title>
+  <style>
+    /* Responsive masthead — Oracc's CSS positions the search box absolutely
+       in the top-right of #p4Masthead, so the title needs to reserve space
+       for it AND gracefully collapse on narrow viewports. */
+    #p4HeadTitle {
+      flex-wrap: wrap;
+      padding-right: 320px; /* keep clear of the absolute-positioned search box */
+    }
+    /* Below 900px: drop the long descriptive subtitle */
+    @media (max-width: 900px) {
+      #p4HeadTitle .masthead-subtitle,
+      #p4HeadTitle .masthead-sep { display: none; }
+      #p4HeadTitle { padding-right: 260px; }
+    }
+    /* Below 640px (typical phone): keep only the avatar + ePSD2 short form */
+    @media (max-width: 640px) {
+      #p4HeadTitle .masthead-org { display: none; }
+      #p4HeadTitle { padding-right: 0; gap: 0.4em; }
+      #p4Search { position: static !important; margin: 0.4em 0 !important; }
+    }
+  </style>
 </head>
 <body>
 <div id="p4Pager" class="bborder-top list page dglo rglo default" data-proj="eme-gir" data-glos="sux">
@@ -19,10 +40,10 @@
              alt="Jenova" title="Jenova's Local Oracc"
              style="height:36px; width:36px; border-radius:50%; vertical-align:middle;"/>
       </a>
-      <a href="{{ url_for('glossary') }}"><strong>Jenova's Local Oracc:</strong></a>
+      <a class="masthead-org" href="{{ url_for('glossary') }}"><strong>Jenova's Local Oracc:</strong></a>
       <a href="{{ url_for('glossary') }}">ePSD2</a>
-      <span style="opacity:0.6;">—</span>
-      <span style="opacity:0.85;">electronic PSD 2nd Edition</span>
+      <span class="masthead-sep" style="opacity:0.6;">—</span>
+      <span class="masthead-subtitle" style="opacity:0.85;">electronic PSD 2nd Edition</span>
     </p>
   </div>
   <div id="p4Header" class="menu banner bborder-bot">
