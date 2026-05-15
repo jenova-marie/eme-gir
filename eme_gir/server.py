@@ -42,6 +42,8 @@ READ_ONLY_ANNOTATIONS = ToolAnnotations(
     openWorldHint=False,
 )
 
+_TRUTHY = {"1", "true", "on", "yes", "y", "enable", "enabled"}
+
 
 def _build_auth_kwargs() -> dict:
     """Read EME_GIR_AUTH0_* env vars and return auth/token_verifier kwargs.
@@ -63,9 +65,7 @@ def _build_auth_kwargs() -> dict:
     Optional:
         EME_GIR_AUTH0_REQUIRED_SCOPE      defaults to 'mcp:access'
     """
-    if os.environ.get("EME_GIR_REQUIRE_AUTH", "").strip().lower() not in {
-        "1", "true", "on", "yes", "y", "enable", "enabled",
-    }:
+    if os.environ.get("EME_GIR_REQUIRE_AUTH", "").strip().lower() not in _TRUTHY:
         return {}
 
     # Lazy imports — pyjwt + the SDK auth modules aren't needed unless
@@ -135,7 +135,7 @@ def _build_transport_security_kwargs() -> dict:
     raw_origins = os.environ.get("EME_GIR_ALLOWED_ORIGINS", "").strip()
     disable = os.environ.get(
         "EME_GIR_DISABLE_DNS_REBINDING_PROTECTION", ""
-    ).strip().lower() in {"1", "true", "on", "yes", "y", "enable", "enabled"}
+    ).strip().lower() in _TRUTHY
 
     if not (raw_hosts or raw_origins or disable):
         return {}
@@ -184,6 +184,48 @@ def _build_transport_security_kwargs() -> dict:
             allowed_origins=origins,
         )
     }
+
+
+def _trust_proxy_enabled() -> bool:
+    """True iff EME_GIR_TRUST_PROXY is set to a truthy value.
+
+    When set, the streamable-HTTP launch path runs uvicorn ourselves with
+    `proxy_headers=True, forwarded_allow_ips="*"` so the upstream server
+    honors `X-Forwarded-Proto` / `X-Forwarded-For` from a fronting
+    reverse proxy (Caddy/nginx/traefik). Without this, uvicorn defaults
+    to trusting only 127.0.0.1 — and Caddy proxying from a Docker bridge
+    IP gets ignored, causing `/mcp/` → `/mcp` redirects to downgrade
+    `https://` to `http://` in the Location header.
+
+    Only safe when the reverse proxy itself sets the X-Forwarded-*
+    headers (Caddy does so by default).
+    """
+    return os.environ.get("EME_GIR_TRUST_PROXY", "").strip().lower() in _TRUTHY
+
+
+def _run_uvicorn_with_proxy_headers(mcp: FastMCP, log) -> None:
+    """Launch uvicorn against `mcp.streamable_http_app()` ourselves so we
+    can pass `proxy_headers=True, forwarded_allow_ips="*"` — config that
+    FastMCP's own `run_streamable_http_async()` hardcodes shut.
+
+    Mirrors what `FastMCP.run_streamable_http_async` does (host/port/
+    log_level pulled from mcp.settings) so behavior matches the default
+    path except for the proxy-trust additions.
+    """
+    import asyncio
+
+    import uvicorn
+
+    app = mcp.streamable_http_app()
+    config = uvicorn.Config(
+        app,
+        host=mcp.settings.host,
+        port=mcp.settings.port,
+        log_level=mcp.settings.log_level.lower(),
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
+    asyncio.run(uvicorn.Server(config).serve())
 
 
 def make_server(name: str, instructions: str) -> FastMCP:
@@ -313,8 +355,16 @@ def run_server(
     else:
         mcp.settings.host = args.host
         mcp.settings.port = args.port
+        trust_proxy = _trust_proxy_enabled()
         log.info(
             f"  transport=http (streamable-http) on {args.host}:{args.port}"
             f"{mcp.settings.streamable_http_path}"
         )
-        mcp.run(transport="streamable-http")
+        log.info(
+            "  trust_proxy="
+            + ("ENABLED (forwarded_allow_ips=*)" if trust_proxy else "disabled")
+        )
+        if trust_proxy:
+            _run_uvicorn_with_proxy_headers(mcp, log)
+        else:
+            mcp.run(transport="streamable-http")

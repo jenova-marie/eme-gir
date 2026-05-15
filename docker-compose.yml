@@ -73,6 +73,13 @@ x-mcp-environment: &mcp-environment
   EME_GIR_ALLOWED_HOSTS: "${EME_GIR_ALLOWED_HOSTS:-}"
   EME_GIR_ALLOWED_ORIGINS: "${EME_GIR_ALLOWED_ORIGINS:-}"
   EME_GIR_DISABLE_DNS_REBINDING_PROTECTION: "${EME_GIR_DISABLE_DNS_REBINDING_PROTECTION:-0}"
+  # Trust X-Forwarded-Proto / X-Forwarded-For from the fronting reverse
+  # proxy. Required when Caddy/nginx terminates TLS and forwards plain
+  # HTTP to the upstream — without this, uvicorn only trusts 127.0.0.1
+  # and ignores the proxy headers, so Starlette's `/mcp/` → `/mcp`
+  # redirect downgrades `https://` to `http://` in the Location header.
+  # Only safe when the proxy itself sets X-Forwarded-* (Caddy does).
+  EME_GIR_TRUST_PROXY: "${EME_GIR_TRUST_PROXY:-0}"
   # Umami analytics — fire-and-forget per-tool-call telemetry. Off
   # when EME_GIR_UMAMI_URL or EME_GIR_UMAMI_WEBSITE_ID is unset. Per
   # service we override EME_GIR_UMAMI_HOSTNAME to identify which MCP

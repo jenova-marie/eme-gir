@@ -392,6 +392,16 @@ The MCP SDK's streamable-http transport ships `enable_dns_rebinding_protection=T
 
 When none of the three is set, FastMCP falls through to its own auto-default (localhost-only with port wildcards). When ANY is set, `_build_transport_security_kwargs()` constructs an explicit `TransportSecuritySettings` and we override the auto-default. Startup banner reports `transport_security=ENABLED (allowed_hosts=..., allowed_origins=...)` or `transport_security=DISABLED` so the operative state is visible. Verified end-to-end with `Host: <allowed>` → 200, `Host: <not-allowed>` → 421, with-port localhost healthcheck pattern → 200.
 
+### Reverse-proxy headers / `X-Forwarded-Proto` (`eme_gir.server._trust_proxy_enabled` + `_run_uvicorn_with_proxy_headers`)
+
+A second sibling-bug of the DNS-rebinding gotcha above: when an HTTPS-terminating proxy (Caddy/nginx) forwards plain HTTP to the upstream, Starlette generates `/mcp/` → `/mcp` redirects with the **scheme it sees on the wire** (plain `http://`), not the scheme the external client used (`https://`). uvicorn 0.38 defaults `proxy_headers=True` but `forwarded_allow_ips=None`, which collapses to `"127.0.0.1"` only — Caddy proxying from the Docker bridge IP (or any non-127.0.0.1 source) gets ignored, so `X-Forwarded-Proto: https` is silently dropped. Not blocking — clients that hit `/mcp` (no trailing slash) work fine — but it bites any client that follows redirects or normalizes onto the trailing-slash form.
+
+Operator opt-in:
+
+- `EME_GIR_TRUST_PROXY` — truthy → run uvicorn ourselves (via `mcp.streamable_http_app()`) with `proxy_headers=True, forwarded_allow_ips="*"` so the upstream honors `X-Forwarded-Proto` / `X-Forwarded-For` regardless of source IP. Default off; flip to `1` in the host `.env` for Caddy-fronted production deploys. Only safe when the reverse proxy itself sets the `X-Forwarded-*` headers (Caddy does so by default — see `Caddyfile`'s `reverse_proxy` blocks).
+
+When OFF (default), the HTTP launch path is the unchanged `mcp.run(transport="streamable-http")` call — FastMCP's hardcoded uvicorn config applies, so behavior is bit-identical to pre-fix. When ON, `_run_uvicorn_with_proxy_headers()` mirrors what `FastMCP.run_streamable_http_async()` does (same host/port/log_level pulled from `mcp.settings`) but adds the two proxy-trust knobs uvicorn won't expose otherwise. Startup banner reports `trust_proxy=ENABLED (forwarded_allow_ips=*)` or `trust_proxy=disabled` so the operative state is visible. Verify by curling `/mcp/` with `X-Forwarded-Proto: https` and a public `Host:` header — the 307's `Location:` should preserve `https://`.
+
 ### Containerization (`Dockerfile` + `docker-compose.yml` + `init.sh`)
 
 The repo ships a `python:3.12.11-slim`-based image and a **three-service** compose file:
