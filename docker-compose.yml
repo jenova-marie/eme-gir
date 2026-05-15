@@ -144,6 +144,9 @@ services:
       --bind 0.0.0.0:5050
       --access-logfile -
       --error-logfile -
+      --max-requests ${WEB_MAX_REQUESTS:-200}
+      --max-requests-jitter ${WEB_MAX_REQUESTS_JITTER:-40}
+      --timeout ${WEB_TIMEOUT:-60}
       'app:create_app()'
     ports:
       - "${WEB_BIND:-127.0.0.1}:5050:5050"
