@@ -163,6 +163,33 @@
       border: 1px solid var(--border);
     }
     .endpoint-url:hover { border-color: var(--accent); }
+    .endpoint-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .copy-btn {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.35rem 0.5rem;
+      cursor: pointer;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, border-color 0.15s, background 0.2s;
+      width: 32px;
+      height: 32px;
+    }
+    .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .copy-btn:focus { outline: none; border-color: var(--accent); color: var(--accent); }
+    .copy-btn.copied {
+      color: var(--panel);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .copy-btn svg { display: block; }
     .access-note {
       background: rgba(139, 62, 47, 0.05);
       border: 1px solid var(--border);
@@ -506,7 +533,12 @@
             <p class="endpoint-desc">Sumerian dictionary, attestation lookups, morphological
             decomposition, n-gram phrase patterns over 35.5M attestations.</p>
           </div>
-          <a class="endpoint-url" href="https://epsd2.eme-gir.org/mcp">https://epsd2.eme-gir.org/mcp</a>
+          <div class="endpoint-actions">
+            <a class="endpoint-url" href="https://epsd2.eme-gir.org/mcp">https://epsd2.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://epsd2.eme-gir.org/mcp">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
+            </button>
+          </div>
         </div>
         <div class="endpoint">
           <div>
@@ -514,7 +546,12 @@
             <p class="endpoint-desc">Oxford literary corpus, 394 hand-lemmatized compositions
             with English translations — every result bilingual.</p>
           </div>
-          <a class="endpoint-url" href="https://etcsl.eme-gir.org/mcp">https://etcsl.eme-gir.org/mcp</a>
+          <div class="endpoint-actions">
+            <a class="endpoint-url" href="https://etcsl.eme-gir.org/mcp">https://etcsl.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://etcsl.eme-gir.org/mcp">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
+            </button>
+          </div>
         </div>
         <div class="endpoint">
           <div>
@@ -522,7 +559,12 @@
             <p class="endpoint-desc">CDLI artifact catalogue lookup — provenience, period,
             museum custody, and links to institutionally-hosted photographs.</p>
           </div>
-          <a class="endpoint-url" href="https://cdli.eme-gir.org/mcp">https://cdli.eme-gir.org/mcp</a>
+          <div class="endpoint-actions">
+            <a class="endpoint-url" href="https://cdli.eme-gir.org/mcp">https://cdli.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://cdli.eme-gir.org/mcp">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
+            </button>
+          </div>
         </div>
         <div class="endpoint">
           <div>
@@ -531,7 +573,12 @@
             Reusable for Akkadian, Hittite, Hurrian, and Elamite — cuneiform
             is not Sumerian-specific.</p>
           </div>
-          <a class="endpoint-url" href="https://ogsl.eme-gir.org/mcp">https://ogsl.eme-gir.org/mcp</a>
+          <div class="endpoint-actions">
+            <a class="endpoint-url" href="https://ogsl.eme-gir.org/mcp">https://ogsl.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://ogsl.eme-gir.org/mcp">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
+            </button>
+          </div>
         </div>
         <div class="endpoint">
           <div>
@@ -540,7 +587,12 @@
             Ummia 𒌝𒈪𒀀, master teacher of the e₂-dub-ba; ships the
             Sumerian 101 curriculum and the dual-register grammar reference.</p>
           </div>
-          <a class="endpoint-url" href="https://um-mi-a.eme-gir.org/mcp">https://um-mi-a.eme-gir.org/mcp</a>
+          <div class="endpoint-actions">
+            <a class="endpoint-url" href="https://um-mi-a.eme-gir.org/mcp">https://um-mi-a.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://um-mi-a.eme-gir.org/mcp">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -694,5 +746,38 @@
     </footer>
 
   </div>
+
+  <script>
+    (function () {
+      const checkSvg = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 7l3.5 3.5L12 4"/></svg>';
+      document.querySelectorAll('.copy-btn').forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          const url = btn.dataset.copy;
+          if (!url) return;
+          try {
+            await navigator.clipboard.writeText(url);
+          } catch (e) {
+            const ta = document.createElement('textarea');
+            ta.value = url;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (_) {}
+            document.body.removeChild(ta);
+          }
+          const orig = btn.innerHTML;
+          btn.classList.add('copied');
+          btn.innerHTML = checkSvg;
+          btn.setAttribute('aria-label', 'Copied');
+          setTimeout(function () {
+            btn.classList.remove('copied');
+            btn.innerHTML = orig;
+            btn.setAttribute('aria-label', 'Copy URL');
+          }, 1400);
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
