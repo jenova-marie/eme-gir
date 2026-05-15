@@ -29,6 +29,15 @@
       #p4HeadTitle { padding-right: 0; gap: 0.4em; }
       #p4Search { position: static !important; margin: 0.4em 0 !important; }
     }
+    /* Footer — Oracc's p4.css positions #p4Footer absolutely, which makes
+       it overlay the data table on tall pages. Force it back into the
+       normal flow at the bottom of the page. */
+    #p4Footer {
+      position: static !important;
+      clear: both;
+      margin-top: 2em;
+      border-top: 1px solid #ddd;
+    }
   </style>
 </head>
 <body>
@@ -79,7 +88,7 @@
       Local rendering of Oracc / ePSD2 data
       (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC&nbsp;BY-SA&nbsp;3.0</a>;
       attribution required, ShareAlike propagates). Source:
-      <a href="https://oracc.museum.upenn.edu/eme-gir/sux">oracc.museum.upenn.edu/eme-gir/sux</a>.
+      <a href="https://oracc.museum.upenn.edu/epsd2/sux">oracc.museum.upenn.edu/epsd2/sux</a>.
     </p>
   </div>
 </div>
