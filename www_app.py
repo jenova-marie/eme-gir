@@ -34,7 +34,6 @@ from pathlib import Path
 
 from flask import Flask, render_template
 
-from eme_gir import cuneify as _cuneify
 from eme_gir.paths import CDLI_DB, ETCSL_DB, GLOSSARY_DB, ROOT
 
 
@@ -77,28 +76,11 @@ def create_app() -> Flask:
     # Stats are frozen at app boot — see module docstring.
     app.config["CORPUS_STATS"] = _collect_stats()
 
-    # A handful of pre-rendered cuneiform samples for the visual flourish.
-    # Computed once at boot; never re-rendered per-request.
-    samples = [
-        ("lugal-e e₂ mu-na-du₃", "the king built the temple for him"),
-        ("inana an gal-ta ki gal-še₃", "Inana, from the great heaven to the great below"),
-        ("ŋeštug₂ daŋal", "broad wisdom"),
-    ]
-    app.config["CUNEIFORM_SAMPLES"] = [
-        {
-            "transliteration": s,
-            "gloss": gloss,
-            "cuneiform": _cuneify.cuneify(s),
-        }
-        for s, gloss in samples
-    ]
-
     @app.route("/")
     def index() -> str:
         return render_template(
             "www.html",
             stats=app.config["CORPUS_STATS"],
-            samples=app.config["CUNEIFORM_SAMPLES"],
         )
 
     # Health endpoint for the compose healthcheck.

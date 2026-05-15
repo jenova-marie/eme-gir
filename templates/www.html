@@ -40,12 +40,26 @@
     header .tagline {
       font-size: 1.2rem;
       color: var(--muted);
-      max-width: 36rem;
+      max-width: 38rem;
       margin: 0 auto;
     }
+    .lede {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 1.5rem 1.75rem;
+      margin: 2rem 0 0;
+      font-size: 1.02rem;
+      line-height: 1.7;
+    }
+    .lede p { margin: 0 0 0.9rem; }
+    .lede p:last-child { margin-bottom: 0; }
+    .lede em { color: var(--ink); }
+    .lede a { color: var(--accent); }
     .stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 1rem;
       margin: 2.5rem 0;
     }
@@ -53,15 +67,18 @@
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 1.25rem 1rem;
+      padding: 1.25rem 0.75rem;
       text-align: center;
     }
     .stat-value {
-      font-size: 1.8rem;
+      font-size: clamp(1.35rem, 2.4vw, 1.7rem);
       font-weight: 600;
       color: var(--accent);
       display: block;
       line-height: 1.1;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
     }
     .stat-label {
       font-size: 0.85rem;
@@ -107,32 +124,143 @@
       font-size: 0.9rem;
       color: var(--muted);
     }
-    .samples {
+    .endpoints {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .endpoint {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 1.5rem;
+      padding: 0.9rem 1.1rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1rem;
     }
-    .sample {
-      padding: 0.75rem 0;
-      border-bottom: 1px dashed var(--border);
+    .endpoint-name {
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 0.98rem;
+      margin: 0 0 0.15rem;
     }
-    .sample:last-child { border-bottom: none; }
-    .sample .glyphs {
-      font-family: "Noto Sans Cuneiform", "Akkadian", serif;
-      font-size: 1.8rem;
-      color: var(--cuneiform);
-      line-height: 1;
-    }
-    .sample .translit {
-      font-family: "SF Mono", Menlo, monospace;
-      font-size: 0.9rem;
+    .endpoint-desc {
+      font-size: 0.85rem;
       color: var(--muted);
-      margin: 0.4rem 0 0.2rem;
+      margin: 0;
     }
-    .sample .gloss {
-      font-style: italic;
+    .endpoint-url {
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.82rem;
       color: var(--ink);
+      background: rgba(139, 62, 47, 0.06);
+      padding: 0.35rem 0.6rem;
+      border-radius: 4px;
+      text-decoration: none;
+      white-space: nowrap;
+      border: 1px solid var(--border);
+    }
+    .endpoint-url:hover { border-color: var(--accent); }
+    .access-note {
+      background: rgba(139, 62, 47, 0.05);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 0.8rem 1rem;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+      color: var(--ink);
+    }
+    .access-note strong { color: var(--accent); }
+    pre.config {
+      background: #2b2118;
+      color: #f0e8dc;
+      border-radius: 8px;
+      padding: 1.1rem 1.25rem;
+      overflow-x: auto;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.84rem;
+      line-height: 1.55;
+      margin: 1rem 0;
+    }
+    pre.config .k { color: #c9a87a; }
+    pre.config .s { color: #b3d9a8; }
+    .paths {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 1.25rem;
+      margin: 1.25rem 0;
+    }
+    .path {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem 1.6rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .path-eyebrow {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin: 0 0 0.4rem;
+      font-weight: 600;
+    }
+    .path h3 {
+      margin: 0 0 0.6rem;
+      font-size: 1.15rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .path > p {
+      font-size: 0.93rem;
+      line-height: 1.6;
+      color: var(--ink);
+      margin: 0 0 1rem;
+    }
+    .prompt-box {
+      background: #fbf3e8;
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 0.85rem 1rem;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.85rem;
+      line-height: 1.55;
+      color: var(--ink);
+      margin: 0 0 1rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .prompt-box::before {
+      content: "› ";
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .followups {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .followups li {
+      padding-left: 1.2rem;
+      position: relative;
+      margin-bottom: 0.3rem;
+    }
+    .followups li::before {
+      content: "—";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+    .followups em {
+      color: var(--ink);
+      font-style: italic;
     }
     .attribution {
       background: var(--panel);
@@ -184,11 +312,67 @@
       <div class="cuneiform-banner">𒅴𒂠</div>
       <h1>Eme-gir</h1>
       <p class="tagline">
-        A local Sumerian dictionary, literary corpus reader, and
-        artifact-catalogue lookup — exposed to language models as MCP servers
-        so AI agents can read 3,000-year-old clay tablets alongside you.
+        A locally-mirrored research surface over four bulk academic
+        archives of the Sumerian textual record — the dictionary, the
+        annotated corpus, the literary canon, and the artifact catalogue —
+        indexed for sub-millisecond query and exposed to language models
+        via the Model Context Protocol.
       </p>
     </header>
+
+    <section>
+      <h2>About this project</h2>
+      <div class="lede">
+        <p>The University of Pennsylvania's <em>electronic Pennsylvania
+        Sumerian Dictionary</em>, second edition (ePSD2), is the standard
+        modern lexical resource for Sumerian — published in 2017 by an
+        international team led by Steve Tinney and integrated with the
+        <a href="https://oracc.museum.upenn.edu">Open Richly Annotated
+        Cuneiform Corpus (Oracc)</a>, a federated archive of roughly
+        138,000 transliterated cuneiform texts from museum collections
+        in London, Berlin, Philadelphia, Istanbul, and Baghdad. Alongside
+        Oracc, the Oxford
+        <a href="https://etcsl.orinst.ox.ac.uk">Electronic Text Corpus of
+        Sumerian Literature (ETCSL)</a> contributes 394 hand-lemmatized
+        literary compositions — hymns, myths, royal hymns, proverbs, the
+        Sumerian King List, <em>Inana's Descent</em>, <em>Gilgameš and
+        the Underworld</em>, the Šulgi praise poems — shipped with
+        English translations alongside every Sumerian line. The
+        <a href="https://cdli.mpiwg-berlin.mpg.de">Cuneiform Digital
+        Library Initiative (CDLI)</a> supplies catalogue metadata for
+        353,000 cuneiform-bearing artifacts: provenience, period,
+        museum custody, dimensions, publication history, and links to
+        the institutionally-hosted photographs and line drawings.</p>
+
+        <p>Each archive is distributed in a format suited to its own
+        publication tradition — Oracc as 208 zipped JSON projects (~3.1 GB),
+        ETCSL as TEI XML from the Oxford Text Archive, CDLI as a
+        Git-LFS-hosted CSV — and excellent for almost nothing in
+        particular until infrastructure is built on top of it.
+        <em>This project is that infrastructure.</em> Streaming parsers
+        ingest the source archives into denormalized SQLite indexes
+        with FTS5 over Sumerian transliteration and English translation,
+        bringing every operation — point lookup, attestation join,
+        n-gram pattern query, line-with-lemma search — down to a local
+        SQLite call typically under fifty milliseconds.</p>
+
+        <p>The surface this exposes is twofold: a Flask web application
+        that recreates the canonical Oracc browsing experience offline
+        with cuneiform-glyph rendering and attestation-line context, and
+        a constellation of <em>five Model Context Protocol servers</em>
+        organized along clean data-source boundaries (ePSD2, ETCSL,
+        CDLI, OGSL sign list, and a teaching surface in the persona of
+        Ummia 𒌝𒈪𒀀, the master teacher of the Sumerian scribal
+        school). The MCP servers are designed around an
+        <em>attestation-first</em> contract for language models:
+        instead of letting LLMs confabulate plausible-looking
+        morphology for a sparsely-trained, ergative-absolutive isolate,
+        every tool returns real corpus forms ranked by frequency, with
+        cited tablet sources, and every cited tablet links straight to
+        its CDLI-hosted photograph. The agent's job is to choose; the
+        corpus's job is to constrain.</p>
+      </div>
+    </section>
 
     <section>
       <h2>The corpus</h2>
@@ -229,7 +413,7 @@
              (ePSD2), browsable by letter, searchable, with cuneiform glyphs
              rendered inline.</p>
         </a>
-        <a class="service" href="https://mcp.eme-gir.org/epsd2/mcp">
+        <a class="service" href="#mcp">
           <h3>🔌 MCP endpoints</h3>
           <p>Five per-domain Model Context Protocol servers exposing the
              dictionary, the Oxford literary corpus, the CDLI artifact
@@ -244,17 +428,187 @@
       </div>
     </section>
 
-    <section>
-      <h2>Cuneiform sampler</h2>
-      <div class="samples">
-        {% for sample in samples %}
-        <div class="sample">
-          <div class="glyphs">{{ sample.cuneiform }}</div>
-          <div class="translit">{{ sample.transliteration }}</div>
-          <div class="gloss">"{{ sample.gloss }}"</div>
-        </div>
-        {% endfor %}
+    <section id="mcp">
+      <h2>Connect via MCP</h2>
+
+      <p style="font-size: 1rem; line-height: 1.65; color: var(--ink); max-width: 50rem;">
+        The <a href="https://modelcontextprotocol.io" style="color: var(--accent);">Model Context Protocol</a>
+        is an open standard, originally introduced by Anthropic in November 2024, that lets language
+        models call out to external tools, query databases, and read files
+        through a uniform JSON-RPC interface — analogous to what a Language
+        Server Protocol does for code editors, but for AI agents. An MCP
+        <em>server</em> is the backend system the agent talks to; an MCP
+        <em>client</em> is the agent runtime (Claude Desktop, Claude Code,
+        Cursor, an LLM wrapper of your own, etc.). <em>Eme-gir is that
+        backend system for the Sumerian textual record</em> — five
+        independent MCP servers, one per data source, each surfacing its
+        archive as a coherent set of tools an agent can invoke during a
+        translation or research conversation.
+      </p>
+
+      <div class="access-note">
+        🌐 <strong>Open to the public, read-only, no authentication required.</strong>
+        OAuth is intentionally disabled on the public deployment so any
+        MCP-compatible client can connect without provisioning credentials.
+        All tools are read-only over local SQLite — no write surface
+        exists. Please be courteous to the small server fronting these
+        endpoints; for heavy workloads, clone the repository and run the
+        stack locally via <code>docker compose up</code>.
       </div>
+
+      <h3 style="font-size: 1.05rem; margin: 1.75rem 0 0.4rem; color: var(--ink);">Endpoints</h3>
+      <div class="endpoints">
+        <div class="endpoint">
+          <div>
+            <p class="endpoint-name">eme-gir-epsd2 · 11 tools</p>
+            <p class="endpoint-desc">Sumerian dictionary, attestation lookups, morphological
+            decomposition, n-gram phrase patterns over 35.5M attestations.</p>
+          </div>
+          <a class="endpoint-url" href="https://epsd2.eme-gir.org/mcp">https://epsd2.eme-gir.org/mcp</a>
+        </div>
+        <div class="endpoint">
+          <div>
+            <p class="endpoint-name">eme-gir-etcsl · 4 tools</p>
+            <p class="endpoint-desc">Oxford literary corpus, 394 hand-lemmatized compositions
+            with English translations — every result bilingual.</p>
+          </div>
+          <a class="endpoint-url" href="https://etcsl.eme-gir.org/mcp">https://etcsl.eme-gir.org/mcp</a>
+        </div>
+        <div class="endpoint">
+          <div>
+            <p class="endpoint-name">eme-gir-cdli · 2 tools</p>
+            <p class="endpoint-desc">CDLI artifact catalogue lookup — provenience, period,
+            museum custody, and links to institutionally-hosted photographs.</p>
+          </div>
+          <a class="endpoint-url" href="https://cdli.eme-gir.org/mcp">https://cdli.eme-gir.org/mcp</a>
+        </div>
+        <div class="endpoint">
+          <div>
+            <p class="endpoint-name">eme-gir-ogsl · 2 tools</p>
+            <p class="endpoint-desc">Cuneiform sign rendering via the Oracc Global Sign List.
+            Reusable for Akkadian, Hittite, Hurrian, and Elamite — cuneiform
+            is not Sumerian-specific.</p>
+          </div>
+          <a class="endpoint-url" href="https://ogsl.eme-gir.org/mcp">https://ogsl.eme-gir.org/mcp</a>
+        </div>
+        <div class="endpoint">
+          <div>
+            <p class="endpoint-name">eme-gir-ummia · 7 tools + 1 resource</p>
+            <p class="endpoint-desc">Teaching surface in the persona of
+            Ummia 𒌝𒈪𒀀, master teacher of the e₂-dub-ba; ships the
+            Sumerian 101 curriculum and the dual-register grammar reference.</p>
+          </div>
+          <a class="endpoint-url" href="https://um-mi-a.eme-gir.org/mcp">https://um-mi-a.eme-gir.org/mcp</a>
+        </div>
+      </div>
+
+      <h3 style="font-size: 1.05rem; margin: 1.75rem 0 0.4rem; color: var(--ink);">Client configuration</h3>
+      <p style="font-size: 0.95rem; color: var(--muted); margin: 0 0 0.5rem;">
+        Drop this into <code>~/.config/claude/claude_desktop_config.json</code>
+        (Claude Desktop), <code>.mcp.json</code> at your project root
+        (Claude Code), or the equivalent <code>mcpServers</code> map in your
+        MCP client of choice:
+      </p>
+<pre class="config"><span class="k">{</span>
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"eme-gir-epsd2"</span>: { <span class="k">"type"</span>: <span class="s">"http"</span>, <span class="k">"url"</span>: <span class="s">"https://epsd2.eme-gir.org/mcp"</span> },
+    <span class="k">"eme-gir-etcsl"</span>: { <span class="k">"type"</span>: <span class="s">"http"</span>, <span class="k">"url"</span>: <span class="s">"https://etcsl.eme-gir.org/mcp"</span> },
+    <span class="k">"eme-gir-cdli"</span>:  { <span class="k">"type"</span>: <span class="s">"http"</span>, <span class="k">"url"</span>: <span class="s">"https://cdli.eme-gir.org/mcp"</span>  },
+    <span class="k">"eme-gir-ogsl"</span>:  { <span class="k">"type"</span>: <span class="s">"http"</span>, <span class="k">"url"</span>: <span class="s">"https://ogsl.eme-gir.org/mcp"</span>  },
+    <span class="k">"eme-gir-ummia"</span>: { <span class="k">"type"</span>: <span class="s">"http"</span>, <span class="k">"url"</span>: <span class="s">"https://um-mi-a.eme-gir.org/mcp"</span> }
+  <span class="k">}</span>
+<span class="k">}</span></pre>
+      <p style="font-size: 0.88rem; color: var(--muted); margin: 0.5rem 0 0;">
+        Once connected, the agent should call <code>start_here()</code> on
+        each server at session start to load the per-server bootstrap
+        prompt (this is a no-op on subsequent calls). For an opinionated
+        end-to-end translation workflow, start with the Ummia teaching
+        server and call <code>get_grammar_reference()</code> to load the
+        dual academic + temple grammar into the agent's working memory.
+      </p>
+    </section>
+
+    <section id="howto">
+      <h2>How to use</h2>
+
+      <p style="font-size: 1rem; line-height: 1.65; color: var(--ink); max-width: 50rem;">
+        Once your client is configured and the five servers are
+        reachable, the MCP handshake establishes a session — but the
+        agent is still naïve about how each server expects to be used.
+        Each server therefore ships a <code>start_here()</code> bootstrap
+        tool whose docstring is prefixed with the literal sentinel
+        <code>⭐ CALL THIS FIRST</code>, so a tools-list scan surfaces
+        it as the entry point. Calling it loads the per-server
+        operating instructions into the agent's context: how to compose
+        with sibling servers, which tools to reach for in what order,
+        what the response shapes mean, and (on Ummia) the teaching
+        persona itself. There are two recommended starting paths
+        depending on what you want to do.
+      </p>
+
+      <div class="paths">
+
+        <div class="path">
+          <p class="path-eyebrow">Path A — Research &amp; translation</p>
+          <h3>📚 Load the four data servers</h3>
+          <p>For English ↔ Sumerian translation, lexical research, lemma
+          attestation, literary corpus queries, and artifact lookups.
+          Begin every session by issuing this single bootstrap prompt to
+          your agent:</p>
+
+          <div class="prompt-box">use the start_here tool of mcp servers eme-gir-epsd2, eme-gir-etcsl, eme-gir-cdli, eme-gir-ogsl</div>
+
+          <p style="font-size: 0.88rem; color: var(--muted); margin: 0 0 0.6rem;">
+            The agent will then have the operating context to answer
+            queries by routing them to the appropriate server. Try:
+          </p>
+          <ul class="followups">
+            <li><em>"What is the Sumerian word for 'temple'? Show me three attested spellings with cuneiform glyphs."</em></li>
+            <li><em>"Find me an Ur III administrative line where <code>lugal</code> appears with the verb <code>du₃</code>."</em></li>
+            <li><em>"Translate <code>lugal-e e₂ mu-na-du₃</code> and parse the grammatical role of each token."</em></li>
+            <li><em>"In the Sumerian King List (ETCSL c.2.1.1), show me the first ten lines bilingually."</em></li>
+            <li><em>"Find every Ur III tablet from Drehem held by the British Museum that has a published photograph."</em></li>
+          </ul>
+        </div>
+
+        <div class="path">
+          <p class="path-eyebrow">Path B — Guided instruction</p>
+          <h3>𒌝𒈪𒀀 Begin a session with Ummia</h3>
+          <p>For learning Sumerian from the ground up — phonology, the
+          verbal chain, the case system, modal prefixes, subordination
+          — taught one-on-one by the master scribe of the temple
+          school in the persona of Ummia. Begin with:</p>
+
+          <div class="prompt-box">use the start_here tool of mcp server eme-gir-ummia</div>
+
+          <p style="font-size: 0.88rem; color: var(--muted); margin: 0 0 0.6rem;">
+            The agent adopts the teaching persona, surfaces the
+            five-lesson Sumerian 101 curriculum, and waits for you to
+            name where you'd like to begin. Try:
+          </p>
+          <ul class="followups">
+            <li><em>"I'm new to Sumerian — start with lesson 101-1."</em></li>
+            <li><em>"Teach me the case system."</em> <span style="opacity: 0.7;">(routes to 101-3)</span></li>
+            <li><em>"I want to compose a temple prayer — what should I know first?"</em></li>
+            <li><em>"Explain the difference between the perfective and the imperfective."</em></li>
+          </ul>
+          <p style="font-size: 0.82rem; color: var(--muted); margin: 0.9rem 0 0; font-style: italic;">
+            For best results, also load the four data servers above —
+            Ummia routes vocabulary lookups, attested examples, and
+            cuneiform rendering to the data tools while teaching.
+          </p>
+        </div>
+
+      </div>
+
+      <p style="font-size: 0.92rem; line-height: 1.65; color: var(--muted); max-width: 50rem; margin-top: 1.5rem;">
+        Both bootstrap tools are idempotent — calling
+        <code>start_here()</code> a second time within a session is a
+        no-op. After the initial handshake, simply request lookups,
+        translations, attestations, or lessons in natural language;
+        the agent's loaded context dictates which server's tools to
+        invoke for any given question.
+      </p>
     </section>
 
     <section>
