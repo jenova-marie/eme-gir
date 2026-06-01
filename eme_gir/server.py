@@ -32,7 +32,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from . import umami_analytics
+from . import __version__, umami_analytics
 from .paths import ROOT
 
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
@@ -232,6 +232,11 @@ def make_server(name: str, instructions: str) -> FastMCP:
     """Create a FastMCP instance with the project's standard auth +
     transport-security configuration applied from env vars.
 
+    The server's version is also stamped from `eme_gir.__version__` so
+    MCP clients see our project version (e.g. '0.1.0') in the
+    initialize handshake's `serverInfo.version` field rather than the
+    default fallback of the `mcp` package's own version.
+
     Args:
         name: MCP server identifier (e.g. 'eme-gir-epsd2'). Surfaced in
               the MCP handshake; pick something descriptive and unique.
@@ -240,12 +245,18 @@ def make_server(name: str, instructions: str) -> FastMCP:
                       server's instructions should describe its OWN
                       tools, not the whole suite.
     """
-    return FastMCP(
+    mcp = FastMCP(
         name=name,
         instructions=instructions,
         **_build_auth_kwargs(),
         **_build_transport_security_kwargs(),
     )
+    # FastMCP doesn't expose `version` in its constructor — it falls
+    # through to the lowlevel MCPServer which defaults to the `mcp`
+    # package's version. Override post-construction so MCP clients see
+    # OUR project version on every server in the suite.
+    mcp._mcp_server.version = __version__
+    return mcp
 
 
 def run_server(
@@ -300,7 +311,7 @@ def run_server(
             )
             sys.exit(1)
 
-    log.info(f"{mcp.name} MCP server starting (cwd={Path.cwd()}, root={ROOT})")
+    log.info(f"{mcp.name} v{__version__} MCP server starting (cwd={Path.cwd()}, root={ROOT})")
     for db_path, _ in (required_dbs or []):
         log.info(f"  {db_path.name}={db_path.stat().st_size // (1024*1024)} MB")
 

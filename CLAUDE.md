@@ -150,6 +150,52 @@ python3 download_corpus.py   2>&1 | tee log/corpus_download.log
 
 The MCP server writes its own log to `log/mcp_server.log` automatically; build scripts only log to disk if you `tee` them. `*.log` is gitignored anywhere.
 
+## Versioning and CHANGELOG upkeep
+
+The project follows [Semantic Versioning](https://semver.org/) with a single source of truth at [`eme_gir/__init__.py`](eme_gir/__init__.py)'s `__version__` string. That value is read by `eme_gir.server.make_server()` and stamped onto every MCP server's `serverInfo.version` field on the `initialize` handshake (verifiable via the `mcp.client.streamable_http` SDK or by checking the startup banner: `eme-gir-epsd2 v0.1.0 MCP server starting ...`).
+
+[`CHANGELOG.md`](CHANGELOG.md) at the repo root tracks user-facing changes in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. **Every commit that ships a user-visible change must update the `## [Unreleased]` section before merging** — this is non-negotiable. Treat the changelog the way a senior maintainer treats a release notes file.
+
+### What counts as "user-visible" (must changelog)
+
+- New MCP tools, new tool parameters, new response fields, new MCP resources
+- Breaking changes to tool signatures or response shapes (Pydantic model edits)
+- New environment variables (`EME_GIR_*`), new ports, new container services
+- Bug fixes that change observable behavior (not internal refactors)
+- New build scripts, new data sources, new SQLite schemas
+- Web app / www landing page features users will notice
+- Auth / transport-security changes
+- Anything documented under "what's new" in a hypothetical release blog post
+
+### What does NOT count (can skip changelog)
+
+- Pure refactors with no behavior change (file moves, internal renames)
+- Test additions
+- Comment / docstring polish
+- CI/CD tooling that doesn't affect what gets shipped
+- Memory-only / log-only adjustments invisible to MCP clients
+
+### How to update the changelog
+
+For ongoing development:
+
+1. Add a bullet to the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Deprecated`, `### Removed`, `### Security`) under the existing `## [Unreleased]` heading.
+2. Phrase the entry in the imperative-or-past-tense form Keep a Changelog uses — e.g. *"Add pagination to translate_english"*, *"Restore ePSD2 footer to normal document flow"*.
+3. Reference the affected MCP tool / file / surface explicitly so a future reader can locate the change without a `git blame`.
+
+When cutting a release:
+
+1. Bump `__version__` in `eme_gir/__init__.py` per semver semantics.
+2. Move every `## [Unreleased]` bullet under a new `## [X.Y.Z] — YYYY-MM-DD` heading directly below `## [Unreleased]` (the empty Unreleased section stays).
+3. Update the bottom-of-file reference links so `[Unreleased]` compares from the new tag and a new `[X.Y.Z]` link points at the GitHub release page.
+4. Commit with a message like `🔖 release: v$VERSION` (no emoji is required by convention, but the `🔖` bookmark glyph reads as "release" at a glance in `git log --oneline`).
+5. Tag the commit: `git tag -a v$VERSION -m "v$VERSION — <one-line summary>"`.
+6. Push both the commit AND the tag: `git push github root && git push github v$VERSION` (or `git push --tags`).
+
+### Pre-1.0 caveat
+
+While `__version__ < 1.0.0`, MINOR bumps (`0.1 → 0.2`) may break MCP tool signatures or response shapes; this is intentional during the iteration phase. PATCH bumps (`0.1.0 → 0.1.1`) are always backwards compatible. Once `1.0.0` ships, semver becomes binding — MAJOR bumps signal breaking changes.
+
 ## The reverse-engineered Oracc URL surface
 
 Source: `js/p4.js` and `js/p4cbd.js`. The server renders **HTML**, not JSON, on these endpoints — but the markup uses stable hooks (`class="cf"` citation form, `class="gw"` guide word/English gloss, `class="sux"` Sumerian, `class="sense"`, `class="wr"` writing, `class="summary-headword"`) and `data-oid` IDs (e.g., `o0023086`). CORS is open (`access-control-allow-origin: *`).
