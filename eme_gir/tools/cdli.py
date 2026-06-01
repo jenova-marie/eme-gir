@@ -166,6 +166,7 @@ def find_artifacts(
     language: str | None = None,
     subgenre: str | None = None,
     limit: int = 20,
+    offset: int = 0,
 ) -> FindArtifactsResponse | ErrorResponse:
     """Filter the CDLI catalogue by archaeological / curatorial criteria.
 
@@ -213,12 +214,17 @@ def find_artifacts(
                   Pair with genre='Literary' to narrow to the relevant
                   partition. Substring-match is case-insensitive.
         limit: max artifacts to return (default 20, cap 200).
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
 
     Each result carries the same image / page URLs as lookup_artifact,
     so the agent can offer "see the actual tablet" links for any item
     in the list without a follow-up call.
     """
     limit = max(1, min(200, int(limit)))
+    offset = max(0, int(offset))
 
     con = connect()
     if con is None:
@@ -257,8 +263,8 @@ def find_artifacts(
         ).fetchone()[0]
         rows = con.execute(
             f"SELECT * FROM artifacts {sql_where} "
-            "ORDER BY p_id LIMIT ?",
-            (*params, limit),
+            "ORDER BY p_id LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
     finally:
         con.close()
@@ -266,6 +272,8 @@ def find_artifacts(
     return FindArtifactsResponse(
         filter_spec=filter_spec,
         total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=[_build_cdli_artifact(r) for r in rows],
         attribution=CDLI_ATTRIBUTION,
     )

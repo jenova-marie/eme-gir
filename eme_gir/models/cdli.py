@@ -95,5 +95,10 @@ class FindArtifactsResponse(_Permissive):
 
     filter_spec: dict = Field(..., description="Echo of the filter the caller supplied.")
     total_matches: int = Field(..., description="Total artifacts matching the filter (may exceed `len(results)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     results: list[CDLIArtifact]
     attribution: str = Field(..., description="CC0 catalogue attribution for CDLI.")

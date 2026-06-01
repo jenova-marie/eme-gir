@@ -202,7 +202,7 @@ from eme_gir.sumerian_morphology import (
 
 
 @log_call
-def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
+def translate_english(query: str, limit: int = 10, offset: int = 0) -> TranslateEnglishResponse:
     """Find Sumerian lemmas that mean a given English word or phrase.
 
     Returns ranked candidates with the matching SENSE inline (not just the
@@ -214,6 +214,11 @@ def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
     high sense_pct (e.g. 99%) means "this is essentially what the word means";
     a low sense_pct (e.g. 0%) means "tangential metaphorical extension only,
     probably not your translation".
+
+    Pagination: pass `offset` to walk beyond the first page. When
+    `next_offset` in the response is non-None, more results exist; pass
+    that value as `offset` on the follow-up call. When None, the result
+    set is exhausted.
 
     Returns:
         {
@@ -229,7 +234,9 @@ def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
             },
             ...
           ],
-          "total_matches": int,
+          "total_matches": int,    # total entries matching, across all pages
+          "offset": int,           # echo of the request offset
+          "next_offset": int|None, # `offset + limit` if more remain, else None
         }
 
     Search hits BOTH the entry guide-word and the per-sense meaning, so e.g.
@@ -237,6 +244,7 @@ def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
     (where it's a 0%-ipct fringe sense — visible but ranked low).
     """
     limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
     needle = f"%{query.casefold().strip()}%"
 
     con = _connect()
@@ -273,9 +281,9 @@ def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
             FROM best b
             JOIN entries e ON e.id = b.entry_id
             ORDER BY b.sense_count DESC NULLS LAST, e.icount DESC NULLS LAST
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (needle, needle, needle, limit),
+            (needle, needle, needle, limit, offset),
         ).fetchall()
 
         total = con.execute(
@@ -295,6 +303,8 @@ def translate_english(query: str, limit: int = 10) -> TranslateEnglishResponse:
         attribution=EPSD2_ATTRIBUTION,
         query=query,
         total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=[_entry_payload(con, r) for r in rows],
     )
 
@@ -1407,7 +1417,7 @@ def _parse_slot(slot: str) -> dict[str, Any] | None:
 
 
 @log_call
-def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatternResponse | ErrorResponse:
+def find_phrase_pattern(pattern: list[str], limit: int = 20, offset: int = 0) -> FindPhrasePatternResponse | ErrorResponse:
     """Retrieve corpus-attested n-grams that match a structural template.
 
     Use this to ground a candidate phrasing in real attestation. Given a
@@ -1460,6 +1470,10 @@ def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatter
     Args:
         pattern: list of 2-4 slot specifiers (see grammar above).
         limit: max number of attested n-grams to return (default 20).
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
     """
     if not isinstance(pattern, list) or not pattern:
         return ErrorResponse(error="pattern must be a non-empty list of slot specifiers")
@@ -1471,6 +1485,7 @@ def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatter
     pattern = [p.strip() for p in pattern]
     n = len(pattern)
     limit = max(1, min(200, int(limit)))
+    offset = max(0, int(offset))
 
     parsed_slots: list[dict[str, Any]] = []
     for raw in pattern:
@@ -1486,7 +1501,7 @@ def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatter
 
     # Routing: prefer inflected (v2/v3) index when available.
     if INFLECTED_COLLOCATIONS_DB.exists():
-        return _find_phrase_pattern_inflected(pattern, parsed_slots, n, limit)
+        return _find_phrase_pattern_inflected(pattern, parsed_slots, n, limit, offset)
 
     # Inflected index missing — fall back to legacy cf-only index, but
     # only if no slot uses the new gw/case syntax.
@@ -1504,7 +1519,7 @@ def find_phrase_pattern(pattern: list[str], limit: int = 20) -> FindPhrasePatter
             hint="Run `python3 build_collocations.py` (cf-only, ~5 min) OR `python3 build_inflected_collocations.py` (case+sense aware, ~30 min).",
         )
 
-    return _find_phrase_pattern_legacy(pattern, parsed_slots, n, limit)
+    return _find_phrase_pattern_legacy(pattern, parsed_slots, n, limit, offset)
 
 
 def _find_phrase_pattern_inflected(
@@ -1512,6 +1527,7 @@ def _find_phrase_pattern_inflected(
     parsed_slots: list[dict[str, Any]],
     n: int,
     limit: int,
+    offset: int,
 ) -> FindPhrasePatternResponse:
     """Query the inflected_collocations.sqlite index (v2/v3 path).
 
@@ -1579,9 +1595,9 @@ def _find_phrase_pattern_inflected(
             FROM inflected_ngrams
             WHERE {where_clause}
             ORDER BY count DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            params + [limit],
+            params + [limit, offset],
         ).fetchall()
 
         results: list[dict[str, Any]] = []
@@ -1608,6 +1624,8 @@ def _find_phrase_pattern_inflected(
         pattern=pattern,
         n=n,
         total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=results,
     )
 
@@ -1617,6 +1635,7 @@ def _find_phrase_pattern_legacy(
     parsed_slots: list[dict[str, Any]],
     n: int,
     limit: int,
+    offset: int,
 ) -> FindPhrasePatternResponse:
     """Query the legacy cf-only collocations.sqlite index (v1 fallback).
 
@@ -1662,9 +1681,9 @@ def _find_phrase_pattern_legacy(
             FROM collocations c
             WHERE {where_clause}
             ORDER BY c.count DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            params + [limit],
+            params + [limit, offset],
         ).fetchall()
 
         # Annotate cfs with POS+gw from the highest-icount entry per cf
@@ -1710,6 +1729,8 @@ def _find_phrase_pattern_legacy(
         pattern=pattern,
         n=n,
         total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=results,
     )
 

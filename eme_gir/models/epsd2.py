@@ -301,6 +301,11 @@ class TranslateEnglishResponse(_Permissive):
 
     query: str
     total_matches: int = Field(..., description="Total entries that matched (may exceed `len(results)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     results: list[LemmaCandidate]
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
@@ -423,6 +428,11 @@ class FindPhrasePatternResponse(_Permissive):
     n: int = Field(..., description="Length of the pattern: 2, 3, or 4.")
     total_matches: int = Field(
         ..., description="Total n-grams in the index that matched the pattern (may exceed len(results) if limit clipped)."
+    )
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
     )
     results: list[PhrasePatternHit] = Field(
         ..., description="Attested n-grams matching the pattern, ranked by corpus frequency."
