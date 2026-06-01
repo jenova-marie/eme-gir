@@ -58,6 +58,12 @@ class ETCSLSearchEnglishResponse(_Permissive):
     """Response shape for etcsl_search_english."""
 
     query: str
+    total_matches: int = Field(0, description="Total paragraphs matching the FTS5 query (may exceed `len(results)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     results: list[ETCSLEnglishHit]
     attribution: str = Field(
         ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
@@ -68,6 +74,12 @@ class ETCSLLinesWithLemmaResponse(_Permissive):
     """Response shape for etcsl_lines_with_lemma."""
 
     lemma: str
+    total_matches: int = Field(0, description="Total literary lines containing this lemma (may exceed `len(results)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     results: list[ETCSLLemmaHit]
     attribution: str = Field(
         ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
@@ -100,6 +112,12 @@ class ETCSLSearchSumerianResponse(_Permissive):
     """Response shape for etcsl_search_sumerian."""
 
     query: str
+    total_matches: int = Field(0, description="Total Sumerian lines matching the FTS5 query (may exceed `len(results)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     results: list[ETCSLLemmaHit]
     attribution: str = Field(
         ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."

@@ -379,6 +379,12 @@ class AnalyzeFormResponse(_Permissive):
     """Response shape for analyze_form."""
 
     spelling: str
+    total_matches: int = Field(0, description="Total decompositions matching (may exceed `len(matches)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     matches: list[AnalyzeMatch] = Field(
         ..., description="Candidate decompositions, ranked by attestation count."
     )
@@ -400,6 +406,12 @@ class FindCollocationsResponse(_Permissive):
 
     word: str = Field(..., description="The word looked up (after any cf-resolution).")
     word_unigram_count: int = Field(..., description="Unigram count for `word` in the corpus.")
+    total_matches: int = Field(0, description="Total collocations matching (may exceed `len(results)` if `limit` clipped).")
+    offset: int = Field(0, description="Echo of the request `offset` so the caller knows its place in the result set.")
+    next_offset: int | None = Field(
+        None,
+        description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
+    )
     results: list[CollocationHit]
     resolved_from: str | None = Field(
         None, description="If the input was a spelling resolved to a citation form, the original input."

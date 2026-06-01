@@ -66,7 +66,7 @@ def _etcsl_lines_for_paragraph(con: sqlite3.Connection, text_id: str, para_id: s
 
 
 @log_call
-def etcsl_search_english(query: str, limit: int = 10) -> ETCSLSearchEnglishResponse:
+def etcsl_search_english(query: str, limit: int = 10, offset: int = 0) -> ETCSLSearchEnglishResponse:
     """Full-text search across English translations of Sumerian literary
     texts. Returns bilingual matches: each hit includes the English
     paragraph plus the Sumerian lines that produced it.
@@ -85,10 +85,19 @@ def etcsl_search_english(query: str, limit: int = 10) -> ETCSLSearchEnglishRespo
     Args:
         query: FTS5 query string (English).
         limit: max matches (default 10, cap 50).
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
     """
     limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
     con = _etcsl_connect()
     try:
+        total = con.execute(
+            "SELECT COUNT(*) FROM paragraphs_fts WHERE paragraphs_fts MATCH ?",
+            (query,),
+        ).fetchone()[0]
         rows = con.execute(
             """
             SELECT t.text_id, t.title, p.para_id, p.line_range, p.translation
@@ -97,9 +106,9 @@ def etcsl_search_english(query: str, limit: int = 10) -> ETCSLSearchEnglishRespo
             JOIN texts t ON t.text_id = p.text_id
             WHERE paragraphs_fts MATCH ?
             ORDER BY rank
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (query, limit),
+            (query, limit, offset),
         ).fetchall()
         results = []
         for r in rows:
@@ -114,13 +123,16 @@ def etcsl_search_english(query: str, limit: int = 10) -> ETCSLSearchEnglishRespo
         con.close()
     return ETCSLSearchEnglishResponse(
         query=query,
+        total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=results,
         attribution=ETCSL_ATTRIBUTION,
     )
 
 
 @log_call
-def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaResponse:
+def etcsl_lines_with_lemma(lemma: str, limit: int = 10, offset: int = 0) -> ETCSLLinesWithLemmaResponse:
     """Find Sumerian literary lines containing the given lemma (cf), with
     each line's English translation paragraph alongside.
 
@@ -142,12 +154,21 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaRe
         lemma: the citation form (cf) to search for, e.g. 'lugal',
                'inana', 'ŋeš' (use ŋ not 'j' or 'g'). Case-insensitive.
         limit: max lines to return (default 10, cap 50).
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
     """
     limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
     con = _etcsl_connect()
     try:
         # The words index is case-sensitive on lemma, but Eme-gir lemmas are
         # always lowercase (except proper nouns). Try lower then capitalized.
+        total = con.execute(
+            "SELECT COUNT(*) FROM words w JOIN lines l USING (text_id, line_id) WHERE w.lemma = ?",
+            (lemma,),
+        ).fetchone()[0]
         rows = con.execute(
             """
             SELECT l.text_id, t.title, l.line_label, l.line_id, l.ord,
@@ -157,9 +178,9 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaRe
             JOIN texts t ON t.text_id = l.text_id
             WHERE w.lemma = ?
             ORDER BY l.text_id, l.ord
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (lemma, limit),
+            (lemma, limit, offset),
         ).fetchall()
 
         results = []
@@ -183,6 +204,9 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10) -> ETCSLLinesWithLemmaRe
         con.close()
     return ETCSLLinesWithLemmaResponse(
         lemma=lemma,
+        total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=results,
         attribution=ETCSL_ATTRIBUTION,
     )
@@ -275,7 +299,7 @@ def etcsl_lookup_text(text_id: str, start: int = 1, line_limit: int = 50) -> ETC
 
 
 @log_call
-def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianResponse:
+def etcsl_search_sumerian(query: str, limit: int = 10, offset: int = 0) -> ETCSLSearchSumerianResponse:
     """Full-text search across Sumerian transliterations of literary texts.
     Returns each matching line with its English translation paragraph.
 
@@ -289,10 +313,19 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianRes
     Args:
         query: FTS5 query string (Sumerian transliteration).
         limit: max matches (default 10, cap 50).
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
     """
     limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
     con = _etcsl_connect()
     try:
+        total = con.execute(
+            "SELECT COUNT(*) FROM lines_fts WHERE lines_fts MATCH ?",
+            (query,),
+        ).fetchone()[0]
         rows = con.execute(
             """
             SELECT l.text_id, t.title, l.line_label, l.transliteration,
@@ -302,9 +335,9 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianRes
             JOIN texts t ON t.text_id = l.text_id
             WHERE lines_fts MATCH ?
             ORDER BY rank
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (query, limit),
+            (query, limit, offset),
         ).fetchall()
         results = []
         for r in rows:
@@ -327,6 +360,9 @@ def etcsl_search_sumerian(query: str, limit: int = 10) -> ETCSLSearchSumerianRes
         con.close()
     return ETCSLSearchSumerianResponse(
         query=query,
+        total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=results,
         attribution=ETCSL_ATTRIBUTION,
     )

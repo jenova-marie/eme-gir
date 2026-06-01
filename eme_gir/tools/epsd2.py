@@ -798,7 +798,7 @@ def get_inflections(
 
 
 @log_call
-def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
+def analyze_form(spelling: str, limit: int = 20, offset: int = 0) -> AnalyzeFormResponse:
     """Decompose an attested Sumerian spelling into its lemma and morphology.
 
     Searches across forms, form-sans (sandhi-resolved spellings), and bases
@@ -817,8 +817,13 @@ def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
         spelling: a transliterated Sumerian word, e.g. 'lugal-e', 'mu-na-du₃',
                   '{ŋeš}a₂'. Case-insensitive (Unicode-aware).
         limit: max matches to return (default 20, cap 50)
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
     """
     limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
     needle = spelling.casefold().strip()
 
     con = _connect()
@@ -829,6 +834,17 @@ def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
         # scan of all 248K morphology rows (~340-550 ms per call); the
         # n_cf column populated by app.ensure_casefold_columns() lets
         # idx_morphology_kind_n_cf do the work in a few ms.
+        total = con.execute(
+            """
+            SELECT (
+                (SELECT COUNT(*) FROM forms WHERE n_cf = ?)
+              + (SELECT COUNT(*) FROM morphology
+                 WHERE kind IN ('base', 'form-sans', 'morph')
+                   AND n_cf = ?)
+            )
+            """,
+            (needle, needle),
+        ).fetchone()[0]
         rows = con.execute(
             """
             SELECT 'forms' AS source, e.id AS oid, e.cf, e.gw, e.pos,
@@ -842,15 +858,18 @@ def analyze_form(spelling: str, limit: int = 20) -> AnalyzeFormResponse:
             WHERE m.kind IN ('base', 'form-sans', 'morph')
               AND m.n_cf = ?
             ORDER BY count DESC NULLS LAST
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (needle, needle, limit),
+            (needle, needle, limit, offset),
         ).fetchall()
     finally:
         con.close()
     return AnalyzeFormResponse(
         attribution=EPSD2_ATTRIBUTION,
         spelling=spelling,
+        total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         matches=[{
             "matched_in": r["source"],
             "oid": r["oid"],
@@ -1241,7 +1260,7 @@ def parse_phrase(transliteration: str) -> ParsePhraseResponse:
 
 
 @log_call
-def find_collocations(word: str, length: int | None = None, limit: int = 20) -> FindCollocationsResponse | ErrorResponse:
+def find_collocations(word: str, length: int | None = None, limit: int = 20, offset: int = 0) -> FindCollocationsResponse | ErrorResponse:
     """Find multi-word Sumerian collocations (idiomatic phrases) containing
     a given lemma. Mined from every corpusjson text in our local Oracc zips.
 
@@ -1256,24 +1275,32 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
               Searched against ALL positions in 2/3/4-grams.
         length: optional filter by n-gram length: 2, 3, or 4. None = all.
         limit: max results (default 20, cap 50)
+        offset: skip this many leading rows from the ranked result set
+                (default 0). To walk subsequent pages, pass the
+                `next_offset` value from the previous response. When
+                `next_offset` is None the result set is exhausted.
     """
     if not COLLOCATIONS_DB.exists():
         return ErrorResponse(
             error="collocations.sqlite not built; run `python3 build_collocations.py` first",
         )
     limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
 
-    def _query(con: sqlite3.Connection, term: str) -> tuple[list[dict], int]:
+    def _query(con: sqlite3.Connection, term: str) -> tuple[list[dict], int, int]:
         where = ["(cf1=? OR cf2=? OR cf3=? OR cf4=?)"]
         params: list[Any] = [term, term, term, term]
         if length in (2, 3, 4):
             where.append("n=?")
             params.append(length)
         sql_where = "WHERE " + " AND ".join(where)
+        total = con.execute(
+            f"SELECT COUNT(*) FROM collocations {sql_where}", params
+        ).fetchone()[0]
         rows = con.execute(
             f"SELECT n, ngram, count FROM collocations {sql_where} "
-            "ORDER BY count DESC LIMIT ?",
-            (*params, limit),
+            "ORDER BY count DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
         ucount = con.execute(
             "SELECT count FROM unigrams WHERE cf=?", (term,)
@@ -1281,13 +1308,14 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
         return (
             [{"n": r["n"], "ngram": r["ngram"], "count": r["count"]} for r in rows],
             ucount["count"] if ucount else 0,
+            total,
         )
 
     con = sqlite3.connect(COLLOCATIONS_DB)
     con.row_factory = sqlite3.Row
     resolved_from: str | None = None
     try:
-        results, unigram = _query(con, word)
+        results, unigram, total = _query(con, word)
         if unigram == 0 and not results:
             # The collocations index is keyed by citation form (cf), not by
             # spelling. The agent likely passed an inflected spelling like
@@ -1314,7 +1342,7 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
             if cf_row and cf_row["cf"] != word:
                 resolved_from = word
                 word = cf_row["cf"]
-                results, unigram = _query(con, word)
+                results, unigram, total = _query(con, word)
     finally:
         con.close()
 
@@ -1329,6 +1357,9 @@ def find_collocations(word: str, length: int | None = None, limit: int = 20) -> 
         attribution=EPSD2_ATTRIBUTION,
         word=word,
         word_unigram_count=unigram,
+        total_matches=total,
+        offset=offset,
+        next_offset=(offset + limit) if (offset + limit) < total else None,
         results=results,
         resolved_from=resolved_from,
         note=note,
