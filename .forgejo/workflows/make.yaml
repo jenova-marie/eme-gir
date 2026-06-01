@@ -1,12 +1,15 @@
 name: Build & Push Docker Image to AWS ECR
 
-# Triggers on every push (any branch) and manually via the Forgejo UI.
+# Triggers on push to the `prod` branch only, and manually via the
+# Forgejo UI (workflow_dispatch can still be invoked on any ref).
 # Tags pushed:
-#   - <branch-name>      always (e.g. main, dev, staging, prod)
+#   - <branch-name>      always (in practice, `prod` for push events)
 #   - latest             only when pushing to the default branch
 #   - sha-<short-sha>    always — pin a specific commit's image
 on:
   push:
+    branches:
+      - prod
   workflow_dispatch:
 
 permissions:
