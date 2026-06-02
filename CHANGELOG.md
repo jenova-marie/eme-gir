@@ -35,6 +35,26 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Documentation
 
+- **Refocused `README.md` on the MCP-server framing** as the project's
+  primary surface, with the local ePSD2 web browser repositioned as a
+  complementary 1:1 verification feature against the canonical
+  `oracc.museum.upenn.edu/epsd2` rather than as a co-equal "second
+  project". The opening paragraph now leads with "A Sumerian-language
+  MCP tool server for LLM agents" and names the five servers; the
+  "Two projects in one repository" framing is replaced by "Primary
+  surface — five MCP servers" + "Additional feature — the ePSD2
+  verification browser". Updated the stale `eme-gir-translator` (port
+  5056, deprecated) server-table row to `eme-gir-ummia` (port 5058,
+  the current teaching surface persona). Reordered the "What this
+  enables" subsections to put LLM applications first ahead of
+  Sumerologists. Redrew the architecture diagram so the MCP-servers
+  box leads and the verification browser is the secondary box; the
+  Ummia row replaces the old `eme-gir-trans :5056` row. Renamed the
+  remaining `/eme-gir/sux` URL path to `/epsd2/sux` to match the
+  current Flask route, and changed every "the web app" / "Flask web
+  app" reference in the body copy to "the verification browser" so
+  the framing carries through.
+
 - **Compacted `CLAUDE.md` from 605 lines to ~210 lines** by extracting
   the deep technical reference material to a new
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). CLAUDE.md now stays

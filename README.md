@@ -1,22 +1,42 @@
-# Jenova's Local · Eme-gir
+# Eme-gir 𒅴𒂠
 
-A complete offline mirror, web browser, and AI-agent interface for the **electronic Pennsylvania Sumerian Dictionary** and the larger **Oracc cuneiform corpus** — the canonical scholarly resources for the world's oldest written language.
+**A Sumerian-language MCP tool server for LLM agents** — five Model
+Context Protocol servers exposing the **electronic Pennsylvania
+Sumerian Dictionary (ePSD2)**, the **Oracc cuneiform corpus**, the
+Oxford **Electronic Text Corpus of Sumerian Literature (ETCSL)**, and
+the **Cuneiform Digital Library Initiative (CDLI)** artifact catalogue
+to language models over a uniform JSON-RPC interface. Built around an
+**attestation-first** contract: every tool returns real forms from real
+tablets with cited sources, so the agent's job is to *choose* among
+attested options, not to confabulate plausible-looking morphology for a
+sparsely-trained ergative-absolutive isolate.
 
-If you're a Sumerologist who wants to query 35 million attestations without touching the network; a developer who wants their LLM agent to translate English into actual Sumerian rather than plausible-looking nonsense; or a digital humanist looking to bring four-thousand-year-old clay tablets into a modern indexed pipeline — this is for you.
+The repository also ships a **local Flask web browser over the ePSD2
+glossary** that recreates the canonical `oracc.museum.upenn.edu/epsd2`
+pages byte-for-byte. It is provided strictly as a 1:1 *verification
+surface* against the upstream — useful for diffing local parses against
+the canonical site, browsing offline, and grounding the MCP tools'
+outputs in a human-readable rendering. It is not a replacement for
+Oracc.
+
+If you're a developer who wants their LLM agent to translate English
+into actual Sumerian rather than plausible-looking nonsense; a
+Sumerologist who wants to query 35 million attestations without
+touching the network; or a digital humanist looking to bring
+four-thousand-year-old clay tablets into a modern indexed pipeline —
+this is for you.
 
 ---
 
 ## What this is
 
-The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (Eme-gir), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world. Alongside Oracc, the Oxford **Electronic Text Corpus of Sumerian Literature (ETCSL)** — 394 hand-lemmatized literary compositions (hymns, myths, royal hymns, proverbs, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems) shipped with English translations — supplies the bilingual half of the Sumerian textual record that Oracc itself doesn't yet publish in machine-readable form.
+The University of Pennsylvania's **electronic Pennsylvania Sumerian Dictionary**, second edition (Eme-gir), is the standard modern lexical resource for Sumerian. It was published in 2017 by an international team led by Steve Tinney, and it integrates with the **Open Richly Annotated Cuneiform Corpus (Oracc)** — a federated archive of roughly 138,000 transliterated cuneiform texts from museum collections around the world. Alongside Oracc, the Oxford **Electronic Text Corpus of Sumerian Literature (ETCSL)** — 394 hand-lemmatized literary compositions (hymns, myths, royal hymns, proverbs, the Sumerian King List, Inana's Descent, Gilgameš and the Underworld, the Šulgi praise poems) shipped with English translations — supplies the bilingual half of the Sumerian textual record that Oracc itself doesn't yet publish in machine-readable form. The **CDLI** artifact catalogue (353K cuneiform-bearing objects) supplies the museum-side metadata.
 
-Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/eme-gir` serves richly hyperlinked HTML pages, and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures, and is excellent for almost nothing in particular until you build infrastructure on top of it. ETCSL is similarly stranded: its 4.9 MB TEI XML bundle from the Oxford Text Archive is rigorously lemmatized and translated, but the format is academic-archival, not query-ready. *This project is the infrastructure that turns both into queryable, performant, agent-accessible Sumerian.*
+Oracc publishes its data in two ways. The **live web interface** at `oracc.museum.upenn.edu/epsd2` serves richly hyperlinked HTML pages and is excellent for browsing one entry at a time. The **bulk JSON archive** at `/json/` (208 zipped per-project archives, ~3.1 GB total) mirrors the same content as machine-readable structures and is excellent for almost nothing in particular until you build infrastructure on top of it. ETCSL is similarly stranded: its 4.9 MB TEI XML bundle from the Oxford Text Archive is rigorously lemmatized and translated, but the format is academic-archival, not query-ready. *This project is the infrastructure that turns all of it into queryable, performant, agent-accessible Sumerian.*
 
-Jenova's Local · Eme-gir is **two projects in one repository**, sharing the same underlying SQLite layer, cuneiform renderer, and attestation resolver:
+### Primary surface — five MCP servers for LLM-agent queries
 
-### 1. Five MCP servers backed by Oracc + ETCSL + CDLI, optimized for LLM-agent queries
-
-The primary surface of this project. Nineteen specialized translation + catalogue tools and two knowledge resources, organized into **five MCP servers along clean data-source boundaries** so an LLM client can choose its exposure: connect to all five for a full agent workflow, or just the raw-data servers (ePSD2 + ETCSL + CDLI + OGSL) and let the model discover the translation pattern itself.
+The main thing this project is. **Nineteen specialized translation + catalogue tools plus a teaching surface and two knowledge resources**, organized into **five MCP servers along clean data-source boundaries** so an LLM client can choose its exposure: connect to all five for the full agent workflow, or just the raw-data servers (ePSD2 + ETCSL + CDLI + OGSL) and let the model discover the translation pattern itself.
 
 | Server | Tools | Default HTTP port |
 |---|---:|---:|
@@ -24,17 +44,17 @@ The primary surface of this project. Nineteen specialized translation + catalogu
 | **eme-gir-etcsl** | 4 ETCSL literary corpus tools — every result bilingual | 5053 |
 | **eme-gir-cdli** | 2 CDLI artifact catalogue tools (provenience, museum, image links) | 5054 |
 | **eme-gir-ogsl** | 2 cuneiform sign rendering tools (cuneify, lookup_sign) — useful for Akkadian/Hittite too | 5055 |
-| **eme-gir-translator** | 2 bootstrap wrapper tools + the agent prompt and dual-grammar resources | 5056 |
-| `mcp_server.py` (legacy all-in-one) | All 21 tools + 2 resources, for backwards compat | 5051 |
+| **eme-gir-ummia** | Ummia 𒌝𒈪𒀀 (master teacher) — Sumerian 101 five-lesson curriculum + dual-register grammar reference | 5058 |
+| `mcp_server.py` (legacy all-in-one) | All 19 data tools + 2 resources, for backwards compat | 5051 |
 
 All of them share the same `eme_gir/` Python package — same SQLite indexes, same OGSL sign renderer, same attestation resolver, same auth wiring — but each is an independent process you can run + scale + secure separately. Every operation is sub-50-millisecond, a local SQLite query, never a network round-trip. The servers are designed for English ↔ Sumerian translation grounded in **attestation**: instead of letting LLMs hallucinate plausible-sounding morphology, every tool returns *real* forms with cited tablet sources, and every cited tablet links straight to its CDLI photograph. ETCSL coverage means every literary lookup comes back **bilingual** — invaluable for grounding translations in canonical Sumerian literary style. The [MCP toolbox](#the-mcp-toolbox) section below walks through each tool and resource in detail.
 
-### 2. A local Oracc front-end — for portability AND for 1:1 comparison with the canonical site
+### Additional feature — the ePSD2 verification browser
 
-A small Flask web app that recreates the look and feel of `oracc.museum.upenn.edu/eme-gir/sux` page-by-page, byte-for-byte where possible. The motivation is twofold:
+A small Flask web app that recreates the look and feel of `oracc.museum.upenn.edu/epsd2` page-by-page, byte-for-byte where possible. It is **strictly a verification surface**, not a replacement for the canonical site — cite Oracc, not this mirror. Two motivations:
 
-- **Local portability.** The full corpus and indexes (~6.5 GB combined) sit on your laptop. Run the web app offline — on a plane, on a dig site, in a library carrel — and get the same browsing experience you'd get from the live site, with extras the live site doesn't offer: case-insensitive Unicode-aware search across six fields, attestation lines shown in their original sentence context with the target word highlighted, and cuneiform glyphs alongside every spelling.
 - **1:1 comparison with the canonical site.** Because the local pages render from the same source data Oracc uses, you can diff a local entry against the canonical Oracc entry to validate the parsing pipeline and catch corpus drift. Page 1 of the glossary matches byte-for-byte; pages 2+ have occasional one-off reorderings due to a sub-sort tiebreaker we haven't fully reverse-engineered.
+- **Human-readable grounding for MCP outputs.** When the MCP servers return a lemma `oid` or a citation, the verification browser is where you (or the user behind the agent) go to *see* the dictionary entry in its full hyperlinked, cuneiform-rendered context — the same context an Oracc reader would see, served offline, with extras the live site doesn't offer (case-insensitive Unicode-aware search, attestation lines shown in their original sentence context with the target word highlighted, cuneiform glyphs alongside every spelling).
 
 ### Underneath both: the data pipeline
 
@@ -46,29 +66,29 @@ To make those two surfaces possible, this project also:
 - **Resolves every attestation reference back to the actual line on the actual clay tablet**, by lazy-loading the right per-text JSON file from inside its project zip and walking the document tree. About 92% of references resolve successfully from the local data; the remainder cite projects we haven't downloaded.
 - **Renders Sumerian cuneiform script as Unicode** for any transliteration string, using the Oracc Global Sign List (OGSL). Roughly 93% of glossary spellings render with full glyph coverage; the rest are flagged with `□` placeholders so you always know what's missing.
 
-The whole thing runs on a laptop. The full corpus is ~3.1 GB and the indexes another ~3.5 GB; given those, every operation in the web app and every MCP tool call is a local SQLite query, typically under fifty milliseconds.
+The whole thing runs on a laptop. The full corpus is ~3.1 GB and the indexes another ~3.5 GB; given those, every MCP tool call and every verification-browser page render is a local SQLite query, typically under fifty milliseconds.
 
 ## What this enables
 
-### For Sumerologists and Assyriologists
-
-A laptop-friendly version of the entire Eme-gir + Oracc dataset plus the ETCSL literary corpus, all responding in milliseconds, working completely offline, and giving you direct SQL access to every cross-referenceable structure — period attestations, compound formations, sign frequencies, collocational n-grams, bilingual line-by-line literary readings. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"*, or *"show me every literary line where `inana` is the subject of a marû verb"* — become fifty-millisecond queries against denormalized SQLite. And because the local pages render from the same source data Oracc uses, you can diff an entry against the canonical oracc.museum.upenn.edu page when you need to verify a parse.
-
 ### For LLM applications
 
-A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP server's design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
+A serious bridge between modern AI agents and an ancient language with extremely sparse training data. Frontier LLMs have read enough Sumerian to half-remember the basics, but Sumerian is an agglutinative, ergative-absolutive isolate with idiosyncratic morphology that generative models routinely confabulate when asked to produce it. The MCP servers' design philosophy is **attestation-first**: instead of letting the agent synthesize plausible-looking morphology, every tool returns *real* forms attested in the corpus, ranked by frequency, with cited tablet sources. The agent's job is to choose; the corpus's job is to constrain.
 
 The "[The MCP toolbox](#the-mcp-toolbox)" section below walks through each of the nineteen tools and the two knowledge resources — what they do, when an agent reaches for them, and why they exist.
 
+### For Sumerologists and Assyriologists
+
+A laptop-friendly version of the entire Eme-gir + Oracc dataset plus the ETCSL literary corpus, all responding in milliseconds, working completely offline, and giving you direct SQL access to every cross-referenceable structure — period attestations, compound formations, sign frequencies, collocational n-grams, bilingual line-by-line literary readings. Things the live web interface can't easily answer — *"give me every Ur III text where `lugal` appears within three words of the verb `du₃`"*, or *"show me every literary line where `inana` is the subject of a marû verb"* — become fifty-millisecond queries against denormalized SQLite. And because the verification browser's pages render from the same source data Oracc uses, you can diff a local entry against the canonical oracc.museum.upenn.edu page when you need to verify a parse.
+
 ### For digital humanists
 
-A reference implementation of how to take a mature scholarly digital corpus and make it consumable by modern tooling — both human (the web app) and machine (the MCP server). The data model, schema, parsing strategies, and MCP tool design are all open and documented; the licensing means no friction for derivative work.
+A reference implementation of how to take a mature scholarly digital corpus and make it consumable by modern tooling — both machine (the five MCP servers) and human (the verification browser). The data model, schema, parsing strategies, and MCP tool design are all open and documented; the licensing means no friction for derivative work.
 
 ## The MCP toolbox
 
 The toolbox is organized around the workflow of a working translator: bootstrap the language, find candidate words, ground them in real attestations, decompose unfamiliar forms, link to museum-hosted photographs of the cited tablets, render the result. Every tool returns structured data with **frequency statistics** so the agent can reason about what's *typical* in the corpus versus what's *fringe* — a critical signal when the same Sumerian word can plausibly mean three different things and the agent has to pick one.
 
-Tools are grouped below by **data source**, which also matches the five-server split: ePSD2 dictionary tools, ETCSL literary tools, CDLI artifact tools, OGSL sign tools, and the two bootstrap resources/wrappers. An agent that connects to `eme-gir-epsd2 + eme-gir-etcsl + eme-gir-cdli + eme-gir-ogsl` (skipping the Translator server) gets the raw data surfaces with no opinionated workflow guidance attached; an agent that connects to `eme-gir-translator` as well receives the agent prompt + grammar references as bootstrap resources. The legacy all-in-one `mcp_server.py` exposes everything in one process for backwards compatibility.
+Tools are grouped below by **data source**, which also matches the five-server split: ePSD2 dictionary tools, ETCSL literary tools, CDLI artifact tools, OGSL sign tools, and the Ummia teaching surface. An agent that connects to `eme-gir-epsd2 + eme-gir-etcsl + eme-gir-cdli + eme-gir-ogsl` gets the raw data surfaces with no opinionated workflow guidance attached; an agent that also connects to `eme-gir-ummia` receives the master-teacher persona, the Sumerian 101 five-lesson curriculum, and the dual-register grammar reference (Jagersma academic + Meadow temple companion) as bootstrap material. The legacy all-in-one `mcp_server.py` exposes everything in one process for backwards compatibility.
 
 ### Bootstrap: the knowledge resources
 
@@ -153,22 +173,23 @@ For the recommended end-to-end agent workflow that stitches these tools together
               ↑                            ↑                           ↑
               │                            │                           │
   ┌───────────┴───────────┐   ┌────────────┴──────────┐   ┌────────────┴───────────┐
-  │  Flask web app        │   │  Five MCP servers     │   │  Legacy mcp_server.py   │
-  │  port 5050            │   │  (per-domain)         │   │  port 5051 — all 21    │
-  │  • /eme-gir/sux       │   │                       │   │  tools in one process  │
-  │  • entry pages        │   │  eme-gir-epsd2 :5052  │   │  (backwards compat)    │
-  │  • cuneiform render   │   │  eme-gir-etcsl :5053  │   └────────────────────────┘
-  │  • period filtering   │   │  eme-gir-cdli  :5054  │
-  └───────────────────────┘   │  eme-gir-ogsl :5055  │
-                              │  eme-gir-trans :5056  │
-                              │                       │
-                              │  stdio + HTTP, opt-in │
-                              │  Auth0 OAuth, DNS-    │
-                              │  rebinding allowlist  │
-                              └───────────────────────┘
+  │  Five MCP servers     │   │  ePSD2 verification   │   │  Legacy mcp_server.py  │
+  │  (per-domain) — the   │   │  browser (Flask)      │   │  port 5051 — all 19    │
+  │  primary surface      │   │  port 5050            │   │  data tools in one     │
+  │                       │   │  • /epsd2/sux         │   │  process (back-compat) │
+  │  eme-gir-epsd2 :5052  │   │  • entry pages        │   └────────────────────────┘
+  │  eme-gir-etcsl :5053  │   │  • cuneiform render   │
+  │  eme-gir-cdli  :5054  │   │  • period filtering   │
+  │  eme-gir-ogsl  :5055  │   │  • 1:1 vs upstream    │
+  │  eme-gir-ummia :5058  │   └───────────────────────┘
+  │                       │
+  │  stdio + HTTP, opt-in │
+  │  Auth0 OAuth, DNS-    │
+  │  rebinding allowlist  │
+  └───────────────────────┘
 ```
 
-The five per-domain MCP servers + the Flask web app share the same `eme_gir/` Python package — same SQLite indexes, same OGSL renderer, same attestation resolver, same auth wiring. Each MCP server is a thin (~30-40 line) entry point under `servers/<domain>/__main__.py` that registers only its domain's tools. They can be started independently (`python -m servers.epsd2`), or deployed together via the included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows. The HTTP MCP transport optionally validates Auth0-issued OAuth 2.1 bearer tokens (RS256 JWT, RFC 9728 discovery via `/.well-known/oauth-protected-resource`); off by default, opt-in via global `EME_GIR_REQUIRE_AUTH=1` for deployments that need in-app auth instead of relying on a reverse proxy.
+The five per-domain MCP servers + the ePSD2 verification browser share the same `eme_gir/` Python package — same SQLite indexes, same OGSL renderer, same attestation resolver, same auth wiring. Each MCP server is a thin (~30-40 line) entry point under `servers/<domain>/__main__.py` that registers only its domain's tools. They can be started independently (`python -m servers.epsd2`), or deployed together via the included Docker stack (gunicorn for Flask, uvicorn for MCP, behind your reverse proxy of choice). A one-shot init container handles the multi-minute first-boot data setup so the running services keep tight startup windows. The HTTP MCP transport optionally validates Auth0-issued OAuth 2.1 bearer tokens (RS256 JWT, RFC 9728 discovery via `/.well-known/oauth-protected-resource`); off by default, opt-in via global `EME_GIR_REQUIRE_AUTH=1` for deployments that need in-app auth instead of relying on a reverse proxy.
 
 ## Data and attributions
 
@@ -203,8 +224,8 @@ This project doesn't add anything to that data; it just makes it easier to ask q
 
 - About **8%** of glossary attestation references cite texts in projects we haven't downloaded; those fall back to raw reference strings on entry pages.
 - About **7%** of spellings contain at least one sign missing from OGSL and render with `□` placeholders. Coverage will improve as OGSL grows.
-- The web app's entry page doesn't yet render a dedicated bibliography section, per-sense interleaved examples, or a Period × Form cross-tabulation — though attestation lines do surface the publication shorthand (e.g. "YOS 14, 341") for any text with catalogue metadata.
-- The `/eme-gir/sux` glossary list page matches the live Oracc page 1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't fully reverse-engineered).
+- The verification browser's entry page doesn't yet render a dedicated bibliography section, per-sense interleaved examples, or a Period × Form cross-tabulation — though attestation lines do surface the publication shorthand (e.g. "YOS 14, 341") for any text with catalogue metadata.
+- The `/epsd2/sux` glossary list page matches the live Oracc page 1 byte-for-byte; pages 2+ have occasional one-off reorderings (Oracc has a sub-sort tiebreaker we haven't fully reverse-engineered).
 - Composite text references (Q-ids) aren't handled by the attestation resolver; only P-ids (physical objects).
 - English translations of texts are not in Oracc's public JSON archive — they exist only in the live HTML pages and would need scraping. The optional ETCSL ingest pulls in 394 literary texts that DO ship with English translations, so any literary lookup via the `etcsl_*` MCP tools is bilingual out of the box, but the administrative bulk corpus remains transliteration-only.
 
