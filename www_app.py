@@ -29,6 +29,7 @@ Or via gunicorn in production (docker-compose `www` service):
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -75,6 +76,19 @@ def create_app() -> Flask:
 
     # Stats are frozen at app boot — see module docstring.
     app.config["CORPUS_STATS"] = _collect_stats()
+
+    # Umami analytics — browser-side click + pageview tracking against
+    # the WEBSITE property. Empty strings disable tracking (the template
+    # gates the <script> tag on both being non-empty).
+    app.config["UMAMI_URL"] = os.environ.get("EME_GIR_UMAMI_URL", "").strip()
+    app.config["UMAMI_WEBSITE_ID"] = os.environ.get("EME_GIR_UMAMI_WEBSITE_ID", "").strip()
+
+    @app.context_processor
+    def _ctx() -> dict:
+        return {
+            "UMAMI_URL": app.config["UMAMI_URL"],
+            "UMAMI_WEBSITE_ID": app.config["UMAMI_WEBSITE_ID"],
+        }
 
     @app.route("/")
     def index() -> str:

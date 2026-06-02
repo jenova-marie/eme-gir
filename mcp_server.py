@@ -594,8 +594,9 @@ if __name__ == "__main__":
             f"allowed_origins={ts.allowed_origins})"
         )
     # Umami analytics — fire-and-forget tool-call telemetry. Off unless
-    # EME_GIR_UMAMI_URL + EME_GIR_UMAMI_WEBSITE_ID are both set. See
-    # umami_analytics.init_from_env() for the env-var contract.
+    # EME_GIR_UMAMI_URL + EME_GIR_UMAMI_MCP_ID are both set. See
+    # umami_analytics.init_from_env() for the env-var contract (the
+    # legacy EME_GIR_UMAMI_WEBSITE_ID is still honored as a fallback).
     _umami = umami_analytics.init_from_env()
     if _umami is not None:
         log.info(
@@ -606,7 +607,7 @@ if __name__ == "__main__":
     else:
         log.info(
             "  analytics=disabled (set EME_GIR_UMAMI_URL + "
-            "EME_GIR_UMAMI_WEBSITE_ID to enable)"
+            "EME_GIR_UMAMI_MCP_ID to enable)"
         )
 
     if args.transport == "stdio":

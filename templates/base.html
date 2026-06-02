@@ -9,6 +9,15 @@
   <link rel="stylesheet" type="text/css" href="https://oracc.museum.upenn.edu/epsd2/css/projcss.css"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/jenova.png') }}"/>
   <title>{% block title %}eme-gir (local){% endblock %}</title>
+  {# Umami analytics — browser-side click + pageview tracking against
+     the WEBSITE property. Server-side MCP tool-call events go to the
+     MCP property (see eme_gir/umami_analytics.py). The {% if %} gate
+     means analytics is fully off whenever either env var is unset. #}
+  {% if UMAMI_URL and UMAMI_WEBSITE_ID %}
+  <script defer src="{{ UMAMI_URL.rstrip('/') }}/script.js"
+          data-website-id="{{ UMAMI_WEBSITE_ID }}"
+          data-cache="true"></script>
+  {% endif %}
   <style>
     /* Responsive masthead — Oracc's CSS positions the search box absolutely
        in the top-right of #p4Masthead, so the title needs to reserve space
@@ -79,33 +88,33 @@
 
   <div id="attribution-banner" role="contentinfo" aria-label="Source attribution and license">
     Data on this site is the
-    <strong><a href="https://oracc.museum.upenn.edu/epsd2/">electronic Pennsylvania Sumerian Dictionary, 2nd edition (ePSD2)</a></strong>,
+    <strong><a href="https://oracc.museum.upenn.edu/epsd2/" data-umami-event="attribution-oracc-epsd2">electronic Pennsylvania Sumerian Dictionary, 2nd edition (ePSD2)</a></strong>,
     prepared by <strong>Dr. Steve Tinney</strong> and the
-    <a href="https://oracc.museum.upenn.edu">Oracc</a> team at the
+    <a href="https://oracc.museum.upenn.edu" data-umami-event="attribution-oracc">Oracc</a> team at the
     University of Pennsylvania. Licensed
-    <a href="https://creativecommons.org/licenses/by-sa/3.0/"><span class="cc-badge">CC&nbsp;BY-SA&nbsp;3.0</span></a>
+    <a href="https://creativecommons.org/licenses/by-sa/3.0/" data-umami-event="attribution-cc-license"><span class="cc-badge">CC&nbsp;BY-SA&nbsp;3.0</span></a>
     &mdash; attribution required; substantial reuses must propagate the ShareAlike license
-    (<a href="https://oracc.museum.upenn.edu/doc/about/licensing">licensing terms</a>).
+    (<a href="https://oracc.museum.upenn.edu/doc/about/licensing" data-umami-event="attribution-licensing-terms">licensing terms</a>).
     This installation is a local rendering for verification against the canonical site:
-    <a href="https://oracc.museum.upenn.edu/epsd2/sux">oracc.museum.upenn.edu/epsd2/sux</a>.
+    <a href="https://oracc.museum.upenn.edu/epsd2/sux" data-umami-event="attribution-oracc-canonical">oracc.museum.upenn.edu/epsd2/sux</a>.
   </div>
 
   <div id="p4Masthead">
     <p id="p4HeadTitle" class="banner bborder-top bborder1-bot" style="display:flex; align-items:center; gap:0.6em;">
-      <a href="{{ url_for('glossary') }}" style="display:inline-flex; align-items:center;">
+      <a href="{{ url_for('glossary') }}" style="display:inline-flex; align-items:center;" data-umami-event="masthead-logo">
         <img src="{{ url_for('static', filename='img/jenova.png') }}"
              alt="Jenova" title="Jenova's Local Oracc"
              style="height:36px; width:36px; border-radius:50%; vertical-align:middle;"/>
       </a>
-      <a class="masthead-org" href="{{ url_for('glossary') }}"><strong>Jenova's Local Oracc:</strong></a>
-      <a href="{{ url_for('glossary') }}">ePSD2</a>
+      <a class="masthead-org" href="{{ url_for('glossary') }}" data-umami-event="masthead-title"><strong>Jenova's Local Oracc:</strong></a>
+      <a href="{{ url_for('glossary') }}" data-umami-event="masthead-epsd2">ePSD2</a>
       <span class="masthead-sep" style="opacity:0.6;">—</span>
       <span class="masthead-subtitle" style="opacity:0.85;">electronic PSD 2nd Edition</span>
     </p>
   </div>
   <div id="p4Header" class="menu banner bborder-bot">
     <div id="p4Search">
-      <form action="{{ url_for('glossary') }}" method="get">
+      <form action="{{ url_for('glossary') }}" method="get" data-umami-event="search-submit">
         <p>
           <input id="p4SrchBox" name="q" type="text" size="30" value="{{ q or '' }}"/>
           <input type="submit" value="Search"/>
@@ -119,9 +128,9 @@
   <div id="p4Data">
     <div id="p4Menu">
       <div id="p4Letters">
-        <p class="all-letters"><a href="{{ url_for('glossary') }}">ALL</a></p>
+        <p class="all-letters"><a href="{{ url_for('glossary') }}" data-umami-event="letter-nav" data-umami-event-letter="ALL">ALL</a></p>
         {% for L in LETTER_ORDER %}
-        <p><a href="{{ url_for('glossary', zoom=L) }}"><span>{{ L }}</span></a></p>
+        <p><a href="{{ url_for('glossary', zoom=L) }}" data-umami-event="letter-nav" data-umami-event-letter="{{ L }}"><span>{{ L }}</span></a></p>
         {% endfor %}
       </div>
     </div>
@@ -134,9 +143,9 @@
   <div id="p4Footer">
     <p style="text-align:center; font-size:0.85em; padding:0.5em 0; opacity:0.7;">
       Local rendering of Oracc / ePSD2 data
-      (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC&nbsp;BY-SA&nbsp;3.0</a>;
+      (<a href="https://creativecommons.org/licenses/by-sa/3.0/" data-umami-event="footer-cc-license">CC&nbsp;BY-SA&nbsp;3.0</a>;
       attribution required, ShareAlike propagates). Source:
-      <a href="https://oracc.museum.upenn.edu/epsd2/sux">oracc.museum.upenn.edu/epsd2/sux</a>.
+      <a href="https://oracc.museum.upenn.edu/epsd2/sux" data-umami-event="footer-oracc-source">oracc.museum.upenn.edu/epsd2/sux</a>.
     </p>
   </div>
 </div>

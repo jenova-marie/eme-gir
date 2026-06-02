@@ -81,10 +81,20 @@ x-mcp-environment: &mcp-environment
   # Only safe when the proxy itself sets X-Forwarded-* (Caddy does).
   EME_GIR_TRUST_PROXY: "${EME_GIR_TRUST_PROXY:-0}"
   # Umami analytics — fire-and-forget per-tool-call telemetry. Off
-  # when EME_GIR_UMAMI_URL or EME_GIR_UMAMI_WEBSITE_ID is unset. Per
+  # when EME_GIR_UMAMI_URL or EME_GIR_UMAMI_MCP_ID is unset. Per
   # service we override EME_GIR_UMAMI_HOSTNAME to identify which MCP
   # the event came from.
+  #
+  # Two Umami properties are tracked separately:
+  # - EME_GIR_UMAMI_MCP_ID:     MCP-server per-tool-call events
+  #                             (passed to MCP services below)
+  # - EME_GIR_UMAMI_WEBSITE_ID: browser-side click + pageview events
+  #                             from the Flask web + www apps
+  #                             (passed to web + www services below)
+  # The legacy single-property mode is still honored: if MCP_ID is
+  # unset, the umami client falls back to WEBSITE_ID with a warning.
   EME_GIR_UMAMI_URL: "${EME_GIR_UMAMI_URL:-}"
+  EME_GIR_UMAMI_MCP_ID: "${EME_GIR_UMAMI_MCP_ID:-}"
   EME_GIR_UMAMI_WEBSITE_ID: "${EME_GIR_UMAMI_WEBSITE_ID:-}"
   EME_GIR_UMAMI_API_KEY: "${EME_GIR_UMAMI_API_KEY:-}"
 
@@ -148,6 +158,12 @@ services:
       --max-requests-jitter ${WEB_MAX_REQUESTS_JITTER:-40}
       --timeout ${WEB_TIMEOUT:-60}
       'app:create_app()'
+    environment:
+      # Umami analytics — browser-side click + pageview events go to
+      # the WEBSITE property. app.py reads these and injects them as
+      # template context for the <script defer> tag in base.html.
+      EME_GIR_UMAMI_URL: "${EME_GIR_UMAMI_URL:-}"
+      EME_GIR_UMAMI_WEBSITE_ID: "${EME_GIR_UMAMI_WEBSITE_ID:-}"
     ports:
       - "${WEB_BIND:-127.0.0.1}:5050:5050"
     volumes:
@@ -187,6 +203,12 @@ services:
       --access-logfile -
       --error-logfile -
       'www_app:create_app()'
+    environment:
+      # Umami analytics — browser-side click + pageview events go to
+      # the WEBSITE property. www_app.py reads these and injects them
+      # as template context for the <script defer> tag in www.html.
+      EME_GIR_UMAMI_URL: "${EME_GIR_UMAMI_URL:-}"
+      EME_GIR_UMAMI_WEBSITE_ID: "${EME_GIR_UMAMI_WEBSITE_ID:-}"
     ports:
       - "${WWW_BIND:-127.0.0.1}:5057:5057"
     volumes:

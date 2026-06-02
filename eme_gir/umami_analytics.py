@@ -119,15 +119,38 @@ _INSTANCE: _UmamiClient | None = None
 
 
 def init_from_env() -> _UmamiClient | None:
-    """Read EME_GIR_UMAMI_* env vars and lazily construct the dispatcher.
+    """Read EME_GIR_UMAMI_* env vars and lazily construct the MCP-side
+    dispatcher.
+
+    Two Umami properties are tracked separately (since 0.2.0):
+
+    - The **MCP property** receives per-tool-call events emitted by the
+      `log_call` decorator from inside the running MCP servers (server
+      side, Python). Read here from `EME_GIR_UMAMI_MCP_ID`.
+
+    - The **Website property** receives browser-side click + pageview
+      events from the Flask web app at epsd2.eme-gir.org AND the www
+      landing page at eme-gir.org. Read from `EME_GIR_UMAMI_WEBSITE_ID`
+      and embedded directly into the Jinja templates' `<script
+      data-website-id="...">` tag. This function does NOT touch the
+      website ID — browser-side tracking is template-driven, not
+      Python-driven.
+
+    Backwards-compatibility: if `EME_GIR_UMAMI_MCP_ID` is unset but
+    `EME_GIR_UMAMI_WEBSITE_ID` is set, the MCP side falls back to the
+    website ID so pre-split deployments keep working. A deprecation
+    warning is logged once.
 
     Returns the constructed client on success, or None when analytics
-    should remain disabled (default — required env vars not set).
+    should remain disabled (required env vars not set).
 
     Required env vars:
         EME_GIR_UMAMI_URL          base URL of the Umami instance, e.g.
                                   https://umami.recoverysky.app
-        EME_GIR_UMAMI_WEBSITE_ID   Umami website UUID (from the dashboard)
+        EME_GIR_UMAMI_MCP_ID       Umami website UUID for the MCP property
+                                  (from the dashboard). Fall-back to
+                                  EME_GIR_UMAMI_WEBSITE_ID for legacy
+                                  single-property deployments.
 
     Optional:
         EME_GIR_UMAMI_HOSTNAME     hostname to report (default: 'eme-gir-mcp').
@@ -139,7 +162,23 @@ def init_from_env() -> _UmamiClient | None:
     """
     global _INSTANCE
     url = os.environ.get("EME_GIR_UMAMI_URL", "").strip()
-    wid = os.environ.get("EME_GIR_UMAMI_WEBSITE_ID", "").strip()
+    mcp_id = os.environ.get("EME_GIR_UMAMI_MCP_ID", "").strip()
+    legacy_wid = os.environ.get("EME_GIR_UMAMI_WEBSITE_ID", "").strip()
+
+    if mcp_id:
+        wid = mcp_id
+    elif legacy_wid:
+        # Backwards-compat: fall back to the website ID and warn.
+        log.warning(
+            "EME_GIR_UMAMI_MCP_ID is not set; falling back to "
+            "EME_GIR_UMAMI_WEBSITE_ID for MCP tool-call analytics. "
+            "Set EME_GIR_UMAMI_MCP_ID to a dedicated MCP property to "
+            "separate MCP events from browser website events."
+        )
+        wid = legacy_wid
+    else:
+        wid = ""
+
     if not url or not wid:
         return None
     hostname = os.environ.get("EME_GIR_UMAMI_HOSTNAME", "").strip() or "eme-gir-mcp"

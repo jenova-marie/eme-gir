@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Eme-gir — Sumerian dictionary + cuneiform corpus tools</title>
   <link rel="icon" href="/static/img/jenova.png" type="image/png">
+  {# Umami analytics — browser-side click + pageview tracking against
+     the WEBSITE property. MCP tool-call events live on a separate
+     property (see eme_gir/umami_analytics.py). #}
+  {% if UMAMI_URL and UMAMI_WEBSITE_ID %}
+  <script defer src="{{ UMAMI_URL.rstrip('/') }}/script.js"
+          data-website-id="{{ UMAMI_WEBSITE_ID }}"
+          data-cache="true"></script>
+  {% endif %}
   <style>
     :root {
       --bg: #faf7f2;
@@ -354,18 +362,18 @@
         Sumerian Dictionary</em>, second edition (ePSD2), is the standard
         modern lexical resource for Sumerian — published in 2017 by an
         international team led by Dr. Steve Tinney and integrated with the
-        <a href="https://oracc.museum.upenn.edu">Open Richly Annotated
+        <a href="https://oracc.museum.upenn.edu" data-umami-event="external-link" data-umami-event-target="oracc">Open Richly Annotated
         Cuneiform Corpus (Oracc)</a>, a federated archive of roughly
         138,000 transliterated cuneiform texts from museum collections
         in London, Berlin, Philadelphia, Istanbul, and Baghdad. Alongside
         Oracc, the Oxford
-        <a href="https://etcsl.orinst.ox.ac.uk">Electronic Text Corpus of
+        <a href="https://etcsl.orinst.ox.ac.uk" data-umami-event="external-link" data-umami-event-target="etcsl">Electronic Text Corpus of
         Sumerian Literature (ETCSL)</a> contributes 394 hand-lemmatized
         literary compositions — hymns, myths, royal hymns, proverbs, the
         Sumerian King List, <em>Inana's Descent</em>, <em>Gilgameš and
         the Underworld</em>, the Šulgi praise poems — shipped with
         English translations alongside every Sumerian line. The
-        <a href="https://cdli.mpiwg-berlin.mpg.de">Cuneiform Digital
+        <a href="https://cdli.mpiwg-berlin.mpg.de" data-umami-event="external-link" data-umami-event-target="cdli">Cuneiform Digital
         Library Initiative (CDLI)</a> supplies catalogue metadata for
         353,000 cuneiform-bearing artifacts: provenience, period,
         museum custody, dimensions, publication history, and links to
@@ -473,7 +481,7 @@
     <section>
       <h2>Services</h2>
       <div class="services">
-        <a class="service" href="https://epsd2.eme-gir.org/">
+        <a class="service" href="https://epsd2.eme-gir.org/" data-umami-event="service-card" data-umami-event-target="verification-browser">
           <h3>📖 Verification browser</h3>
           <p>A local rendering of the electronic Pennsylvania Sumerian
              Dictionary (ePSD2) — provided strictly for 1:1 verification
@@ -481,13 +489,13 @@
              Not a replacement for the upstream dictionary; cite Oracc,
              not this mirror.</p>
         </a>
-        <a class="service" href="#mcp">
+        <a class="service" href="#mcp" data-umami-event="service-card" data-umami-event-target="mcp-anchor">
           <h3>🔌 MCP endpoints</h3>
           <p>Five per-domain Model Context Protocol servers exposing the
              dictionary, the Oxford literary corpus, the CDLI artifact
              catalogue, and the Oracc sign list to AI agents.</p>
         </a>
-        <a class="service" href="https://github.com/jenova-marie/eme-gir">
+        <a class="service" href="https://github.com/jenova-marie/eme-gir" data-umami-event="service-card" data-umami-event-target="github">
           <h3>📂 GitHub</h3>
           <p>Source code, build scripts, agent prompts, full setup guide.
              Open source under MIT (code) with data layers separately
@@ -500,7 +508,7 @@
       <h2>Connect via MCP</h2>
 
       <p style="font-size: 1rem; line-height: 1.65; color: var(--ink); max-width: 50rem;">
-        The <a href="https://modelcontextprotocol.io" style="color: var(--accent);">Model Context Protocol</a>
+        The <a href="https://modelcontextprotocol.io" style="color: var(--accent);" data-umami-event="external-link" data-umami-event-target="modelcontextprotocol-io">Model Context Protocol</a>
         is an open standard, originally introduced by Anthropic in November 2024, that lets language
         models call out to external tools, query databases, and read files
         through a uniform JSON-RPC interface — analogous to what a Language
@@ -536,8 +544,8 @@
             decomposition, n-gram phrase patterns over 35.5M attestations.</p>
           </div>
           <div class="endpoint-actions">
-            <a class="endpoint-url" href="https://epsd2.eme-gir.org/mcp">https://epsd2.eme-gir.org/mcp</a>
-            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://epsd2.eme-gir.org/mcp">
+            <a class="endpoint-url" href="https://epsd2.eme-gir.org/mcp" data-umami-event="endpoint-url-click" data-umami-event-server="epsd2">https://epsd2.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://epsd2.eme-gir.org/mcp" data-umami-event="endpoint-url-copy" data-umami-event-server="epsd2">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button>
           </div>
@@ -549,8 +557,8 @@
             with English translations — every result bilingual.</p>
           </div>
           <div class="endpoint-actions">
-            <a class="endpoint-url" href="https://etcsl.eme-gir.org/mcp">https://etcsl.eme-gir.org/mcp</a>
-            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://etcsl.eme-gir.org/mcp">
+            <a class="endpoint-url" href="https://etcsl.eme-gir.org/mcp" data-umami-event="endpoint-url-click" data-umami-event-server="etcsl">https://etcsl.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://etcsl.eme-gir.org/mcp" data-umami-event="endpoint-url-copy" data-umami-event-server="etcsl">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button>
           </div>
@@ -562,8 +570,8 @@
             museum custody, and links to institutionally-hosted photographs.</p>
           </div>
           <div class="endpoint-actions">
-            <a class="endpoint-url" href="https://cdli.eme-gir.org/mcp">https://cdli.eme-gir.org/mcp</a>
-            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://cdli.eme-gir.org/mcp">
+            <a class="endpoint-url" href="https://cdli.eme-gir.org/mcp" data-umami-event="endpoint-url-click" data-umami-event-server="cdli">https://cdli.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://cdli.eme-gir.org/mcp" data-umami-event="endpoint-url-copy" data-umami-event-server="cdli">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button>
           </div>
@@ -576,8 +584,8 @@
             is not Sumerian-specific.</p>
           </div>
           <div class="endpoint-actions">
-            <a class="endpoint-url" href="https://ogsl.eme-gir.org/mcp">https://ogsl.eme-gir.org/mcp</a>
-            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://ogsl.eme-gir.org/mcp">
+            <a class="endpoint-url" href="https://ogsl.eme-gir.org/mcp" data-umami-event="endpoint-url-click" data-umami-event-server="ogsl">https://ogsl.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://ogsl.eme-gir.org/mcp" data-umami-event="endpoint-url-copy" data-umami-event-server="ogsl">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button>
           </div>
@@ -590,8 +598,8 @@
             Sumerian 101 curriculum and the dual-register grammar reference.</p>
           </div>
           <div class="endpoint-actions">
-            <a class="endpoint-url" href="https://um-mi-a.eme-gir.org/mcp">https://um-mi-a.eme-gir.org/mcp</a>
-            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://um-mi-a.eme-gir.org/mcp">
+            <a class="endpoint-url" href="https://um-mi-a.eme-gir.org/mcp" data-umami-event="endpoint-url-click" data-umami-event-server="ummia">https://um-mi-a.eme-gir.org/mcp</a>
+            <button class="copy-btn" type="button" aria-label="Copy URL" title="Copy URL" data-copy="https://um-mi-a.eme-gir.org/mcp" data-umami-event="endpoint-url-copy" data-umami-event-server="ummia">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button>
           </div>
@@ -713,24 +721,24 @@
         <p>None of these datasets is unconditionally public-domain. All three
         have meaningful reuse conditions surfaced in every tool response and
         documented in
-        <a href="https://github.com/jenova-marie/eme-gir/blob/main/LICENSE-DATA.md">LICENSE-DATA.md</a>.</p>
+        <a href="https://github.com/jenova-marie/eme-gir/blob/main/LICENSE-DATA.md" data-umami-event="external-link" data-umami-event-target="license-data">LICENSE-DATA.md</a>.</p>
         <table>
           <thead>
             <tr><th>Source</th><th>License</th><th>Notes</th></tr>
           </thead>
           <tbody>
             <tr>
-              <td><a href="https://oracc.museum.upenn.edu">Oracc / ePSD2 / OGSL</a></td>
+              <td><a href="https://oracc.museum.upenn.edu" data-umami-event="license-link" data-umami-event-target="oracc">Oracc / ePSD2 / OGSL</a></td>
               <td><strong>CC BY-SA 3.0</strong></td>
               <td>Attribution required; ShareAlike propagates to substantial reuses</td>
             </tr>
             <tr>
-              <td><a href="https://etcsl.orinst.ox.ac.uk">ETCSL (Oxford)</a></td>
+              <td><a href="https://etcsl.orinst.ox.ac.uk" data-umami-event="license-link" data-umami-event-target="etcsl">ETCSL (Oxford)</a></td>
               <td>Academic copyright</td>
               <td>NOT under any Creative Commons license; citation is non-optional</td>
             </tr>
             <tr>
-              <td><a href="https://cdli.mpiwg-berlin.mpg.de">CDLI</a></td>
+              <td><a href="https://cdli.mpiwg-berlin.mpg.de" data-umami-event="license-link" data-umami-event-target="cdli">CDLI</a></td>
               <td>Mixed</td>
               <td>Catalogue text reusable-with-citation; imagery non-commercial only. We host no imagery — all links point to cdli.earth</td>
             </tr>
@@ -741,9 +749,9 @@
 
     <footer>
       <p>
-        Built by <a href="https://github.com/jenova-marie">Jenova Marie</a> ·
+        Built by <a href="https://github.com/jenova-marie" data-umami-event="footer-link" data-umami-event-target="jenova-marie-github">Jenova Marie</a> ·
         Code MIT · Data layered (see above) ·
-        <a href="https://github.com/jenova-marie/eme-gir">Source on GitHub</a>
+        <a href="https://github.com/jenova-marie/eme-gir" data-umami-event="footer-link" data-umami-event-target="github-source">Source on GitHub</a>
       </p>
     </footer>
 

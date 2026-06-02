@@ -352,7 +352,7 @@ def run_server(
     else:
         log.info(
             "  analytics=disabled (set EME_GIR_UMAMI_URL + "
-            "EME_GIR_UMAMI_WEBSITE_ID to enable)"
+            "EME_GIR_UMAMI_MCP_ID to enable)"
         )
 
     if args.transport == "stdio":

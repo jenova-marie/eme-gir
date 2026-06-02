@@ -13,6 +13,7 @@ Routes:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -194,6 +195,14 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.jinja_env.filters["cuneify"] = _cuneify.cuneify
 
+    # Umami analytics — browser-side click + pageview tracking against
+    # the WEBSITE property (NOT the MCP property; per-tool MCP events
+    # are emitted server-side via eme_gir.umami_analytics). Both env
+    # vars must be set for the template to inject the <script defer>
+    # tag; either missing disables tracking entirely.
+    app.config["UMAMI_URL"] = os.environ.get("EME_GIR_UMAMI_URL", "").strip()
+    app.config["UMAMI_WEBSITE_ID"] = os.environ.get("EME_GIR_UMAMI_WEBSITE_ID", "").strip()
+
     @app.teardown_appcontext
     def _close(_exc):
         db = g.pop("db", None)
@@ -202,7 +211,11 @@ def create_app() -> Flask:
 
     @app.context_processor
     def _ctx():
-        return {"LETTER_ORDER": LETTER_ORDER}
+        return {
+            "LETTER_ORDER": LETTER_ORDER,
+            "UMAMI_URL": app.config["UMAMI_URL"],
+            "UMAMI_WEBSITE_ID": app.config["UMAMI_WEBSITE_ID"],
+        }
 
     # ----- routes -----
 
