@@ -19,6 +19,20 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Changed
 
+- **Renamed the verification-browser masthead from "Jenova's Local
+  Oracc:" to "Eme-gir Oracc:"** (`templates/base.html`) and removed
+  the round Jenova avatar that preceded it. The masthead now reads
+  `Eme-gir Oracc: ePSD2 — electronic PSD 2nd Edition`, aligning the
+  in-browser header with the project name used everywhere else
+  (README, www landing page, MCP server IDs). "Eme-gir Oracc:" is
+  now plain emphasized text (no longer a self-link to the local
+  glossary); the **`ePSD2` word is now a hyperlink to the canonical
+  upstream** at `oracc.museum.upenn.edu/epsd2/sux`, firing
+  `data-umami-event="masthead-epsd2-canonical"`. The avatar's
+  `masthead-logo` umami event and the title's `masthead-title` event
+  are both removed; `masthead-epsd2` is renamed to
+  `masthead-epsd2-canonical` to reflect its new external destination.
+
 - **Added a `© 2026 Jenova Marie` copyright notice to the landing-page
   footer** (`templates/www.html`). The notice establishes authorship
   of the original creative work (website copy, layout, project
