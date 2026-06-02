@@ -35,6 +35,17 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Documentation
 
+- **Disclosed the verification-browser sort-order limitation in
+  `README.md`'s opening lede.** The intro paragraph that introduces the
+  ePSD2 verification browser now closes with an explicit known
+  limitation: result sorting may differ from the canonical site on
+  pages 2+ of multi-page lists because Oracc's exact sort algorithm
+  (including its sub-sort tiebreaker) is not known. Sets reader
+  expectations up front so the byte-for-byte verification claim
+  isn't read as covering ordering as well — same caveat already
+  documented in the Limitations section near the bottom of the
+  README, now surfaced in the opener.
+
 - **Refocused `README.md` on the MCP-server framing** as the project's
   primary surface, with the local ePSD2 web browser repositioned as a
   complementary 1:1 verification feature against the canonical

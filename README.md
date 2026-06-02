@@ -17,7 +17,9 @@ pages byte-for-byte. It is provided strictly as a 1:1 *verification
 surface* against the upstream — useful for diffing local parses against
 the canonical site, browsing offline, and grounding the MCP tools'
 outputs in a human-readable rendering. It is not a replacement for
-Oracc.
+Oracc. A known limitation: result sorting may differ from the canonical
+site on pages 2+ of multi-page lists, because Oracc's exact sort
+algorithm (including its sub-sort tiebreaker) is not known.
 
 If you're a developer who wants their LLM agent to translate English
 into actual Sumerian rather than plausible-looking nonsense; a
