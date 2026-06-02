@@ -59,6 +59,17 @@ attribution requirement under CC BY-SA 3.0 — see eme-gir-epsd2 and
 eme-gir-ogsl prompts), separate them in your reply so the user sees
 both credits clearly.
 
+**Two fields make this easy.** Besides the full `attribution`, every
+response carries `citation_short` (a one-line token —
+`ETCSL, Oxford 1998–2006 © The Authors (not CC-licensed)` — reproduce
+verbatim in a **Sources** section) and `presentation` (a point-of-use
+instruction; follow it). Every line/hit result also carries a
+pre-composed bilingual `display_markdown` block with the Oxford citation
+fused in — **relay it verbatim** when you quote the line. The full
+verbatim license is also at the MCP resource **`license://etcsl`**.
+Because ETCSL is not CC-licensed, treating the citation as optional is
+not acceptable — it is a condition of use.
+
 ---
 
 ## The four tools

@@ -11,6 +11,17 @@ reuses. Every `cuneify` and `lookup_sign` response carries the canonical
 attribution string in its `attribution` field; pass it through to the user
 verbatim. No network calls; loaded once at server start from `corpus/ogsl.zip`.
 
+**How to attribute (read this).** Every response also carries two short
+fields built for this purpose: `citation_short` — a one-line token
+(`OGSL (CC BY-SA 3.0)`) to reproduce verbatim in a **Sources** section
+whenever you surface ANY field, including rendered glyphs (a rendered
+glyph IS OGSL data and must be cited); and `presentation` — a point-of-use
+instruction to follow. `cuneify` additionally carries a pre-composed
+`display_markdown` block (glyphs + citation, with a `□` disclosure when a
+sign is unresolved) — **relay it verbatim** when you show the rendering.
+The full verbatim license is also at the MCP resource
+**`license://oracc-ogsl`**, so the per-call `citation_short` can stay short.
+
 **Cross-language scope.** OGSL covers cuneiform across **every language
 that used the script** — Sumerian, Akkadian, Hittite, Hurrian, Elamite,
 Eblaite, Ugaritic, Hattic, Luwian. The same signs are read differently in

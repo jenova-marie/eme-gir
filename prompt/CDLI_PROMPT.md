@@ -263,6 +263,17 @@ it's CDLI's stated reuse condition for the catalogue text. We host no
 imagery; all `photo_url`/`lineart_url` values link to cdli.earth so
 image-licensing remains CDLI's domain to police.
 
+**How to attribute (read this).** Every response also carries
+`citation_short` (a one-line token,
+`CDLI (cdli.earth) — catalogue text reusable with citation`) to reproduce
+verbatim in a **Sources** section, and `presentation` (a point-of-use
+instruction to follow). Every `CDLIArtifact` (from `lookup_artifact` /
+`find_artifacts`) also carries a pre-composed `display_markdown` — a
+one-line `[designation (P-id)](cdli_url) — museum · period` block with the
+CDLI citation fused in. **Relay it verbatim** when you reference a tablet,
+instead of pasting a bare P-id. The full verbatim terms statement is also
+at the MCP resource **`license://cdli`**.
+
 ---
 
 ## Common workflows

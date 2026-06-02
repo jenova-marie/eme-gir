@@ -12,6 +12,23 @@ its `attribution` field; pass it through to the user verbatim. Loaded
 into SQLite indexes from the Oracc bulk JSON archive. No network calls;
 sub-50 ms point lookups.
 
+**How to attribute (read this).** Every response also carries two short
+fields built for exactly this purpose:
+- `citation_short` — a one-line token (e.g. `ePSD2 (CC BY-SA 3.0)`).
+  Reproduce it verbatim in a **Sources** section of your reply whenever you
+  surface ANY field from a result — including numeric counts, spellings,
+  and rendered glyphs, not only quoted prose.
+- `presentation` — a point-of-use instruction describing how to attribute
+  the result. Follow it.
+
+`see_examples` and `find_verb_form` cited lines additionally carry a
+pre-composed `display_markdown` block (the transliteration + the CDLI
+artifact link + a dual ePSD2/CDLI citation, fused together) — when you
+show a cited line, **relay its `display_markdown` verbatim** rather than
+re-assembling it. The full verbatim license is also available as the MCP
+resource **`license://oracc-epsd2`**, so the per-call `citation_short` can
+stay short.
+
 **Corpus shape:**
 
 ```
