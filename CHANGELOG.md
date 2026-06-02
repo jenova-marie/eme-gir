@@ -17,6 +17,8 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-06-02
+
 ### Added
 
 - **Copy buttons on the Path A and Path B bootstrap prompts**
@@ -342,6 +344,7 @@ all of it from the upstream academic archives.
   image URLs link directly to cdli.earth)
 - **This repository's code** — MIT ([LICENSE](LICENSE))
 
-[Unreleased]: https://github.com/jenova-marie/eme-gir/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jenova-marie/eme-gir/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/jenova-marie/eme-gir/releases/tag/v0.2.1
 [0.2.0]: https://github.com/jenova-marie/eme-gir/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jenova-marie/eme-gir/releases/tag/v0.1.0

@@ -20,4 +20,4 @@ Bump this string when cutting a release. Tag the matching commit with
 the new version heading.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
