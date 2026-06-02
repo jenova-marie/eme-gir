@@ -19,6 +19,40 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Changed
 
+- **Made `LICENSE-DATA.md` in the GitHub services card a real link**
+  to the file on GitHub (`templates/www.html`). The "📂 GitHub"
+  service card previously rendered the file name as plain `<code>`
+  text inside the card-wrapping anchor — readers had no way to reach
+  the document directly without first landing on the repo root and
+  searching for it. The card is now restructured as a `<div>`
+  (instead of an outer wrapping `<a>`) with two inner links: the
+  `📂 GitHub` heading still navigates to the repo root, and the
+  inline `LICENSE-DATA.md` text now links to
+  `github.com/jenova-marie/eme-gir/blob/root/LICENSE-DATA.md` with
+  the new umami event `data-umami-event-target="license-data-card"`
+  so the click can be distinguished from the existing license-table
+  `LICENSE-DATA.md` link further down the page.
+
+- **Added `target="_blank" rel="noopener noreferrer"` to every
+  external link** on the landing page (`templates/www.html`).
+  31 anchors covering the lede external references (Oracc, ETCSL,
+  CDLI), the Services cards (verification browser, GitHub),
+  every per-server `endpoint-url` (`epsd2.eme-gir.org/mcp` etc.),
+  the MCP-spec link, the licensing table's source-and-citation
+  links, the Development & contribution cards, and every footer
+  link now open in a new tab so clicking any of them doesn't
+  navigate readers away from `eme-gir.org`. Internal in-page
+  anchors (`#mcp`, `#development`, `#howto`) keep default behavior.
+  Implemented inline per-anchor — no runtime JS.
+
+- **Opened the masthead `ePSD2` canonical-upstream link in a new tab**
+  (`templates/base.html`). Adds `target="_blank" rel="noopener
+  noreferrer"` to the `oracc.museum.upenn.edu/epsd2/sux` link in the
+  verification browser's masthead so clicking it does not navigate
+  the local verification surface away from whatever page the reader
+  is comparing — they keep the local diff context and pop the
+  canonical site in a sibling tab.
+
 - **Renamed the verification-browser masthead from "Jenova's Local
   Oracc:" to "Eme-gir Oracc:"** (`templates/base.html`) and removed
   the round Jenova avatar that preceded it. The masthead now reads
@@ -50,11 +84,17 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 ### Documentation
 
 - **Added the closing doxology `𒀭𒈹 𒍠𒊩 {d}inana za₃-mi₂`
-  ("Inana be praised") as an h2** at the bottom of `README.md`,
-  positioned above the final CLAUDE.md developer-reference line so
-  the human-facing reading experience closes with a traditional
-  ETCSL-style colophon while the AI-coding-assistant pointer
-  remains as a quiet trailing aside.
+  ("Inana be praised") as a closing h2 colophon** to both
+  `README.md` (single-line h2 above the final CLAUDE.md developer-
+  reference line) and the `templates/www.html` landing page (its own
+  centered section between the Development & contribution section
+  and the footer, with the cuneiform rendered in `Noto Sans
+  Cuneiform` at 2.5rem in the page's muted `--cuneiform` color and
+  the `{d}inana za₃-mi₂` transliteration on a second line as a
+  smaller italic caption beneath, in the page's body font and muted
+  color). Both surfaces now close the human-facing reading
+  experience with the traditional ETCSL-style za₃-mi₂ colophon that
+  ends canonical Sumerian literary compositions.
 
 - **Strengthened the Sumerologist pitch in the `README.md` opening
   lede.** The terse "a Sumerologist who wants to query 35 million
