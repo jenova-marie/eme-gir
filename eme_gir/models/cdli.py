@@ -44,12 +44,14 @@ class CDLIArtifact(_Permissive):
     p_id: str = Field(..., description="Canonical P-id, e.g. 'P347156'. Use as the key for cross-references with Oracc texts.")
     cdli_id: int = Field(..., description="Bare integer id used in cdli.earth URL paths.")
     cdli_url: str = Field(..., description="Browser-facing CDLI artifact page (always present).")
-    photo_url: str | None = Field(None, description="High-res photograph (None when CDLI has no photo for this artifact).")
-    photo_thumb_url: str | None = Field(None, description="Photograph thumbnail for inline display.")
-    lineart_url: str | None = Field(None, description="High-res line drawing (None when CDLI has none).")
-    lineart_thumb_url: str | None = Field(None, description="Line drawing thumbnail.")
-    has_photo: bool = Field(..., description="Whether CDLI has a photograph available.")
-    has_lineart: bool = Field(..., description="Whether CDLI has a line drawing available.")
+    # Image URLs — null when CDLI has no asset of the corresponding kind for
+    # this artifact. The nullness IS the availability signal — agents must
+    # check whether the URL is non-null, NOT consult any separate boolean
+    # flag. We host no imagery; URLs point straight to cdli.earth.
+    photo_url: str | None = Field(None, description="High-res photograph URL on cdli.earth, or null when CDLI has no photograph of this artifact. Non-null URL is the availability signal — render it as a Markdown link.")
+    photo_thumb_url: str | None = Field(None, description="Photograph thumbnail URL on cdli.earth (paired with photo_url; both null together).")
+    lineart_url: str | None = Field(None, description="High-res line drawing URL on cdli.earth, or null when CDLI has no line drawing of this artifact. Non-null URL is the availability signal — render it as a Markdown link.")
+    lineart_thumb_url: str | None = Field(None, description="Line drawing thumbnail URL on cdli.earth (paired with lineart_url; both null together).")
 
     # Citation / publication
     designation: str | None = Field(None, description="Bibliographic shorthand, e.g. 'YOS 14, 341'.")

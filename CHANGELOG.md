@@ -17,6 +17,26 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-02
+
+### Changed (BREAKING)
+
+- **Removed `has_photo` and `has_lineart` boolean fields from
+  `CDLIArtifact`.** The image URL fields (`photo_url`,
+  `photo_thumb_url`, `lineart_url`, `lineart_thumb_url`) already encoded
+  availability — they're `null` when CDLI has no asset of that kind for
+  the artifact, and a `https://cdli.earth/…` URL otherwise. Carrying a
+  separate boolean meant agents had two sources of truth that could
+  drift; now the URL's null-ness is the sole availability signal. Updated
+  `prompt/CDLI_PROMPT.md` (and the `start_here()` bootstrap docstring)
+  to teach the new rule: "non-null URL → render as Markdown link; null
+  → omit from reply; never fabricate." Downstream clients reading
+  `has_photo` / `has_lineart` will need to switch to
+  `photo_url is not None` / `lineart_url is not None`. Also strips the
+  same booleans from any tool that splats `CDLIArtifact` into a larger
+  response (none currently do; the shared enrichment in
+  `eme_gir/cdli.py` was already URL-only).
+
 ### Changed
 
 - **`start_here()` now opens with a license banner** on all four data
@@ -250,5 +270,6 @@ all of it from the upstream academic archives.
   image URLs link directly to cdli.earth)
 - **This repository's code** — MIT ([LICENSE](LICENSE))
 
-[Unreleased]: https://github.com/jenova-marie/eme-gir/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jenova-marie/eme-gir/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jenova-marie/eme-gir/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jenova-marie/eme-gir/releases/tag/v0.1.0

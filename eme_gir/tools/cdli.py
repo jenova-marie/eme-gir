@@ -45,10 +45,13 @@ from ..attribution import (  # noqa: E402, F401  (CDLI_* re-exported)
 
 def _build_cdli_artifact(row: sqlite3.Row) -> CDLIArtifact:
     """Convert a cdli.artifacts SQLite row into the response model,
-    computing image + page URLs from the p_id + has_photo / has_lineart
-    flags. URL fields are None when the corresponding flag is false so
-    agents can tell whether the link will actually return an image
-    (vs. a 404 because CDLI never had the imagery for that artifact)."""
+    computing image + page URLs from the p_id and the internal
+    has_photo / has_lineart catalogue flags. The flags themselves are
+    NOT exposed in the response — the URL fields are nulled out when
+    the catalogue says CDLI has no asset of that kind, so agents
+    detect availability by checking `photo_url is not None` (rather
+    than a redundant boolean). That keeps the response surface tight
+    and gives the URL itself a single, unambiguous interpretation."""
     p_id = row["p_id"]
     cdli_id = row["cdli_id"]
     has_photo = bool(row["has_photo"])
@@ -73,8 +76,6 @@ def _build_cdli_artifact(row: sqlite3.Row) -> CDLIArtifact:
         photo_thumb_url=CDLI_PHOTO_THUMB_URL.format(p_id=p_id) if has_photo else None,
         lineart_url=CDLI_LINEART_URL.format(p_id=p_id) if has_lineart else None,
         lineart_thumb_url=CDLI_LINEART_THUMB_URL.format(p_id=p_id) if has_lineart else None,
-        has_photo=has_photo,
-        has_lineart=has_lineart,
         designation=row["designation"],
         primary_publication=row["primary_publication"],
         publication_history=row["publication_history"],
@@ -308,9 +309,12 @@ def start_here() -> str:
         `genre`, `period`, `language`, `museum_collection`, and
         `provenience` filter parameters — so you can compose
         filters that actually return rows.
-      • CDLI image URL semantics (when `has_photo` / `has_lineart`
-        are reliable, when the Aug 2022 snapshot lags behind
-        cdli.earth's current state).
+      • CDLI image URL semantics — `photo_url` / `lineart_url` are
+        `null` when CDLI's catalogue has no asset of that kind for
+        the artifact, and a non-null URL on cdli.earth otherwise.
+        Treat the URL's nullness as the SOLE availability signal;
+        when populated, surface it as a Markdown hyperlink. We host
+        no imagery — image licensing remains CDLI's domain.
       • How to surface CDLI links as Markdown hyperlinks in your
         replies so the user can click through to the actual tablet.
 

@@ -194,16 +194,40 @@ Every `CDLIArtifact` carries five URL-bearing fields:
 | Field | When populated | What it links to |
 |---|---|---|
 | `cdli_url` | **Always.** | The artifact's CDLI page (`cdli.earth/artifacts/<cdli_id>`). User entry point. |
-| `photo_url` | When CDLI has a photograph (`has_photo=true`). | Full-resolution JPG. |
-| `photo_thumb_url` | Same condition. | Thumbnail for inline display. |
-| `lineart_url` | When CDLI has a line drawing (`has_lineart=true`). | Full-resolution lineart JPG. |
-| `lineart_thumb_url` | Same condition. | Thumbnail. |
+| `photo_url` | Non-null when CDLI has a photograph; `null` otherwise. | Full-resolution JPG on cdli.earth. |
+| `photo_thumb_url` | Paired with `photo_url` (both populated or both null). | Thumbnail for inline display. |
+| `lineart_url` | Non-null when CDLI has a line drawing; `null` otherwise. | Full-resolution lineart JPG on cdli.earth. |
+| `lineart_thumb_url` | Paired with `lineart_url` (both populated or both null). | Thumbnail. |
 
-**Your job: surface every populated URL as a Markdown link.**
+### Availability detection
+
+There is **no separate `has_photo` / `has_lineart` boolean** — and
+intentionally so. The URL field's `null`-ness IS the availability
+signal, and the single source of truth for whether the asset exists:
+
+| `photo_url` value | Meaning |
+|---|---|
+| A `https://cdli.earth/...` URL | CDLI has a photograph; render it as a Markdown link. |
+| `null` | CDLI has no photograph of this artifact; omit from the reply. Do NOT guess a URL. |
+
+The same rule applies to `lineart_url`. This eliminates the
+denormalized-boolean trap where an agent might read `has_photo=true`
+but still find `photo_url=null` (or vice-versa) and not know which
+to trust — there's only one field to check, and what you see is the
+truth.
+
+### Rendering rules
+
+**Your job: surface every non-null URL as a Markdown link.**
 
 - The `cdli_url` is always set — **render it unconditionally** for every artifact you cite. Never paste a bare P-id.
-- `photo_url` and `lineart_url` are populated when the underlying assets exist; render them as separate hyperlinks alongside the cdli_url.
+- `photo_url` and `lineart_url`, when non-null, are CDLI-hosted assets; render each as a separate hyperlink alongside the cdli_url.
 - When an image URL is `null`, simply omit it from the reply — don't say "no photo available", and don't fabricate a URL.
+
+This server **hosts no imagery**. The URL strings here are pointers to
+cdli.earth, where CDLI handles image hosting + licensing + access
+control. When you embed a URL in a reply, you are linking the user to
+CDLI's authoritative copy, not to anything served by this server.
 
 Canonical citation pattern when all fields are populated:
 
@@ -341,9 +365,8 @@ ePSD2 see_examples returns AttestationLine with text_id="P347156"
 
 ```
 p_id, cdli_id, cdli_url                  ← always populated; render cdli_url unconditionally
-photo_url, photo_thumb_url               ← render when populated; omit when null
-lineart_url, lineart_thumb_url           ← render when populated; omit when null
-has_photo, has_lineart                   ← booleans paired with the image URLs
+photo_url, photo_thumb_url               ← render when non-null; null IS the "no photo" signal — never fabricate
+lineart_url, lineart_thumb_url           ← render when non-null; null IS the "no lineart" signal — never fabricate
 designation                              ← bibliographic shorthand (RIME 1.08.03.02, YOS 14, 341)
 primary_publication, publication_history, citation, composite_id
 period, period_remarks, accounting_period, dates_referenced
