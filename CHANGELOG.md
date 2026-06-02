@@ -52,6 +52,38 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Fixed
 
+- **CDLI photo / lineart imagery was 100% suppressed across the
+  catalogue** because `build_cdli_db.py` coerced the source CSV's
+  `photo_up` and `lineart_up` columns through `_truthy()` — which
+  recognizes only `'1'` / `'true'` / `'yes'` / `'y'` aliases. But
+  those columns don't carry booleans; they carry **scan-metadata
+  strings** like `'600ppi 20160630'` (photo uploaded at 600 DPI on
+  2016-06-30) and `'150ppi 20160630'` (line art uploaded). Every
+  non-empty value fell through to `0`, zeroing out the
+  `has_photo` / `has_lineart` flags across all 353,283 rows, which
+  in turn nulled out every `photo_url` / `lineart_url` field on
+  every `CDLIArtifact` (because the URL ternary in
+  `_build_cdli_artifact` checks the flags). Downstream agents
+  reasonably concluded that "CDLI has no imagery in this snapshot",
+  which was a fabricated artifact of our ingestion bug.
+  Add a new `_has_scan()` helper in `build_cdli_db.py` that treats
+  any non-empty value as a present asset (matches the CSV's actual
+  semantics), and switch the `photo_up` / `lineart_up` call sites
+  to use it instead of `_truthy()`. After re-ingest, the catalogue
+  surfaces ~132K rows with `has_photo=1` (37%) and ~251K rows with
+  `has_lineart=1` (71%) — putting cdli.earth's hosted imagery
+  within reach of every cited tablet in `lookup_artifact`,
+  `find_artifacts`, and the `see_examples` / `find_verb_form`
+  enrichment splat.
+- **Bump `INIT_VERSION` from `4` to `5`** in `init.sh` so the next
+  deploy's init container detects the existing sentinel as stale,
+  wipes `/app/data`, and rebuilds every SQLite index — most
+  importantly `cdli.sqlite` — with the corrected `_has_scan`
+  semantics. Inline comment documents the reason so the version
+  bump is self-explanatory in `git log` and `git blame`. Total
+  wipe-rebuild cost is ~10 min dominated by the glossary rebuild;
+  the corpus zips on disk are reused (`download_corpus.py` is
+  resume-safe).
 - **Corrected `LICENSE-DATA.md` link on the landing page** —
   previously pointed at `/blob/main/LICENSE-DATA.md` which 404s
   because the repository's default branch is `root`, not `main`.

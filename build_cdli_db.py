@@ -109,6 +109,22 @@ def _truthy(s: str) -> int:
     return 1 if s in {"1", "true", "t", "yes", "y"} else 0
 
 
+def _has_scan(s: str) -> int:
+    """The CDLI CSV's `photo_up` and `lineart_up` columns are NOT
+    booleans — despite the suggestive `_up` (uploaded) naming. They
+    carry **scan-metadata strings** like `'600ppi 20160630'` (600 DPI
+    photo uploaded 2016-06-30) or `'150ppi 20160630'` (line art) when
+    CDLI has the asset, and empty when it doesn't. The semantic is
+    "any non-empty value → asset exists".
+
+    Coerce to 0/1 for SQLite. Kept separate from `_truthy` above
+    because running `_truthy('600ppi 20160630')` falls through to 0
+    (it's not in the boolean alias set), which silently zeros out
+    100% of `has_photo`/`has_lineart` across the catalogue — exactly
+    the bug this helper exists to fix."""
+    return 1 if (s or "").strip() else 0
+
+
 def _norm(s: str | None) -> str | None:
     """Strip whitespace and turn empty strings into NULL so SQLite
     queries with `WHERE x IS NOT NULL` work as expected."""
@@ -214,8 +230,8 @@ def build_db(csv_path: Path, db_path: Path, batch: int = 5000) -> int:
             values: list[object] = [
                 p_id,
                 cdli_id,
-                _truthy(row.get("photo_up", "")),
-                _truthy(row.get("lineart_up", "")),
+                _has_scan(row.get("photo_up", "")),
+                _has_scan(row.get("lineart_up", "")),
             ]
             for csv_col, sql_col in COLUMNS:
                 if sql_col.startswith("_"):

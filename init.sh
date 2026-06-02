@@ -33,7 +33,17 @@
 set -euo pipefail
 
 INIT_FILE="/app/data/.initialized"
-INIT_VERSION="4"
+# Bump on any change that requires data/ to be re-derived from corpus/
+# (schema migrations, column-coercion fixes, new derived tables, etc.).
+# v5 — fix CDLI has_photo/has_lineart columns: build_cdli_db.py was
+#       coercing the photo_up/lineart_up scan-metadata strings
+#       (e.g. '600ppi 20160630') through _truthy() which only accepts
+#       '1'/'true' aliases, silently zeroing out 100% of has_photo /
+#       has_lineart across the catalogue. Fix: _has_scan() helper that
+#       treats any non-empty string as a present asset. Re-init rebuilds
+#       cdli.sqlite with ~132K photos and ~251K line drawings surfaced
+#       across the 353K-row catalogue.
+INIT_VERSION="5"
 
 # Optional builds — toggle off via env to skip. Defaults are ON because
 # the MCP server's tool surface is incomplete without them
