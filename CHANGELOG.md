@@ -17,6 +17,46 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+### Added
+
+- **Copy buttons on the Path A and Path B bootstrap prompts**
+  (`templates/www.html` landing page, "How to use" section). The two
+  `<div class="prompt-box">` elements now carry a 32×32 copy button
+  pinned to their top-right corner; clicking copies the bootstrap
+  prompt string to the clipboard and flashes a checkmark confirmation
+  for 1.4s. Reuses the existing `.copy-btn` styling and JS handler
+  from the MCP endpoint URLs section, so the visitor sees consistent
+  copy-button affordance everywhere on the page. Fires
+  `data-umami-event="bootstrap-prompt-copy"` with
+  `data-umami-event-path="research"` or `"teaching"` so we can see
+  in analytics which path visitors actually adopt.
+- **"Re-issue periodically" callouts on both bootstrap paths.**
+  Amber-bordered note blocks under each prompt-box explain that long
+  sessions cause context drift and that re-pasting the same prompt
+  is idempotent and refreshes the per-server operating instructions.
+  Path A's note focuses on attestation-first / `sense_pct` ranking
+  drift; Path B's note focuses on the Ummia persona / scribal-voice
+  drift in long teaching sessions. New `.prompt-reissue` CSS class
+  styles the callout as a left-bordered amber strip with a 💡 lead.
+- **Expandable verbatim citations in the licensing table.** Each
+  License-column cell now wraps its short label (`CC BY-SA 3.0`,
+  `Academic copyright`, `Mixed`) in a native HTML `<details>`
+  element whose `<summary>` is the label and whose expanded body is
+  the full canonical attribution string with project URLs and
+  reuse conditions inlined as clickable links. Uses the native
+  disclosure widget (no JavaScript), with custom CSS replacing the
+  default ▸/▾ marker. Click-to-expand keeps the page compact while
+  making the verbatim text one-click discoverable. Each expansion
+  also fires `data-umami-event="license-expand"` so we can measure
+  which license rows draw curiosity.
+
+### Fixed
+
+- **Corrected `LICENSE-DATA.md` link on the landing page** —
+  previously pointed at `/blob/main/LICENSE-DATA.md` which 404s
+  because the repository's default branch is `root`, not `main`.
+  Now points at `/blob/root/LICENSE-DATA.md`.
+
 ## [0.2.0] — 2026-06-02
 
 ### Changed (BREAKING)
