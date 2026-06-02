@@ -49,6 +49,13 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Documentation
 
+- **Added the closing doxology `𒀭𒈹 𒍠𒊩 {d}inana za₃-mi₂`
+  ("Inana be praised") as an h2** at the bottom of `README.md`,
+  positioned above the final CLAUDE.md developer-reference line so
+  the human-facing reading experience closes with a traditional
+  ETCSL-style colophon while the AI-coding-assistant pointer
+  remains as a quiet trailing aside.
+
 - **Strengthened the Sumerologist pitch in the `README.md` opening
   lede.** The terse "a Sumerologist who wants to query 35 million
   attestations without touching the network" undersold what eme-gir

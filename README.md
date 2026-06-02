@@ -253,4 +253,6 @@ For a complete LLM-agent system prompt that teaches the recommended translation 
 
 For the Sumerian grammar cheat sheet that the MCP server also exposes as the `oracc://grammar/sumerian` resource, see [`lessons/JAGERSMA_GRAMMAR.md`](lessons/JAGERSMA_GRAMMAR.md).
 
+## 𒀭𒈹 𒍠𒊩 {d}inana za₃-mi₂
+
 For an in-depth reference aimed at AI coding assistants extending this project — schema documentation, the Oracc URL surface, the InCommon TLS gotcha, the cuneiform-rendering pipeline, the Docker layout — see [`CLAUDE.md`](CLAUDE.md).
