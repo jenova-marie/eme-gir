@@ -17,6 +17,21 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+### Added
+
+- **Made each endpoint card's server name open a tools popup**
+  (`templates/www.html`). The per-server name in the Endpoints list
+  (`eme-gir-epsd2 · 11 tools`, etc.) is now a `<button>` that opens a
+  native `<dialog>` listing that server's tools with one-line
+  descriptions — the actual MCP tool descriptions, shortened (e.g.
+  `translate_english` → "Find Sumerian lemmas that mean a given English
+  word or phrase"). Tool data is an inline `MCP_TOOLS` map covering all
+  five servers (epsd2/etcsl/cdli/ogsl/ummia, including each `start_here`
+  and Ummia's grammar resource); the dialog closes on the × button, the
+  backdrop, or Escape. The name button carries a `›` affordance and the
+  umami event `endpoint-tools-open` (per-server). The URL link and copy
+  button on the right are unchanged.
+
 ### Changed
 
 - **Made `LICENSE-DATA.md` in the GitHub services card a real link**

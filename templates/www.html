@@ -198,6 +198,93 @@
       border-color: var(--accent);
     }
     .copy-btn svg { display: block; }
+    /* Endpoint name is a button that opens the tools popup. */
+    button.endpoint-name {
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.98rem;
+      color: var(--accent);
+      cursor: pointer;
+      text-align: left;
+    }
+    button.endpoint-name:hover { text-decoration: underline; }
+    button.endpoint-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+    button.endpoint-name::after {
+      content: "›";
+      margin-left: 0.3rem;
+      opacity: 0.6;
+      transition: transform 0.15s;
+      display: inline-block;
+    }
+    button.endpoint-name:hover::after { transform: translateX(2px); }
+    /* Tools popup (native <dialog>). */
+    dialog.tools-modal {
+      width: min(560px, calc(100vw - 2rem));
+      max-height: 82vh;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      color: var(--ink);
+      box-shadow: 0 16px 48px rgba(43, 33, 24, 0.22);
+      overflow: hidden;
+    }
+    dialog.tools-modal::backdrop { background: rgba(43, 33, 24, 0.45); }
+    .tools-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.05rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .tools-head h3 { margin: 0; font-size: 1.05rem; color: var(--accent); }
+    .tools-head .tools-url {
+      margin: 0.2rem 0 0;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .tools-close {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      width: 30px;
+      height: 30px;
+      flex: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+    .tools-close:hover { color: var(--accent); border-color: var(--accent); }
+    .tools-list { margin: 0; padding: 0.4rem 1.25rem 1.25rem; overflow-y: auto; max-height: calc(82vh - 5rem); }
+    .tool-item { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+    .tool-item:last-child { border-bottom: none; }
+    .tool-name {
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .tool-tag {
+      margin-left: 0.45rem;
+      font-family: -apple-system, sans-serif;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      background: rgba(139, 62, 47, 0.1);
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      vertical-align: middle;
+    }
+    .tool-desc { margin: 0.2rem 0 0; font-size: 0.82rem; color: var(--muted); }
     .access-note {
       background: rgba(139, 62, 47, 0.05);
       border: 1px solid var(--border);
@@ -578,7 +665,7 @@
       <div class="endpoints">
         <div class="endpoint">
           <div>
-            <p class="endpoint-name">eme-gir-epsd2 · 11 tools</p>
+            <button class="endpoint-name" type="button" data-server="epsd2" aria-haspopup="dialog" title="View tools" data-umami-event="endpoint-tools-open" data-umami-event-server="epsd2">eme-gir-epsd2 · 11 tools</button>
             <p class="endpoint-desc">Sumerian dictionary, attestation lookups, morphological
             decomposition, n-gram phrase patterns over 35.5M attestations.</p>
           </div>
@@ -591,7 +678,7 @@
         </div>
         <div class="endpoint">
           <div>
-            <p class="endpoint-name">eme-gir-etcsl · 4 tools</p>
+            <button class="endpoint-name" type="button" data-server="etcsl" aria-haspopup="dialog" title="View tools" data-umami-event="endpoint-tools-open" data-umami-event-server="etcsl">eme-gir-etcsl · 4 tools</button>
             <p class="endpoint-desc">Oxford literary corpus, 394 hand-lemmatized compositions
             with English translations — every result bilingual.</p>
           </div>
@@ -604,7 +691,7 @@
         </div>
         <div class="endpoint">
           <div>
-            <p class="endpoint-name">eme-gir-cdli · 2 tools</p>
+            <button class="endpoint-name" type="button" data-server="cdli" aria-haspopup="dialog" title="View tools" data-umami-event="endpoint-tools-open" data-umami-event-server="cdli">eme-gir-cdli · 2 tools</button>
             <p class="endpoint-desc">CDLI artifact catalogue lookup — provenience, period,
             museum custody, and links to institutionally-hosted photographs.</p>
           </div>
@@ -617,7 +704,7 @@
         </div>
         <div class="endpoint">
           <div>
-            <p class="endpoint-name">eme-gir-ogsl · 2 tools</p>
+            <button class="endpoint-name" type="button" data-server="ogsl" aria-haspopup="dialog" title="View tools" data-umami-event="endpoint-tools-open" data-umami-event-server="ogsl">eme-gir-ogsl · 2 tools</button>
             <p class="endpoint-desc">Cuneiform sign rendering via the Oracc Global Sign List.
             Reusable for Akkadian, Hittite, Hurrian, and Elamite — cuneiform
             is not Sumerian-specific.</p>
@@ -631,7 +718,7 @@
         </div>
         <div class="endpoint">
           <div>
-            <p class="endpoint-name">eme-gir-ummia · 7 tools + 1 resource</p>
+            <button class="endpoint-name" type="button" data-server="ummia" aria-haspopup="dialog" title="View tools" data-umami-event="endpoint-tools-open" data-umami-event-server="ummia">eme-gir-ummia · 7 tools + 1 resource</button>
             <p class="endpoint-desc">Teaching surface in the persona of
             Ummia 𒌝𒈪𒀀, master teacher of the e₂-dub-ba; ships the
             Sumerian 101 curriculum and the dual-register grammar reference.</p>
@@ -947,6 +1034,124 @@
     </footer>
 
   </div>
+
+  <!-- Tools popup: opened from an endpoint name; populated from MCP_TOOLS below. -->
+  <dialog class="tools-modal" id="tools-modal" aria-labelledby="tools-modal-title">
+    <div class="tools-head">
+      <div>
+        <h3 id="tools-modal-title"></h3>
+        <p class="tools-url"></p>
+      </div>
+      <button class="tools-close" type="button" aria-label="Close" title="Close">×</button>
+    </div>
+    <ul class="tools-list"></ul>
+  </dialog>
+
+  <script>
+    // Per-server tool list shown in the popup. Descriptions are the actual MCP tool descriptions,
+    // shortened. start_here is the orientation tool; ummia also exposes a grammar resource.
+    const MCP_TOOLS = {
+      epsd2: {
+        name: "eme-gir-epsd2", url: "https://epsd2.eme-gir.org/mcp",
+        tools: [
+          ["start_here", "Orientation — call first; how to use this server alongside its siblings."],
+          ["translate_english", "Find Sumerian lemmas that mean a given English word or phrase."],
+          ["lookup_entry", "Full structured view of a single dictionary entry."],
+          ["see_examples", "Attested Sumerian lines containing a lemma, target word highlighted."],
+          ["find_compound", "Find Sumerian compound expressions matching an English phrase."],
+          ["get_inflections", "Show attested morphological breakdowns of a lemma."],
+          ["analyze_form", "Decompose an attested spelling into its lemma and morphology."],
+          ["translate_sumerian", "Parse a Sumerian transliteration into per-token English glosses."],
+          ["parse_phrase", "Case-aware grammatical pre-annotation of a Sumerian phrase."],
+          ["find_collocations", "Find idiomatic multi-word collocations containing a lemma."],
+          ["find_phrase_pattern", "Corpus-attested n-grams matching a structural template."],
+          ["find_verb_form", "Find attested verb forms matching a feature spec."],
+        ],
+      },
+      etcsl: {
+        name: "eme-gir-etcsl", url: "https://etcsl.eme-gir.org/mcp",
+        tools: [
+          ["start_here", "Orientation — call first; how to use this server alongside its siblings."],
+          ["etcsl_search_english", "Full-text search of the English translations; bilingual matches."],
+          ["etcsl_lines_with_lemma", "Literary lines containing a lemma, with English alongside."],
+          ["etcsl_lookup_text", "Read a composition: line-by-line transliteration + translation."],
+          ["etcsl_search_sumerian", "Full-text search of Sumerian transliterations, with translations."],
+        ],
+      },
+      cdli: {
+        name: "eme-gir-cdli", url: "https://cdli.eme-gir.org/mcp",
+        tools: [
+          ["start_here", "Orientation — call first; how to use this server alongside its siblings."],
+          ["lookup_artifact", "Full CDLI catalogue record for one artifact by its P-id."],
+          ["find_artifacts", "Filter the CDLI catalogue by archaeological / curatorial criteria."],
+        ],
+      },
+      ogsl: {
+        name: "eme-gir-ogsl", url: "https://ogsl.eme-gir.org/mcp",
+        tools: [
+          ["start_here", "Orientation — call first; how to use this server alongside its siblings."],
+          ["cuneify", "Render a transliteration string as Unicode cuneiform."],
+          ["lookup_sign", "Look up a sign by name or phonetic value → glyph, readings, Unicode."],
+        ],
+      },
+      ummia: {
+        name: "eme-gir-ummia", url: "https://um-mi-a.eme-gir.org/mcp",
+        tools: [
+          ["start_here", "Orientation — adopt the Ummia persona; lesson menu + teaching workflow."],
+          ["get_lesson_101_1", "Lesson 101-1 — Introduction to Sumerian (teaching prompt)."],
+          ["get_lesson_101_2", "Lesson 101-2 — Basic Verbs."],
+          ["get_lesson_101_3", "Lesson 101-3 — Case Markers, Possession & Pronouns."],
+          ["get_lesson_101_4", "Lesson 101-4 — Advanced Verbs: Person, Tense & Reduplication."],
+          ["get_lesson_101_5", "Lesson 101-5 — Advanced Case Markers, Modal Prefixes & Subordination."],
+          ["get_grammar_reference", "Both Sumerian grammar references — academic + temple register."],
+          ["grammar reference", "Sumerian grammar: Jagersma 2010 (academic) + Meadow's temple register.", "resource"],
+        ],
+      },
+    };
+
+    (function () {
+      const modal = document.getElementById('tools-modal');
+      const titleEl = modal.querySelector('#tools-modal-title');
+      const urlEl = modal.querySelector('.tools-url');
+      const listEl = modal.querySelector('.tools-list');
+
+      function openTools(server) {
+        const data = MCP_TOOLS[server];
+        if (!data) return;
+        titleEl.textContent = data.name;
+        urlEl.textContent = data.url;
+        listEl.innerHTML = '';
+        for (const [name, desc, tag] of data.tools) {
+          const li = document.createElement('li');
+          li.className = 'tool-item';
+          const nameEl = document.createElement('div');
+          nameEl.className = 'tool-name';
+          nameEl.textContent = name;
+          if (tag) {
+            const t = document.createElement('span');
+            t.className = 'tool-tag';
+            t.textContent = tag;
+            nameEl.appendChild(t);
+          }
+          const descEl = document.createElement('p');
+          descEl.className = 'tool-desc';
+          descEl.textContent = desc;
+          li.appendChild(nameEl);
+          li.appendChild(descEl);
+          listEl.appendChild(li);
+        }
+        if (typeof modal.showModal === 'function') modal.showModal();
+        else modal.setAttribute('open', '');
+      }
+
+      document.querySelectorAll('button.endpoint-name[data-server]').forEach(function (btn) {
+        btn.addEventListener('click', function () { openTools(btn.dataset.server); });
+      });
+      modal.querySelector('.tools-close').addEventListener('click', function () { modal.close(); });
+      // Click on the backdrop (the dialog element itself, outside its content) closes it.
+      modal.addEventListener('click', function (e) { if (e.target === modal) modal.close(); });
+    })();
+  </script>
 
   <script>
     (function () {
