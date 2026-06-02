@@ -280,17 +280,6 @@
       top: 0.45rem;
       right: 0.45rem;
     }
-    .prompt-reissue {
-      margin: -0.6rem 0 1rem;
-      padding: 0.6rem 0.85rem;
-      border-left: 2px solid #d4a85a;
-      background: rgba(212, 168, 90, 0.08);
-      border-radius: 0 4px 4px 0;
-      font-size: 0.83rem;
-      line-height: 1.5;
-      color: var(--ink);
-    }
-    .prompt-reissue strong { color: #8c6a1f; }
     /* Expandable verbatim citation in the licensing table —
        click the short license name to reveal the full attribution. */
     .cite-detail {
@@ -714,18 +703,6 @@
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button></div>
 
-          <p class="prompt-reissue">
-            <strong>💡 Re-issue periodically.</strong> Long sessions
-            cause agents to drift from the bootstrap context as the
-            conversation history grows. If responses start ignoring
-            attestation-first guidance, skipping the
-            <code>sense_count</code>/<code>sense_pct</code> ranking,
-            or omitting cited links, just paste this prompt again to
-            refresh the per-server operating instructions. The
-            <code>start_here</code> calls are idempotent — repeated
-            invocations are cheap and won't break anything.
-          </p>
-
           <p style="font-size: 0.88rem; color: var(--muted); margin: 0 0 0.6rem;">
             The agent will then have the operating context to answer
             queries by routing them to the appropriate server. Try:
@@ -751,17 +728,6 @@
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/><path d="M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1"/></svg>
             </button></div>
 
-          <p class="prompt-reissue">
-            <strong>💡 Re-issue periodically.</strong> Long teaching
-            sessions cause the Ummia persona to drift as the lesson
-            transcript grows — voice flattens, the scribal frame
-            slips, drills get skipped. Paste this prompt again at the
-            start of each new lesson (or any time the persona feels
-            off) to re-anchor the master-scribe voice and the lesson
-            workflow. The call is idempotent and won't disrupt
-            in-flight conversation.
-          </p>
-
           <p style="font-size: 0.88rem; color: var(--muted); margin: 0 0 0.6rem;">
             The agent adopts the teaching persona, surfaces the
             five-lesson Sumerian 101 curriculum, and waits for you to
@@ -777,13 +743,24 @@
 
       </div>
 
-      <p style="font-size: 0.92rem; line-height: 1.65; color: var(--muted); max-width: 50rem; margin-top: 1.5rem;">
-        Both bootstrap tools are idempotent — calling
-        <code>start_here()</code> a second time within a session is a
-        no-op. After the initial handshake, simply request lookups,
-        translations, attestations, or lessons in natural language;
-        the agent's loaded context dictates which server's tools to
-        invoke for any given question.
+      <p style="font-size: 0.92rem; line-height: 1.65; color: var(--ink); max-width: 50rem; margin-top: 1.5rem;">
+        Both bootstrap calls are <strong>idempotent</strong> —
+        repeating either prompt within a session is cheap and never
+        disruptive. After the initial handshake, simply request
+        lookups, translations, attestations, or lessons in natural
+        language; the agent's loaded context dictates which server's
+        tools to invoke for any given question.
+        <strong>💡 Re-issue periodically.</strong> Long sessions cause
+        agents to drift as the conversation history grows — research
+        workflows start ignoring attestation-first guidance, skipping
+        the <code>sense_count</code>/<code>sense_pct</code> ranking,
+        or omitting cited links; the Ummia teaching persona's voice
+        flattens, the scribal frame slips, drills get skipped. When
+        you notice that drift, paste either bootstrap prompt again
+        to refresh the per-server operating instructions — the
+        <code>start_here()</code> calls won't disrupt the in-flight
+        conversation, they just re-anchor the agent's working
+        context.
       </p>
     </section>
 
@@ -873,10 +850,93 @@
       </div>
     </section>
 
+    <section id="development">
+      <h2>Development &amp; contribution</h2>
+
+      <p style="font-size: 1rem; line-height: 1.65; color: var(--ink); max-width: 50rem;">
+        <strong><code>eme-gir</code> is open source.</strong> The code
+        in this repository is released under the
+        <a href="https://github.com/jenova-marie/eme-gir/blob/root/LICENSE" data-umami-event="dev-link" data-umami-event-target="mit-license">MIT License</a>
+        — fork it, modify it, run a private deployment of your own.
+        Written entirely in Python 3.12+, containerized via Docker,
+        runnable as a complete eight-service stack with a single
+        <code>docker compose up</code>. The public <code>eme-gir.org</code>
+        instance is hosted by the maintainer as a free service for
+        the Sumerological and digital-humanities communities;
+        contributions, bug reports, questions, and sponsorships are
+        all warmly welcomed via GitHub Issues.
+      </p>
+
+      <div class="services" style="margin-top: 1.5rem;">
+        <a class="service" href="https://github.com/jenova-marie/eme-gir" data-umami-event="dev-card" data-umami-event-target="github-source">
+          <h3>📦 Source &middot; MIT</h3>
+          <p>Full source on GitHub. The code is MIT-licensed, so a
+             private deployment of your own is one <code>git clone</code>
+             away. The bundled data layer carries separate licenses
+             (Oracc CC&nbsp;BY-SA&nbsp;3.0, ETCSL academic, CDLI mixed —
+             see Data sources above).</p>
+        </a>
+
+        <div class="service" style="cursor: default;">
+          <h3>🐍 Tech stack</h3>
+          <p>Python 3.12+ throughout. Flask + gunicorn for the web
+             surfaces. FastMCP (the official MCP SDK) for the server
+             layer. SQLite with FTS5 indexes for the data layer.
+             Docker (linux/arm64) for orchestration. No compiled
+             extensions beyond what <code>requirements.txt</code>
+             pulls from PyPI.</p>
+        </div>
+
+        <a class="service" href="https://github.com/jenova-marie/eme-gir#getting-started" data-umami-event="dev-card" data-umami-event-target="self-host">
+          <h3>🐳 Self-host</h3>
+          <p><code>git clone</code> the repo, then
+             <code>docker compose up</code>. The compose file brings
+             up the full eight-service stack — five MCP servers, two
+             Flask web apps, one init container — bound to localhost.
+             ~10 min on first boot to download and index the Oracc
+             corpus; subsequent boots are sub-second.</p>
+        </a>
+
+        <div class="service" style="cursor: default;">
+          <h3>🌍 Public deployment</h3>
+          <p>This <code>eme-gir.org</code> instance runs on a small
+             AWS Docker Swarm (single-node, Graviton arm64). The
+             service is free to use while the current infrastructure
+             accommodates demand — see the sponsor note below if
+             traffic outgrows that.</p>
+        </div>
+      </div>
+
+      <div class="lede" style="margin-top: 1.75rem;">
+        <p><strong>🤝 Get involved.</strong> Pull requests, bug
+        reports, feature requests, and questions are all warmly
+        welcomed at
+        <a href="https://github.com/jenova-marie/eme-gir/issues" data-umami-event="dev-link" data-umami-event-target="github-issues">github.com/jenova-marie/eme-gir/issues</a>.
+        Sumerologists' eyes on the data layer are especially
+        valuable — if a translation, sense ranking, attestation, or
+        period attribution doesn't pass scholarly muster, the issue
+        tracker is the right place to flag it. Contributors should
+        follow the existing project conventions documented in
+        <a href="https://github.com/jenova-marie/eme-gir/blob/root/CLAUDE.md" data-umami-event="dev-link" data-umami-event-target="claude-md">CLAUDE.md</a>
+        and the changelog discipline in
+        <a href="https://github.com/jenova-marie/eme-gir/blob/root/CHANGELOG.md" data-umami-event="dev-link" data-umami-event-target="changelog">CHANGELOG.md</a>.</p>
+
+        <p><strong>💝 Sponsorship.</strong> Hosting the public instance
+        is a personal investment that's sustainable at current usage
+        levels. If demand scales beyond the single-node swarm's
+        capacity — or if a research institution would like to
+        underwrite a dedicated build of the corpus — sponsorship
+        keeps the public surface free for everyone else. Open an
+        <a href="https://github.com/jenova-marie/eme-gir/issues/new" data-umami-event="dev-link" data-umami-event-target="github-new-issue">issue</a>
+        to start the conversation.</p>
+      </div>
+    </section>
+
     <footer>
       <p>
-        Built by <a href="https://github.com/jenova-marie" data-umami-event="footer-link" data-umami-event-target="jenova-marie-github">Jenova Marie</a> ·
-        Code MIT · Data layered (see above) ·
+        © 2026 <a href="https://github.com/jenova-marie" data-umami-event="footer-link" data-umami-event-target="jenova-marie-github">Jenova Marie</a> ·
+        Code released under <a href="https://github.com/jenova-marie/eme-gir/blob/root/LICENSE" data-umami-event="footer-link" data-umami-event-target="mit-license">MIT</a> ·
+        Data carries source licenses (see above) ·
         <a href="https://github.com/jenova-marie/eme-gir" data-umami-event="footer-link" data-umami-event-target="github-source">Source on GitHub</a>
       </p>
     </footer>

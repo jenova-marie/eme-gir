@@ -17,6 +17,22 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Added a `© 2026 Jenova Marie` copyright notice to the landing-page
+  footer** (`templates/www.html`). The notice establishes authorship
+  of the original creative work (website copy, layout, project
+  framing, build scripts, prompt docs) without contradicting the MIT
+  grant on the code or the separately-held copyrights on the data
+  layer (Oracc CC BY-SA 3.0, ETCSL academic, CDLI mixed). The footer
+  now reads `© 2026 Jenova Marie · Code released under MIT · Data
+  carries source licenses (see above) · Source on GitHub`; the
+  earlier "Built by Jenova Marie" wording is folded into the ©
+  attribution and the MIT label becomes a direct link to the LICENSE
+  file. The Jenova Marie name still links to the GitHub profile; new
+  MIT link fires `data-umami-event-target="mit-license"` alongside
+  the existing footer-link telemetry.
+
 ### Documentation
 
 - **Compacted `CLAUDE.md` from 605 lines to ~210 lines** by extracting
@@ -44,8 +60,50 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
   the routine read of CLAUDE.md at session start drops from ~28K
   tokens to ~9K tokens of memory budget.
 
+### Added
+
+- **New "Development & contribution" section on the landing page**
+  (`templates/www.html`, `#development` anchor, positioned between
+  Data sources & licenses and the footer). Introduces visitors to
+  the open-source nature of the project, the MIT licensing of the
+  code, and the paths for engagement. A 4-card grid covers Source
+  (MIT, GitHub), Tech stack (Python 3.12+, Flask, FastMCP, SQLite,
+  Docker), Self-host (one-line `docker compose up`), and Public
+  deployment (small AWS Docker Swarm, Graviton arm64, free while
+  infrastructure permits). Below the grid, a two-paragraph lede
+  block covers "🤝 Get involved" (PRs, bug reports, feature
+  requests, questions on GitHub Issues; explicit invitation to
+  Sumerologists to flag scholarly issues in translations, sense
+  ranking, attestations) and "💝 Sponsorship" (transparent about
+  the public instance being a personal investment, framed as
+  "sponsorship keeps the public surface free for everyone else"
+  rather than as a request). Reuses the existing `.services` /
+  `.service` card grid CSS for visual consistency with the
+  Services section above; clickable cards become `<a>` with hover
+  lift, info-only cards become `<div>` with default cursor. Each
+  link / card click fires `data-umami-event` with one of seven
+  distinct `data-umami-event-target` values (`github-source`,
+  `self-host`, `github-issues`, `github-new-issue`, `mit-license`,
+  `claude-md`, `changelog`) so analytics can show which
+  contribution path visitors actually take.
+
 ### Changed
 
+- **Consolidated the two `.prompt-reissue` callouts under each Path
+  A and Path B prompt-box** (`templates/www.html`) into a single
+  combined statement at the bottom of the "How to use" section.
+  The new closing paragraph fuses three pieces of guidance into one
+  place: (1) both bootstrap calls are idempotent, (2) after the
+  handshake just ask in natural language and the loaded context
+  picks which server to use, and (3) re-issue periodically when
+  drift sets in — covering BOTH the Path A symptoms (skipping the
+  `sense_count`/`sense_pct` ranking, omitting cited links) AND the
+  Path B symptoms (Ummia persona voice flattening, scribal frame
+  slipping, drills getting skipped). Removes ~20 lines of
+  duplicated callout markup, drops the orphaned `.prompt-reissue`
+  CSS class, and gives the message one canonical landing spot the
+  reader encounters AFTER seeing both paths rather than two
+  parallel asides nested mid-section.
 - **Strengthened the CHANGELOG upkeep rule in `CLAUDE.md`** to
   cover EVERY source modification, not just "user-visible" changes.
   Previously the rule excluded pure refactors, comment polish, CI
