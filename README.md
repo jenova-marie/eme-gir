@@ -21,12 +21,26 @@ Oracc. A known limitation: result sorting may differ from the canonical
 site on pages 2+ of multi-page lists, because Oracc's exact sort
 algorithm (including its sub-sort tiebreaker) is not known.
 
-If you're a developer who wants their LLM agent to translate English
-into actual Sumerian rather than plausible-looking nonsense; a
-Sumerologist who wants to query 35 million attestations without
-touching the network; or a digital humanist looking to bring
-four-thousand-year-old clay tablets into a modern indexed pipeline —
-this is for you.
+If you're a Sumerologist or Assyriologist whose research has run into
+the wall of what `oracc.museum.upenn.edu`'s web interface can answer —
+*"every Ur III line where `lugal` is the ergative subject of `du₃`"*,
+*"every literary line where Inana is the subject of a marû verb"*,
+*"every Lagash II votive inscription in the British Museum that has a
+photograph"* — eme-gir is the harness that turns those into
+fifty-millisecond queries. Case-aware phrase pattern search over a
+106K-row inflected-collocations index. Period-filterable joins from
+attestation to museum metadata to CDLI photograph in a single call.
+FTS5 over the Oxford translations *and* the Sumerian transliterations
+of all 394 ETCSL literary compositions, bilingual by construction.
+35.5 million word-occurrences in denormalized SQLite that you can hit
+with `sqlite3` directly when the tool surface doesn't fit your
+question. Every cited line carries its publication shorthand and P-id,
+ready to drop into a footnote.
+
+It's also the harness for a developer who wants their LLM agent to
+translate English into actual Sumerian rather than plausible-looking
+nonsense, and for a digital humanist looking to bring
+four-thousand-year-old clay tablets into a modern indexed pipeline.
 
 ---
 

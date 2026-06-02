@@ -49,6 +49,24 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Documentation
 
+- **Strengthened the Sumerologist pitch in the `README.md` opening
+  lede.** The terse "a Sumerologist who wants to query 35 million
+  attestations without touching the network" undersold what eme-gir
+  actually offers a working academic, framing the value as offline
+  access rather than as new research capability. The replacement
+  paragraph leads with three concrete corpus questions the canonical
+  Oracc web interface cannot answer — case-aware phrase patterns,
+  cross-corpus role queries, filtered artifact joins — then names
+  the specific harness pieces that turn each into a fifty-millisecond
+  query: the 106K-row inflected-collocations index with case + sense
+  awareness, period-filterable attestation-to-museum-to-photograph
+  joins, FTS5 over both halves of the bilingual ETCSL, 35.5M
+  attestations in denormalized SQLite reachable via `sqlite3` for
+  ad-hoc structural questions, and the publication shorthand + P-id
+  on every cited line for direct footnote drop-in. The developer +
+  digital-humanist personas are kept as a secondary sentence so the
+  Sumerologist framing leads.
+
 - **Disclosed the verification-browser sort-order limitation in
   `README.md`'s opening lede.** The intro paragraph that introduces the
   ePSD2 verification browser now closes with an explicit known
