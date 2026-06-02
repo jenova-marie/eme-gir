@@ -59,9 +59,20 @@ jobs:
         uses: https://github.com/docker/setup-qemu-action@v3
 
       # Build the tag list:
-      #   - branch name       always
-      #   - latest            only when on the default branch (avoids dev
-      #                       pushes clobbering the prod-tracking tag)
+      #   - branch name       always (in practice `prod`, per the
+      #                       top-level `on: push: branches: [prod]`
+      #                       trigger filter — that filter is already
+      #                       the canonical "what builds to ECR" gate)
+      #   - latest            always — since the workflow only runs on
+      #                       `prod`, `latest` is unambiguous here. The
+      #                       prior `enable={{is_default_branch}}` guard
+      #                       was structurally unreachable under our
+      #                       split-branch setup (default branch is
+      #                       `root` for repo navigation; `prod` is the
+      #                       deploy ref; the trigger filter only fires
+      #                       on `prod`, so is_default_branch was always
+      #                       false on every CI run and `:latest` never
+      #                       got re-tagged)
       #   - sha-<short>       always — every build is reproducibly
       #                       addressable by commit
       - name: Extract metadata
@@ -71,7 +82,7 @@ jobs:
           images: ${{ secrets.AWS_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.repository.name }}
           tags: |
             type=raw,value=${{ env.ENV }}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
             type=sha,prefix=sha-,format=short
 
       - name: Login to Amazon ECR
