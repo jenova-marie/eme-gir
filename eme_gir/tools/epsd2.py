@@ -28,14 +28,10 @@ import re
 import sqlite3
 from typing import Any
 
-EPSD2_ATTRIBUTION = (
-    "ePSD2 / Oracc: electronic Pennsylvania Sumerian Dictionary, 2nd "
-    "edition (oracc.museum.upenn.edu/epsd2), prepared by Steve Tinney and "
-    "the Oracc team at the University of Pennsylvania. Data licensed under "
-    "Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0); "
-    "see oracc.museum.upenn.edu/doc/about/licensing. Attribution is "
-    "required; substantial reuses must propagate the ShareAlike license."
-)
+# Canonical attribution string lives in eme_gir.attribution (single source
+# of truth, shared by the response models + the license:// MCP resource).
+# Re-exported here so existing importers keep working.
+from ..attribution import EPSD2_ATTRIBUTION, license_banner  # noqa: F401  (EPSD2_ATTRIBUTION re-export)
 
 
 # Unicode subscript digits used by Oracc to disambiguate sign readings
@@ -512,6 +508,7 @@ def see_examples(oid: str, limit: int = 3, period: str | None = None) -> SeeExam
         cdli = _cdli.enrichment(r["text_id"])
         if cdli:
             line.update(cdli)
+        line["display_markdown"] = _cdli.attestation_markdown(line)
         lines.append(line)
         if len(lines) >= limit:
             break
@@ -2115,6 +2112,7 @@ def find_verb_form(
                     cdli = _cdli.enrichment(line["text_id"])
                     if cdli:
                         example.update(cdli)
+                    example["display_markdown"] = _cdli.attestation_markdown(example)
 
             matches.append({
                 "morph": morph_n,
@@ -2211,4 +2209,4 @@ def start_here() -> str:
     Re-call this tool any time your working context drifts and you
     want to re-anchor on this server's guidance.
     """
-    return load_prompt(EPSD2_PROMPT_DOC)
+    return license_banner("eme-gir-epsd2", EPSD2_ATTRIBUTION) + load_prompt(EPSD2_PROMPT_DOC)

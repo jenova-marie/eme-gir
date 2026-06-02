@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from ..attribution import EPSD2_CITATION_SHORT, EPSD2_PRESENTATION
 from .common import _Permissive, AttestationLine, EntryHeader, Suffix
 
 
@@ -295,8 +296,32 @@ _ATTRIBUTION_DESC = (
     "data. The ShareAlike clause propagates to substantial reuses."
 )
 
+_CITATION_SHORT_DESC = (
+    "Short citation token. Reproduce verbatim in a Sources section whenever "
+    "you present ANY field from this result — including counts and glyphs."
+)
 
-class TranslateEnglishResponse(_Permissive):
+_PRESENTATION_DESC = (
+    "Point-of-use instruction telling the agent how to attribute this "
+    "result to the user. Follow it; it is the license's display condition."
+)
+
+
+class _EPSD2Response(_Permissive):
+    """Base for every ePSD2 tool response.
+
+    Carries the always-present short citation + point-of-use presentation
+    imperative (defaults baked in) so agents in generic chat clients
+    attribute the data even when they discard the longer `attribution`
+    field during synthesis. The full `attribution` string is still
+    declared (and passed) per-response by the tool layer.
+    """
+
+    citation_short: str = Field(default=EPSD2_CITATION_SHORT, description=_CITATION_SHORT_DESC)
+    presentation: str = Field(default=EPSD2_PRESENTATION, description=_PRESENTATION_DESC)
+
+
+class TranslateEnglishResponse(_EPSD2Response):
     """Response shape for translate_english."""
 
     query: str
@@ -310,7 +335,7 @@ class TranslateEnglishResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class LookupEntryResponse(_Permissive):
+class LookupEntryResponse(_EPSD2Response):
     """Response shape for lookup_entry."""
 
     oid: str
@@ -328,7 +353,7 @@ class LookupEntryResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class SeeExamplesResponse(_Permissive):
+class SeeExamplesResponse(_EPSD2Response):
     """Response shape for see_examples."""
 
     oid: str
@@ -343,7 +368,7 @@ class SeeExamplesResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class FindCompoundResponse(_Permissive):
+class FindCompoundResponse(_EPSD2Response):
     """Response shape for find_compound."""
 
     query: str
@@ -355,7 +380,7 @@ class FindCompoundResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class GetInflectionsResponse(_Permissive):
+class GetInflectionsResponse(_EPSD2Response):
     """Response shape for get_inflections."""
 
     oid: str
@@ -375,7 +400,7 @@ class GetInflectionsResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class AnalyzeFormResponse(_Permissive):
+class AnalyzeFormResponse(_EPSD2Response):
     """Response shape for analyze_form."""
 
     spelling: str
@@ -391,7 +416,7 @@ class AnalyzeFormResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class TranslateSumerianResponse(_Permissive):
+class TranslateSumerianResponse(_EPSD2Response):
     """Response shape for translate_sumerian."""
 
     transliteration: str
@@ -401,7 +426,7 @@ class TranslateSumerianResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class FindCollocationsResponse(_Permissive):
+class FindCollocationsResponse(_EPSD2Response):
     """Response shape for find_collocations."""
 
     word: str = Field(..., description="The word looked up (after any cf-resolution).")
@@ -422,7 +447,7 @@ class FindCollocationsResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class FindPhrasePatternResponse(_Permissive):
+class FindPhrasePatternResponse(_EPSD2Response):
     """Response shape for find_phrase_pattern.
 
     Filters the corpus-mined collocation index by a structural template
@@ -452,7 +477,7 @@ class FindPhrasePatternResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class FindVerbFormResponse(_Permissive):
+class FindVerbFormResponse(_EPSD2Response):
     """Response shape for find_verb_form."""
 
     cf: str
@@ -468,7 +493,7 @@ class FindVerbFormResponse(_Permissive):
     attribution: str = Field(..., description=_ATTRIBUTION_DESC)
 
 
-class ParsePhraseResponse(_Permissive):
+class ParsePhraseResponse(_EPSD2Response):
     """Response shape for parse_phrase.
 
     Provides a case-aware, morphology-driven pre-annotation of a Sumerian

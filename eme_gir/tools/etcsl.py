@@ -33,14 +33,12 @@ from ..models.etcsl import (
 from ..paths import ETCSL_DB, ETCSL_PROMPT_DOC
 from ..prompts import load_prompt
 
-ETCSL_ATTRIBUTION = (
-    "ETCSL: Black, J.A., Cunningham, G., Robson, E., and Zólyomi, G., "
-    "The Electronic Text Corpus of Sumerian Literature "
-    "(etcsl.orinst.ox.ac.uk), Oxford 1998-2006. © The Authors; the "
-    "authors have asserted their moral rights. The ETCSL project has NOT "
-    "released this corpus under any Creative Commons license; redistribution "
-    "is governed by traditional academic copyright with a citation request. "
-    "When quoting an ETCSL line or paragraph, cite this attribution verbatim."
+# Canonical attribution string lives in eme_gir.attribution (single source
+# of truth). Re-exported here so existing importers keep working.
+from ..attribution import (  # noqa: E402, F401  (ETCSL_* re-exported)
+    ETCSL_ATTRIBUTION,
+    ETCSL_CITATION_SHORT,
+    license_banner,
 )
 
 
@@ -63,6 +61,32 @@ def _etcsl_lines_for_paragraph(con: sqlite3.Connection, text_id: str, para_id: s
         (text_id, para_id),
     ).fetchall()
     return [{"line": r["line_label"], "transliteration": r["transliteration"]} for r in rows]
+
+
+def _etcsl_markdown(
+    text_id: str,
+    title: str | None = None,
+    line_label: str | None = None,
+    transliteration: str | None = None,
+    translation: str | None = None,
+) -> str:
+    """Compose a bilingual quote block with the ETCSL citation fused in.
+
+    `transliteration` may be a single line or several lines pre-joined with
+    "\\n> " so each renders as its own quoted line. Used by the lemma /
+    Sumerian / English hit builders so the required Oxford citation rides
+    inside the quoted content rather than in a discardable sidecar field.
+    """
+    parts: list[str] = []
+    if transliteration:
+        parts.append(f"> {transliteration}")
+    if translation:
+        parts.append(f'> "{translation}"')
+    loc = title or text_id
+    label = f", line {line_label}" if line_label else ""
+    parts.append(f"> — {loc} (ETCSL {text_id}{label})")
+    parts.append(f"<sub>— {ETCSL_CITATION_SHORT}</sub>")
+    return "\n".join(parts)
 
 
 @log_call
@@ -112,12 +136,17 @@ def etcsl_search_english(query: str, limit: int = 10, offset: int = 0) -> ETCSLS
         ).fetchall()
         results = []
         for r in rows:
+            sumerian_lines = _etcsl_lines_for_paragraph(con, r["text_id"], r["para_id"])
+            joined = "\n> ".join(l["transliteration"] for l in sumerian_lines) or None
             results.append({
                 "text_id": r["text_id"],
                 "title": r["title"],
                 "line_range": r["line_range"],
                 "translation": r["translation"],
-                "sumerian_lines": _etcsl_lines_for_paragraph(con, r["text_id"], r["para_id"]),
+                "sumerian_lines": sumerian_lines,
+                "display_markdown": _etcsl_markdown(
+                    r["text_id"], r["title"], r["line_range"], joined, r["translation"]
+                ),
             })
     finally:
         con.close()
@@ -199,6 +228,9 @@ def etcsl_lines_with_lemma(lemma: str, limit: int = 10, offset: int = 0) -> ETCS
                 "line": r["line_label"],
                 "transliteration": r["transliteration"],
                 "translation_paragraph": translation,
+                "display_markdown": _etcsl_markdown(
+                    r["text_id"], r["title"], r["line_label"], r["transliteration"], translation
+                ),
             })
     finally:
         con.close()
@@ -355,6 +387,9 @@ def etcsl_search_sumerian(query: str, limit: int = 10, offset: int = 0) -> ETCSL
                 "line": r["line_label"],
                 "transliteration": r["transliteration"],
                 "translation_paragraph": tr,
+                "display_markdown": _etcsl_markdown(
+                    r["text_id"], r["title"], r["line_label"], r["transliteration"], tr
+                ),
             })
     finally:
         con.close()
@@ -403,4 +438,4 @@ def start_here() -> str:
     Re-call this tool any time your working context drifts and you
     want to re-anchor on this server's guidance.
     """
-    return load_prompt(ETCSL_PROMPT_DOC)
+    return license_banner("eme-gir-etcsl", ETCSL_ATTRIBUTION) + load_prompt(ETCSL_PROMPT_DOC)

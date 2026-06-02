@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from .attribution import CDLI_CITATION_SHORT, EPSD2_CITATION_SHORT
 from .paths import (
     CDLI_ARTIFACT_URL,
     CDLI_DB,
@@ -78,3 +79,40 @@ def enrichment(p_id: str) -> dict | None:
         "museum_collection": row["museum_collection"],
         "museum_no": row["museum_no"],
     }
+
+
+def attestation_markdown(line: dict) -> str:
+    """Compose a pre-formatted block for one cited attestation line.
+
+    Fuses the Sumerian transliteration + a CDLI artifact link + a DUAL
+    short citation (ePSD2 for the line/lemma data, CDLI for the tablet
+    catalogue/metadata) so attribution rides inside the quoted content
+    rather than in a discardable sidecar field. `line` is the per-line
+    dict built by see_examples / find_verb_form (already merged with the
+    enrichment() fields), so CDLI keys may be absent when the artifact
+    isn't in the catalogue.
+    """
+    translit = line.get("transliteration") or ""
+    text_id = line.get("text_id") or ""
+    line_label = line.get("line_label") or ""
+    cdli_url = line.get("cdli_url")
+    ref = f"[{text_id}]({cdli_url})" if cdli_url else text_id
+    head = f"{ref} {line_label}".strip()
+    loc = " · ".join(
+        b
+        for b in (
+            line.get("designation"),
+            line.get("period"),
+            line.get("museum_collection"),
+            line.get("museum_no"),
+        )
+        if b
+    )
+    cite = EPSD2_CITATION_SHORT + (
+        f"; tablet metadata: {CDLI_CITATION_SHORT}" if cdli_url else ""
+    )
+    block = f"> {translit}".rstrip()
+    if head:
+        block += f"\n> — {head}" + (f" · {loc}" if loc else "")
+    block += f"\n<sub>— line & lemma: {cite}</sub>"
+    return block

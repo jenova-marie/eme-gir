@@ -19,6 +19,40 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Changed
 
+- **`start_here()` now opens with a license banner** on all four data
+  servers (epsd2, ogsl, etcsl, cdli). A `license_banner()` helper in
+  `eme_gir/attribution.py` prepends a "FIRST ACTION — show the user the
+  data license" directive plus the canonical `*_ATTRIBUTION` text to the
+  bootstrap output, so the warm-up ritual ("use the start_here tool of
+  mcp servers …") prompts the agent to immediately surface each server's
+  license. Sourced from the single-source constants, so it can't drift.
+
+### Documentation
+
+- **Aligned the four `start_here` bootstrap docs with the new attribution
+  machinery.** `prompt/{EPSD2,OGSL,ETCSL,CDLI}_PROMPT.md` now tell the agent
+  about the `citation_short` + `presentation` response fields, the
+  `display_markdown` blocks on quotable results, and the per-server
+  `license://…` MCP resource — so the bootstrap layer reinforces the
+  per-call layer instead of drifting from it. (Edits take effect on server
+  restart; `load_prompt` caches read-once.)
+- **Added a terms-acceptance line** ("By calling these tools you accept the
+  source's terms of use.") to each data server's `make_server(instructions=)`.
+
+### Fixed
+
+- **Corrected the data-license statements in the MCP server `instructions`
+  for all four data servers.** They previously stated the wrong licenses
+  (`servers/epsd2` and `servers/cdli` said "CC0"; `servers/etcsl` said
+  "CC BY 3.0 UK"). They now match `LICENSE-DATA.md` and the `*_ATTRIBUTION`
+  constants: ePSD2 / OGSL = CC BY-SA 3.0; ETCSL = traditional academic
+  copyright (NOT Creative Commons) with a required citation; CDLI =
+  catalogue text reusable with citation, imagery non-commercial only. Also
+  fixed the same "CC BY 3.0 UK" / "CC0" wording in the `eme_gir/models/etcsl.py`
+  and `eme_gir/models/cdli.py` field descriptions and module docstrings.
+
+### Changed
+
 - **Umami analytics — split into two properties.** Server-side
   per-tool-call MCP events now go to a dedicated MCP property
   (`EME_GIR_UMAMI_MCP_ID`); browser-side click + pageview events from
@@ -35,6 +69,29 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ### Added
 
+- **`citation_short` + `presentation` fields on every tool response**
+  across the epsd2, ogsl, etcsl, and cdli servers. `citation_short` is a
+  one-line attribution token (e.g. `ePSD2 (CC BY-SA 3.0)`); `presentation`
+  is a point-of-use instruction telling the agent to reproduce it. Added
+  as defaults on new per-domain response base classes
+  (`_EPSD2Response`, `_ETCSLResponse`, `_CDLIResponse`, `_OGSLResponse`),
+  so the ~20 existing tool call sites are unchanged.
+- **`display_markdown` field on the four "quotable-unit" response shapes**
+  — `CuneifyResponse` (glyphs + cite, with a `□` disclosure when a sign is
+  unresolved), `AttestationLine` (cited line + CDLI link + dual ePSD2/CDLI
+  cite, used by `see_examples` / `find_verb_form`), the ETCSL line/hit
+  shapes (bilingual block + Oxford cite), and `CDLIArtifact` (one-line
+  link + cite). The citation is fused into the block so it survives
+  synthesis in generic chat clients.
+- **`license://…` MCP resources on each data server** —
+  `license://oracc-epsd2`, `license://oracc-ogsl`, `license://etcsl`,
+  `license://cdli` — serving the full verbatim attribution so the per-call
+  `citation_short` can stay short.
+- **`eme_gir/attribution.py`** — single-source module holding every
+  corpus's full attribution, short citation, and presentation strings,
+  plus a `make_license_body` factory for the resources. The four
+  `*_ATTRIBUTION` constants are re-exported from their original
+  `eme_gir/tools/*.py` locations for backwards compatibility.
 - **`EME_GIR_UMAMI_MCP_ID` env var** — dedicated MCP property UUID,
   separate from the website property. Plumbed through the
   `x-mcp-environment` anchor in `docker-compose.yml` so every MCP

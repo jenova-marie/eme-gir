@@ -96,6 +96,13 @@ class AttestationLine(_Permissive):
     museum_no: str | None = Field(
         None, description="Museum catalog number, e.g. 'BM 103437'."
     )
+    # Pre-composed block fusing the transliteration + CDLI link + a dual
+    # short citation (ePSD2 for the line, CDLI for the tablet). Relay
+    # verbatim so attribution rides inside the quoted content.
+    display_markdown: str | None = Field(
+        None,
+        description="Pre-composed block: transliteration + CDLI link + dual ePSD2/CDLI citation. Relay verbatim to the user.",
+    )
 
 
 class Suffix(_Permissive):

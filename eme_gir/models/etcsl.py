@@ -2,15 +2,37 @@
 
 The ETCSL corpus ships English translations alongside Sumerian lines, so
 every hit shape carries both. Every response model also includes an
-`attribution` field with the canonical citation string — required under
-the CC BY 3.0 UK license. Pass it through to the user verbatim.
+`attribution` field with the canonical citation string. ETCSL is NOT
+released under any Creative Commons license — it carries traditional
+academic copyright (© Black, Cunningham, Robson, Zólyomi 1998-2006) with a
+required citation. Pass the attribution through to the user verbatim.
 """
 
 from __future__ import annotations
 
 from pydantic import Field
 
+from ..attribution import ETCSL_CITATION_SHORT, ETCSL_PRESENTATION
 from .common import _Permissive
+
+_ETCSL_ATTRIBUTION_DESC = (
+    "REQUIRED to display: ETCSL citation string. ETCSL is NOT under any "
+    "Creative Commons license; the citation is a condition of use."
+)
+
+_ETCSL_DISPLAY_DESC = (
+    "Pre-composed bilingual block with the ETCSL citation fused in; relay "
+    "verbatim to the user."
+)
+
+
+class _ETCSLResponse(_Permissive):
+    """Base for every ETCSL tool response — carries the always-present
+    short citation + point-of-use presentation imperative (defaults baked
+    in) so the citation survives synthesis in generic chat clients."""
+
+    citation_short: str = Field(default=ETCSL_CITATION_SHORT, description="Short ETCSL citation; reproduce verbatim in a Sources section.")
+    presentation: str = Field(default=ETCSL_PRESENTATION, description="Point-of-use attribution instruction; ETCSL's display condition.")
 
 
 class ETCSLLine(_Permissive):
@@ -20,6 +42,7 @@ class ETCSLLine(_Permissive):
     line_id: str | None = Field(None, description="Globally-unique line identifier within the text.")
     line: str | None = Field(None, description="Display label, e.g. '1' or 'A.5'.")
     transliteration: str = Field(..., description="The Sumerian transliteration.")
+    display_markdown: str | None = Field(None, description=_ETCSL_DISPLAY_DESC)
 
 
 class ETCSLBlock(_Permissive):
@@ -40,6 +63,7 @@ class ETCSLEnglishHit(_Permissive):
     sumerian_lines: list[ETCSLLine] = Field(
         default_factory=list, description="The Sumerian lines this paragraph covers."
     )
+    display_markdown: str | None = Field(None, description=_ETCSL_DISPLAY_DESC)
 
 
 class ETCSLLemmaHit(_Permissive):
@@ -52,9 +76,10 @@ class ETCSLLemmaHit(_Permissive):
     translation_paragraph: str | None = Field(
         None, description="The English translation paragraph this line belongs to (None if no translation)."
     )
+    display_markdown: str | None = Field(None, description=_ETCSL_DISPLAY_DESC)
 
 
-class ETCSLSearchEnglishResponse(_Permissive):
+class ETCSLSearchEnglishResponse(_ETCSLResponse):
     """Response shape for etcsl_search_english."""
 
     query: str
@@ -65,12 +90,10 @@ class ETCSLSearchEnglishResponse(_Permissive):
         description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
     )
     results: list[ETCSLEnglishHit]
-    attribution: str = Field(
-        ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
-    )
+    attribution: str = Field(..., description=_ETCSL_ATTRIBUTION_DESC)
 
 
-class ETCSLLinesWithLemmaResponse(_Permissive):
+class ETCSLLinesWithLemmaResponse(_ETCSLResponse):
     """Response shape for etcsl_lines_with_lemma."""
 
     lemma: str
@@ -81,12 +104,10 @@ class ETCSLLinesWithLemmaResponse(_Permissive):
         description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
     )
     results: list[ETCSLLemmaHit]
-    attribution: str = Field(
-        ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
-    )
+    attribution: str = Field(..., description=_ETCSL_ATTRIBUTION_DESC)
 
 
-class ETCSLLookupTextResponse(_Permissive):
+class ETCSLLookupTextResponse(_ETCSLResponse):
     """Response shape for etcsl_lookup_text."""
 
     text_id: str
@@ -103,12 +124,10 @@ class ETCSLLookupTextResponse(_Permissive):
     blocks: list[ETCSLBlock] = Field(
         ..., description="Bilingual blocks: each translation paragraph + the Sumerian lines it covers."
     )
-    attribution: str = Field(
-        ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
-    )
+    attribution: str = Field(..., description=_ETCSL_ATTRIBUTION_DESC)
 
 
-class ETCSLSearchSumerianResponse(_Permissive):
+class ETCSLSearchSumerianResponse(_ETCSLResponse):
     """Response shape for etcsl_search_sumerian."""
 
     query: str
@@ -119,6 +138,4 @@ class ETCSLSearchSumerianResponse(_Permissive):
         description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
     )
     results: list[ETCSLLemmaHit]
-    attribution: str = Field(
-        ..., description="REQUIRED to display: ETCSL CC BY 3.0 UK attribution string."
-    )
+    attribution: str = Field(..., description=_ETCSL_ATTRIBUTION_DESC)

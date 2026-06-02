@@ -34,15 +34,12 @@ from ..paths import (
 )
 from ..prompts import load_prompt
 
-CDLI_ATTRIBUTION = (
-    "CDLI: Cuneiform Digital Library Initiative (cdli.earth), hosted by "
-    "Max Planck Institute for the History of Science (Berlin) since 2022. "
-    "Catalogue text is freely reusable per CDLI's terms of use with "
-    "citation to CDLI as the source. Imagery on cdli.earth is NOT openly "
-    "licensed — non-commercial use only, with image copyright resting "
-    "variously with CDLI, the photographer, and the holding museum. "
-    "This server hosts no imagery; all image URLs link directly to "
-    "cdli.earth (see https://cdli.mpiwg-berlin.mpg.de/about for terms)."
+# Canonical attribution string lives in eme_gir.attribution (single source
+# of truth). Re-exported here so existing importers keep working.
+from ..attribution import (  # noqa: E402, F401  (CDLI_* re-exported)
+    CDLI_ATTRIBUTION,
+    CDLI_CITATION_SHORT,
+    license_banner,
 )
 
 
@@ -56,10 +53,22 @@ def _build_cdli_artifact(row: sqlite3.Row) -> CDLIArtifact:
     cdli_id = row["cdli_id"]
     has_photo = bool(row["has_photo"])
     has_lineart = bool(row["has_lineart"])
+    cdli_url = CDLI_ARTIFACT_URL.format(cdli_id=cdli_id)
+    # One-line citation+link block with the CDLI cite fused in, so the
+    # attribution travels inside the artifact reference the agent quotes.
+    _label = row["designation"] or p_id
+    _meta = " · ".join(
+        bit for bit in (row["museum_collection"], row["museum_no"], row["period"]) if bit
+    )
+    display_markdown = (
+        f"[{_label} ({p_id})]({cdli_url})"
+        + (f" — {_meta}" if _meta else "")
+        + f"\n<sub>— {CDLI_CITATION_SHORT}</sub>"
+    )
     return CDLIArtifact(
         p_id=p_id,
         cdli_id=cdli_id,
-        cdli_url=CDLI_ARTIFACT_URL.format(cdli_id=cdli_id),
+        cdli_url=cdli_url,
         photo_url=CDLI_PHOTO_URL.format(p_id=p_id) if has_photo else None,
         photo_thumb_url=CDLI_PHOTO_THUMB_URL.format(p_id=p_id) if has_photo else None,
         lineart_url=CDLI_LINEART_URL.format(p_id=p_id) if has_lineart else None,
@@ -93,6 +102,7 @@ def _build_cdli_artifact(row: sqlite3.Row) -> CDLIArtifact:
         thickness=row["thickness"],
         condition_description=row["condition_description"],
         object_remarks=row["object_remarks"],
+        display_markdown=display_markdown,
     )
 
 
@@ -307,4 +317,4 @@ def start_here() -> str:
     Re-call this tool any time your working context drifts and you
     want to re-anchor on this server's guidance.
     """
-    return load_prompt(CDLI_PROMPT_DOC)
+    return license_banner("eme-gir-cdli", CDLI_ATTRIBUTION) + load_prompt(CDLI_PROMPT_DOC)

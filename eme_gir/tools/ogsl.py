@@ -22,20 +22,16 @@ import zipfile
 from typing import Any
 
 from .. import cuneify as _cuneify
+from ..attribution import (  # noqa: F401  (OGSL_* re-exported)
+    OGSL_ATTRIBUTION,
+    OGSL_CITATION_SHORT,
+    license_banner,
+)
 from ..log import log_call
 from ..models.common import ErrorResponse
 from ..models.ogsl import CuneifyResponse, LookupSignResponse
 from ..paths import OGSL_PROMPT_DOC
 from ..prompts import load_prompt
-
-OGSL_ATTRIBUTION = (
-    "OGSL: Oracc Global Sign List, maintained by Steve Tinney and the "
-    "Oracc team, distributed via oracc.museum.upenn.edu. Data licensed "
-    "under Creative Commons Attribution-ShareAlike 3.0 Unported "
-    "(CC BY-SA 3.0); see oracc.museum.upenn.edu/doc/about/licensing. "
-    "Attribution is required; substantial reuses must propagate the "
-    "ShareAlike license."
-)
 
 
 # OGSL stores sign names and phonetic values with Unicode subscript
@@ -151,11 +147,23 @@ def cuneify(spelling: str) -> CuneifyResponse:
     """
     glyphs = _cuneify.cuneify(spelling)
     has_placeholder = "□" in glyphs
+    placeholder_count = glyphs.count("□")
+    display_markdown = (
+        f"{glyphs} `{spelling}`\n"
+        f"<sub>— cuneiform rendered via {OGSL_CITATION_SHORT}</sub>"
+    )
+    if has_placeholder:
+        display_markdown = (
+            f"{glyphs} `{spelling}` — ⚠️ {placeholder_count} sign(s) "
+            f"unresolved in OGSL (□)\n"
+            f"<sub>— cuneiform rendered via {OGSL_CITATION_SHORT}</sub>"
+        )
     return CuneifyResponse(
         spelling=spelling,
         cuneiform=glyphs,
         complete=not has_placeholder,
-        placeholder_count=glyphs.count("□"),
+        placeholder_count=placeholder_count,
+        display_markdown=display_markdown,
         attribution=OGSL_ATTRIBUTION,
     )
 
@@ -193,4 +201,4 @@ def start_here() -> str:
     Re-call this tool any time your working context drifts and you
     want to re-anchor on this server's guidance.
     """
-    return load_prompt(OGSL_PROMPT_DOC)
+    return license_banner("eme-gir-ogsl", OGSL_ATTRIBUTION) + load_prompt(OGSL_PROMPT_DOC)

@@ -1,9 +1,10 @@
 """Response models for the CDLI (Cuneiform Digital Library Initiative)
 artifact-catalogue MCP tools: lookup_artifact, find_artifacts.
 
-CDLI's catalogue is CC0 — attribution isn't legally required, but the
-attribution string is still passed through for consistency with the
-ETCSL pattern and because crediting CDLI is good practice.
+CDLI catalogue text is freely reusable per CDLI's fair-academic-practice
+terms WITH citation to CDLI as the source; imagery on cdli.earth is NOT
+openly licensed (non-commercial use only). The attribution string is
+passed through on every response.
 
 All image URLs (`photo_url`, `lineart_url`, plus thumbnails) point
 directly to cdli.earth — we host no imagery ourselves. The same fields
@@ -15,7 +16,21 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from ..attribution import CDLI_CITATION_SHORT, CDLI_PRESENTATION
 from .common import _Permissive
+
+_CDLI_ATTRIBUTION_DESC = (
+    "Source attribution for the catalogue data. CDLI catalogue text is "
+    "reusable WITH citation to CDLI; imagery is non-commercial only."
+)
+
+
+class _CDLIResponse(_Permissive):
+    """Base for every CDLI tool response — carries the always-present short
+    citation + point-of-use presentation imperative (defaults baked in)."""
+
+    citation_short: str = Field(default=CDLI_CITATION_SHORT, description="Short CDLI citation; reproduce verbatim in a Sources section.")
+    presentation: str = Field(default=CDLI_PRESENTATION, description="Point-of-use attribution instruction for CDLI catalogue data.")
 
 
 class CDLIArtifact(_Permissive):
@@ -75,22 +90,20 @@ class CDLIArtifact(_Permissive):
     condition_description: str | None = Field(None, description="Physical condition / preservation notes.")
     object_remarks: str | None = Field(None, description="Free-text remarks about the artifact.")
 
-
-class LookupArtifactResponse(_Permissive):
-    """Response shape for lookup_artifact (one P-id → one record)."""
-
-    artifact: CDLIArtifact
-    attribution: str = Field(
-        ...,
-        description=(
-            "Source attribution for the catalogue data. CDLI publishes its "
-            "catalogue as CC0 (no attribution legally required), but it's "
-            "good practice to credit them anyway."
-        ),
+    display_markdown: str | None = Field(
+        None,
+        description="Pre-composed one-line citation+link block with the CDLI cite fused in; relay verbatim to the user.",
     )
 
 
-class FindArtifactsResponse(_Permissive):
+class LookupArtifactResponse(_CDLIResponse):
+    """Response shape for lookup_artifact (one P-id → one record)."""
+
+    artifact: CDLIArtifact
+    attribution: str = Field(..., description=_CDLI_ATTRIBUTION_DESC)
+
+
+class FindArtifactsResponse(_CDLIResponse):
     """Response shape for find_artifacts (filtered list)."""
 
     filter_spec: dict = Field(..., description="Echo of the filter the caller supplied.")
@@ -101,4 +114,4 @@ class FindArtifactsResponse(_Permissive):
         description="Pass this back as `offset` on the next call to walk to the next page. `None` means the result set is exhausted.",
     )
     results: list[CDLIArtifact]
-    attribution: str = Field(..., description="CC0 catalogue attribution for CDLI.")
+    attribution: str = Field(..., description=_CDLI_ATTRIBUTION_DESC)

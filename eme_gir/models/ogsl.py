@@ -13,7 +13,21 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from ..attribution import OGSL_CITATION_SHORT, OGSL_PRESENTATION
 from .common import _Permissive
+
+_OGSL_ATTRIBUTION_DESC = (
+    "REQUIRED to display: Oracc CC BY-SA 3.0 attribution string for OGSL "
+    "data. The ShareAlike clause propagates to substantial reuses."
+)
+
+
+class _OGSLResponse(_Permissive):
+    """Base for every OGSL tool response — carries the always-present short
+    citation + point-of-use presentation imperative (defaults baked in)."""
+
+    citation_short: str = Field(default=OGSL_CITATION_SHORT, description="Short OGSL citation; reproduce verbatim in a Sources section.")
+    presentation: str = Field(default=OGSL_PRESENTATION, description="Point-of-use attribution instruction for OGSL data.")
 
 
 class SignInfo(_Permissive):
@@ -27,21 +41,15 @@ class SignInfo(_Permissive):
     matched_by: str = Field(..., description="What kind of match triggered this hit, e.g. 'sign_name', 'value:lugal'.")
 
 
-class LookupSignResponse(_Permissive):
+class LookupSignResponse(_OGSLResponse):
     """Response shape for lookup_sign."""
 
     query: str
     results: list[SignInfo]
-    attribution: str = Field(
-        ...,
-        description=(
-            "REQUIRED to display: Oracc CC BY-SA 3.0 attribution string for OGSL "
-            "data. The ShareAlike clause propagates to substantial reuses."
-        ),
-    )
+    attribution: str = Field(..., description=_OGSL_ATTRIBUTION_DESC)
 
 
-class CuneifyResponse(_Permissive):
+class CuneifyResponse(_OGSLResponse):
     """Response shape for cuneify."""
 
     spelling: str
@@ -53,10 +61,8 @@ class CuneifyResponse(_Permissive):
     placeholder_count: int = Field(
         ..., description="Count of '□' (PLACEHOLDER) characters in the output."
     )
-    attribution: str = Field(
-        ...,
-        description=(
-            "REQUIRED to display: Oracc CC BY-SA 3.0 attribution string for OGSL "
-            "data. The ShareAlike clause propagates to substantial reuses."
-        ),
+    display_markdown: str | None = Field(
+        None,
+        description="Pre-composed glyphs + citation block (with '□' disclosure when incomplete); relay verbatim to the user.",
     )
+    attribution: str = Field(..., description=_OGSL_ATTRIBUTION_DESC)
