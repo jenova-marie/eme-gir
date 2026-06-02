@@ -40,7 +40,7 @@ Imported by every entry point + build script. Internal imports use relative form
 - `eme_gir/cdli.py` — shared CDLI infrastructure: `connect()` opens `data/cdli.sqlite`; `enrichment(p_id)` returns a dict of CDLI URL fields + museum metadata for one P-id (used by ePSD2's `see_examples` and `find_verb_form` to splat onto every cited line). The MCP tool implementations live in `eme_gir/tools/cdli.py`.
 - `eme_gir/sumerian_morphology.py` — suffix peeler + verbal-prefix detector. Shared by `parse_phrase`, `translate_sumerian`, and `build_inflected_collocations.py`.
 - `eme_gir/auth0_verifier.py` — RS256 JWT verification + RFC 9728 protected-resource metadata for the optional `EME_GIR_REQUIRE_AUTH=1` HTTP-transport auth mode.
-- `eme_gir/umami_analytics.py` — fire-and-forget tool-call telemetry. Opt-in via `EME_GIR_UMAMI_URL` + `EME_GIR_UMAMI_WEBSITE_ID`.
+- `eme_gir/umami_analytics.py` — fire-and-forget tool-call telemetry. Opt-in via `EME_GIR_UMAMI_URL` + `EME_GIR_UMAMI_MCP_ID` (legacy `EME_GIR_UMAMI_WEBSITE_ID` is honored as a fallback with a deprecation warning). See "Umami analytics — two-property split" below.
 - `eme_gir/models/` — Pydantic response models per-domain. Each submodule (`common`, `epsd2`, `etcsl`, `cdli`, `ogsl`, `translator`) holds the response shapes for that domain's tools. `models/__init__.py` re-exports everything for `from eme_gir.models import X` backwards compatibility.
 - `eme_gir/tools/` — tool function implementations per-domain. Each tool is a plain Python function decorated with `@log_call`; the per-server entry point registers it with `mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(fn)`. Submodules: `epsd2.py` (11 tools), `etcsl.py` (4 tools + `ETCSL_ATTRIBUTION`), `cdli.py` (2 tools + `_build_cdli_artifact` + `CDLI_ATTRIBUTION`), `signs.py` (2 tools), `translator.py` (grammar loaders + the bootstrap tool/resource body functions).
 
@@ -447,6 +447,31 @@ Operator opt-in:
 - `EME_GIR_TRUST_PROXY` — truthy → run uvicorn ourselves (via `mcp.streamable_http_app()`) with `proxy_headers=True, forwarded_allow_ips="*"` so the upstream honors `X-Forwarded-Proto` / `X-Forwarded-For` regardless of source IP. Default off; flip to `1` in the host `.env` for Caddy-fronted production deploys. Only safe when the reverse proxy itself sets the `X-Forwarded-*` headers (Caddy does so by default — see `Caddyfile`'s `reverse_proxy` blocks).
 
 When OFF (default), the HTTP launch path is the unchanged `mcp.run(transport="streamable-http")` call — FastMCP's hardcoded uvicorn config applies, so behavior is bit-identical to pre-fix. When ON, `_run_uvicorn_with_proxy_headers()` mirrors what `FastMCP.run_streamable_http_async()` does (same host/port/log_level pulled from `mcp.settings`) but adds the two proxy-trust knobs uvicorn won't expose otherwise. Startup banner reports `trust_proxy=ENABLED (forwarded_allow_ips=*)` or `trust_proxy=disabled` so the operative state is visible. Verify by curling `/mcp/` with `X-Forwarded-Proto: https` and a public `Host:` header — the 307's `Location:` should preserve `https://`.
+
+### Umami analytics — two-property split
+
+The project tracks two distinct surfaces in Umami: **MCP server tool calls** (server-side, Python) and **website clicks/pageviews** (browser-side, embedded in templates). These are SEPARATE Umami properties with SEPARATE website-ID UUIDs so the dashboards stay clean — agent telemetry on one chart, visitor behavior on another.
+
+Env-var contract:
+
+| Var | Purpose | Where it's read |
+|---|---|---|
+| `EME_GIR_UMAMI_URL` | base URL of the self-hosted Umami instance, e.g. `https://umami.recoverysky.app` | both surfaces (shared) |
+| `EME_GIR_UMAMI_MCP_ID` | UUID of the MCP property | `umami_analytics.init_from_env()` in MCP servers |
+| `EME_GIR_UMAMI_WEBSITE_ID` | UUID of the website property | `app.py` + `www_app.py` → injected into templates as `UMAMI_WEBSITE_ID` Jinja var |
+| `EME_GIR_UMAMI_API_KEY` | optional API key (most self-hosted Umami instances don't need one) | MCP-side only (browser-side embeds use the public `/script.js` endpoint) |
+| `EME_GIR_UMAMI_HOSTNAME` | per-service identifier (`eme-gir-epsd2`, `eme-gir-www`, etc.) reported with each MCP event | overridden per-service in `docker-compose.yml` |
+
+Server-side (MCP): `eme_gir/log.py:log_call` decorates every tool function and emits one Umami event per call with `name=tool_function_name, data={duration_ms, outcome, arg_keys, result_count, error_kind?}`. **The privacy boundary is deliberate**: tool names, arg-key names, latency, and result counts go to Umami; tool ARGUMENT VALUES, query strings, result content, IPs, session IDs, and Auth0 client identifiers do NOT. A user's `translate_english("homophobia")` query must NEVER show up in the analytics dashboard — only the fact that `translate_english` was called once with one arg key.
+
+Browser-side (Web/WWW): `app.py:create_app()` and `www_app.py:create_app()` read `EME_GIR_UMAMI_URL` + `EME_GIR_UMAMI_WEBSITE_ID` and expose them as Jinja template variables. `templates/base.html` (ePSD2 verification browser) and `templates/www.html` (landing page) each gate a `<script defer src="$URL/script.js" data-website-id="$WEBSITE_ID">` tag on both variables being non-empty. Click events ride along via `data-umami-event="..."` and `data-umami-event-*="..."` attributes on `<a>` and `<button>` elements:
+
+- `templates/base.html`: masthead links, letter sidebar (`data-umami-event="letter-nav" data-umami-event-letter="A"`), search submit, attribution-banner links, footer links.
+- `templates/www.html`: service cards, MCP endpoint URL clicks (`data-umami-event="endpoint-url-click" data-umami-event-server="epsd2"`), copy-URL button clicks (same with `endpoint-url-copy`), external academic links (Oracc/ETCSL/CDLI), license-row links, footer links.
+
+Backwards-compat: if `EME_GIR_UMAMI_MCP_ID` is unset but `EME_GIR_UMAMI_WEBSITE_ID` is set, the MCP-side `init_from_env()` falls back to the website ID and logs a deprecation warning. This keeps single-property pre-split deployments working until the operator migrates.
+
+Disabling: leave any of `EME_GIR_UMAMI_URL`, `EME_GIR_UMAMI_MCP_ID`, or `EME_GIR_UMAMI_WEBSITE_ID` unset and that surface stays silent — MCP server logs "analytics=disabled"; the browser templates emit no `<script>` tag.
 
 ### Containerization (`Dockerfile` + `docker-compose.yml` + `init.sh`)
 

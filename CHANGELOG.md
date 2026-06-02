@@ -17,6 +17,76 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Umami analytics — split into two properties.** Server-side
+  per-tool-call MCP events now go to a dedicated MCP property
+  (`EME_GIR_UMAMI_MCP_ID`); browser-side click + pageview events from
+  the Flask web (epsd2) and www landing apps go to the website
+  property (`EME_GIR_UMAMI_WEBSITE_ID`). The legacy single-property
+  mode is still honored — if `MCP_ID` is unset, the MCP client falls
+  back to `WEBSITE_ID` with a one-time deprecation warning, so
+  pre-split deployments keep working. See the "Umami analytics —
+  two-property split" section in `CLAUDE.md` for the full env-var
+  contract.
+- **MCP startup banner** now reads
+  `analytics=disabled (set EME_GIR_UMAMI_URL + EME_GIR_UMAMI_MCP_ID
+  to enable)` to point operators at the new env var.
+
+### Added
+
+- **`EME_GIR_UMAMI_MCP_ID` env var** — dedicated MCP property UUID,
+  separate from the website property. Plumbed through the
+  `x-mcp-environment` anchor in `docker-compose.yml` so every MCP
+  service receives it.
+- **Browser-side analytics on the ePSD2 verification web app**
+  (`templates/base.html`) — `<script defer src=".../script.js"
+  data-website-id="..." data-cache="true">` embed is rendered only
+  when both `EME_GIR_UMAMI_URL` and `EME_GIR_UMAMI_WEBSITE_ID` are
+  set in the Flask app environment. 12 distinct click events
+  instrumented: `masthead-logo`, `masthead-title`, `masthead-epsd2`,
+  `letter-nav` (with `letter` data attribute), `search-submit`,
+  `attribution-oracc-epsd2`, `attribution-oracc`,
+  `attribution-cc-license`, `attribution-licensing-terms`,
+  `attribution-oracc-canonical`, `footer-cc-license`,
+  `footer-oracc-source`.
+- **Browser-side analytics on the eme-gir.org landing page**
+  (`templates/www.html`) — same gated embed; 6 distinct event types
+  across 20+ elements: `service-card` (with `target` data attribute
+  per card), `endpoint-url-click` and `endpoint-url-copy` (each with
+  `server` data attribute per MCP endpoint), `external-link` (Oracc,
+  ETCSL, CDLI, modelcontextprotocol.io, LICENSE-DATA),
+  `license-link` (per source in the licensing table), `footer-link`.
+- **`EME_GIR_UMAMI_URL` + `EME_GIR_UMAMI_WEBSITE_ID` now plumbed to
+  the `web` and `www` services** in `docker-compose.yml` so the
+  Flask apps can render the browser-side `<script>` tag in
+  production. `app.py:create_app()` and `www_app.py:create_app()`
+  read both env vars and expose them as `UMAMI_URL` /
+  `UMAMI_WEBSITE_ID` Jinja context.
+
+### Privacy
+
+- **Server-side privacy boundary preserved.** MCP events continue to
+  carry only tool names, arg-key names, latency, success/error
+  counts, and result-item counts — never tool argument values, query
+  strings, result content, IPs, session IDs, or Auth0 client
+  identifiers. The boundary lives in `eme_gir/umami_analytics.py`
+  and is reiterated in the new CLAUDE.md section.
+- **Browser-side opt-out is fully transparent.** When any of
+  `EME_GIR_UMAMI_URL`, `EME_GIR_UMAMI_WEBSITE_ID`, or
+  `EME_GIR_UMAMI_MCP_ID` is unset, the relevant surface stays
+  silent: MCP server logs `analytics=disabled`; the browser
+  templates emit no `<script>` tag at all. `data-umami-event`
+  attributes remain as harmless no-ops in the HTML.
+
+### Documentation
+
+- New `CLAUDE.md` section **Umami analytics — two-property split**
+  covers the env-var contract, the privacy boundary, the
+  backwards-compat fallback path, and the disable behavior. Sized
+  to fit between Reverse-proxy headers and Containerization in the
+  ops-concerns block.
+
 ## [0.1.0] — 2026-06-01
 
 Initial tagged release. Establishes the project's public surface area —
