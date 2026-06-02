@@ -17,8 +17,44 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Compacted `CLAUDE.md` from 605 lines to ~210 lines** by extracting
+  the deep technical reference material to a new
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). CLAUDE.md now stays
+  focused on what every agent needs every session: the four-layer repo
+  overview, the daily-use commands table, the versioning + CHANGELOG
+  upkeep policy (the most important rule), the Claude Code stdio
+  wiring (including the critical "subprocess caches old code on import"
+  gotcha), the TLS chain workaround, and the data-license summary.
+  Sections moved verbatim to `docs/ARCHITECTURE.md`: reverse-
+  engineered Oracc URL surface, Oracc JSON Open Data format parser
+  reference, `glossary.sqlite` schema, local browser internals, the
+  full MCP servers tool table, ETCSL build details, transport modes
+  (stdio vs streamable-HTTP), OAuth 2.1 / Auth0 authorization,
+  transport security / DNS-rebinding allowlist, reverse-proxy headers
+  / `X-Forwarded-Proto`, Umami analytics two-property split,
+  containerization (Dockerfile + compose + init.sh), logging,
+  cuneiform rendering, attestation rendering, and corpus project-name
+  conventions. CLAUDE.md gains a "Where to find deeper material"
+  pointer block at the top listing `docs/ARCHITECTURE.md`,
+  `LICENSE-DATA.md`, `CHANGELOG.md`, and `prompt/*_PROMPT.md`.
+  Trade-off: agents now need one extra hop (open
+  `docs/ARCHITECTURE.md`) when they want deep technical detail, but
+  the routine read of CLAUDE.md at session start drops from ~28K
+  tokens to ~9K tokens of memory budget.
+
 ### Changed
 
+- **Strengthened the CHANGELOG upkeep rule in `CLAUDE.md`** to
+  cover EVERY source modification, not just "user-visible" changes.
+  Previously the rule excluded pure refactors, comment polish, CI
+  tooling, and test additions; now those each get their own
+  appropriate subsection (`### Changed`, `### Documentation`,
+  `### Fixed`). Closing line: "When in doubt, log it. The cost of
+  an extra bullet is trivial; the cost of a missing one is
+  invisible drift that bites at release time when nobody can
+  reconstruct what changed."
 - **Unified both bootstrap prompts on the landing page**
   (`templates/www.html`) to the glob-style
   `"use the start_here tool of all eme-gir-* mcp servers"` —
