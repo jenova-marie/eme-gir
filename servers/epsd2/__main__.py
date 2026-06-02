@@ -21,6 +21,7 @@ Run:
 
 from __future__ import annotations
 
+from eme_gir.attribution import EPSD2_ATTRIBUTION, make_license_body
 from eme_gir.log import init_logging
 from eme_gir.paths import GLOSSARY_DB, TEXT_INDEX_DB
 from eme_gir.server import READ_ONLY_ANNOTATIONS, make_server, run_server
@@ -47,7 +48,11 @@ mcp = make_server(
         "Local Eme-gir (electronic Pennsylvania Sumerian Dictionary) "
         "tools for English ↔ Sumerian translation grounded in attested "
         "usage. 15,940 headwords, 35.5 M attestations, 178K phrasal "
-        "collocations, 138K corpusjson texts. All data CC0; no network.\n\n"
+        "collocations, 138K corpusjson texts. ePSD2 data is licensed "
+        "CC BY-SA 3.0 (attribution required; the ShareAlike clause "
+        "propagates to substantial reuses) — reproduce each result's "
+        "`citation_short` in your reply. Note: see_examples / find_verb_form "
+        "splat in CDLI catalogue fields (citation-requested). No network.\n\n"
         "ENGLISH → SUMERIAN:\n"
         "  • translate_english(query) → rank Sumerian candidates with "
         "sense_count + sense_pct so 'the word for X' beats 'X as a "
@@ -70,9 +75,22 @@ mcp = make_server(
         "  • analyze_form(spelling) → decompose a single attested word.\n\n"
         "For artifact provenience and cuneiform rendering use the "
         "companion CDLI and Signs servers. For literary corpus (with "
-        "English translations) use the ETCSL server."
+        "English translations) use the ETCSL server.\n\n"
+        "By calling these tools you accept the source's terms of use."
     ),
 )
+
+mcp.resource(
+    "license://oracc-epsd2",
+    name="ePSD2 — license & attribution",
+    title="ePSD2 / Oracc data license (CC BY-SA 3.0)",
+    description=(
+        "Full attribution + license statement for the ePSD2 / Oracc data "
+        "served by this server. CC BY-SA 3.0 Unported: attribution required; "
+        "ShareAlike propagates to substantial reuses."
+    ),
+    mime_type="text/markdown",
+)(make_license_body(EPSD2_ATTRIBUTION))
 
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(translate_english)

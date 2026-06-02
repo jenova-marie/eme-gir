@@ -420,8 +420,9 @@ lookup_sign = mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(_lookup_sign_impl)
 # -----------------------------------------------------------------------------
 #
 # ETCSL tool implementations now live in `eme_gir.tools.etcsl`. The
-# ETCSL_ATTRIBUTION constant (REQUIRED to display under CC BY 3.0 UK)
-# moved with them. We register the four tools with this server's
+# ETCSL_ATTRIBUTION constant (REQUIRED to display — ETCSL is NOT under any
+# Creative Commons license; traditional academic copyright with a required
+# citation) moved with them. We register the four tools with this server's
 # FastMCP instance below.
 
 from eme_gir.tools.etcsl import etcsl_lines_with_lemma as _etcsl_lines_with_lemma_impl

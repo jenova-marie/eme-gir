@@ -11,12 +11,15 @@ Run:
     python -m servers.etcsl                          # stdio (Claude Code)
     python -m servers.etcsl --transport http         # HTTP on :5053
 
-ETCSL is CC BY 3.0 UK — every tool result carries an `attribution`
-field with the canonical citation string. Pass it through to the user.
+ETCSL is NOT under any Creative Commons license — © Black, Cunningham,
+Robson, Zólyomi 1998-2006, traditional academic copyright with a required
+citation. Every tool result carries an `attribution` field with the
+canonical citation string. Pass it through to the user verbatim.
 """
 
 from __future__ import annotations
 
+from eme_gir.attribution import ETCSL_ATTRIBUTION, make_license_body
 from eme_gir.log import init_logging
 from eme_gir.paths import ETCSL_DB
 from eme_gir.server import READ_ONLY_ANNOTATIONS, make_server, run_server
@@ -49,11 +52,27 @@ mcp = make_server(
         "(Gilgameš/Underworld), c.2.1.1 (Sumerian King List).\n"
         "  • etcsl_search_sumerian(query, limit) — FTS5 over Sumerian "
         "transliterations.\n\n"
-        "ETCSL is licensed CC BY 3.0 UK — attribution is LEGALLY REQUIRED. "
-        "Every response carries the canonical citation string in its "
-        "`attribution` field; pass it through verbatim."
+        "ETCSL is NOT released under any Creative Commons license — "
+        "© Black, Cunningham, Robson, Zólyomi 1998-2006, traditional "
+        "academic copyright with a required citation (a condition of use, "
+        "not a courtesy). Every response carries the canonical citation "
+        "string in its `attribution` field and a short `citation_short`; "
+        "reproduce them verbatim whenever you quote or even cite a text_id.\n\n"
+        "By calling these tools you accept the source's terms of use."
     ),
 )
+
+mcp.resource(
+    "license://etcsl",
+    name="ETCSL — license & attribution",
+    title="ETCSL data license (academic copyright; NOT Creative Commons)",
+    description=(
+        "Full attribution + license statement for the ETCSL literary corpus "
+        "served by this server. NOT Creative Commons; © The Authors, "
+        "Oxford 1998-2006; citation is a condition of use."
+    ),
+    mime_type="text/markdown",
+)(make_license_body(ETCSL_ATTRIBUTION))
 
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(etcsl_search_english)

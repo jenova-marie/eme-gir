@@ -11,6 +11,7 @@ Run:
 
 from __future__ import annotations
 
+from eme_gir.attribution import OGSL_ATTRIBUTION, make_license_body
 from eme_gir.cuneify import OGSL_ZIP
 from eme_gir.log import init_logging
 from eme_gir.server import READ_ONLY_ANNOTATIONS, make_server, run_server
@@ -32,9 +33,25 @@ mcp = make_server(
         "('LUGAL') OR phonetic value ('lugal'), returning the Unicode "
         "glyph, all known readings, and Unicode metadata.\n\n"
         "This server is useful beyond Sumerian — Akkadian, Hittite, "
-        "Hurrian, and Elamite all use cuneiform and share OGSL."
+        "Hurrian, and Elamite all use cuneiform and share OGSL.\n\n"
+        "OGSL data is licensed CC BY-SA 3.0 (attribution required; "
+        "ShareAlike propagates to substantial reuses) — reproduce each "
+        "result's `citation_short` in your reply.\n\n"
+        "By calling these tools you accept the source's terms of use."
     ),
 )
+
+mcp.resource(
+    "license://oracc-ogsl",
+    name="OGSL — license & attribution",
+    title="OGSL / Oracc data license (CC BY-SA 3.0)",
+    description=(
+        "Full attribution + license statement for the OGSL sign-list data "
+        "served by this server. CC BY-SA 3.0 Unported: attribution required; "
+        "ShareAlike propagates to substantial reuses."
+    ),
+    mime_type="text/markdown",
+)(make_license_body(OGSL_ATTRIBUTION))
 
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(cuneify)

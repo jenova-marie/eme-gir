@@ -11,6 +11,7 @@ Run:
 
 from __future__ import annotations
 
+from eme_gir.attribution import CDLI_ATTRIBUTION, make_license_body
 from eme_gir.log import init_logging
 from eme_gir.paths import CDLI_DB
 from eme_gir.server import READ_ONLY_ANNOTATIONS, make_server, run_server
@@ -31,10 +32,25 @@ mcp = make_server(
         "genre=..., language=..., limit=20) — filtered search; each filter "
         "is matched as a case-insensitive SUBSTRING.\n\n"
         "Image URLs (`photo_url`, `lineart_url`, plus thumbnails) point "
-        "directly to cdli.earth — we host no imagery. CDLI catalogue is "
-        "CC0; attribution is courteous but not legally required."
+        "directly to cdli.earth — we host no imagery. CDLI catalogue text "
+        "is reusable per CDLI's fair-academic-practice terms WITH citation "
+        "to CDLI (reproduce each result's `citation_short`); imagery on "
+        "cdli.earth is non-commercial use only.\n\n"
+        "By calling these tools you accept the source's terms of use."
     ),
 )
+
+mcp.resource(
+    "license://cdli",
+    name="CDLI — terms of use & attribution",
+    title="CDLI catalogue terms (citation requested; imagery non-commercial)",
+    description=(
+        "Full attribution + terms-of-use statement for the CDLI artifact "
+        "catalogue served by this server. Catalogue text reusable with "
+        "citation to CDLI; imagery on cdli.earth is non-commercial only."
+    ),
+    mime_type="text/markdown",
+)(make_license_body(CDLI_ATTRIBUTION))
 
 # Register the two CDLI tools + the server's start_here bootstrap.
 mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(start_here)
