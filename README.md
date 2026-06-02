@@ -1,4 +1,4 @@
-# Eme-gir 𒅴𒂠
+# eme-gir₁₅ 𒅴𒂠
 
 **A Sumerian-language MCP tool server for LLM agents** — five Model
 Context Protocol servers exposing the **electronic Pennsylvania
