@@ -17,6 +17,27 @@ release, and tag the commit with `git tag -a v$VERSION -m "..."`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Unified both bootstrap prompts on the landing page**
+  (`templates/www.html`) to the glob-style
+  `"use the start_here tool of all eme-gir-* mcp servers"` —
+  replacing Path A's explicit four-server enumeration
+  (`eme-gir-epsd2, eme-gir-etcsl, eme-gir-cdli, eme-gir-ogsl`) AND
+  Path B's Ummia-only call (`eme-gir-ummia`). Shorter, easier to
+  remember, and resilient to future server additions: any new
+  `eme-gir-*` server gets bootstrapped automatically without
+  having to update the landing page. The two paths still
+  differentiate at the framing level — Path A's "Research &
+  translation" eyebrow and follow-up examples orient the agent
+  toward research workflows; Path B's "Guided instruction" eyebrow
+  and lesson-curriculum follow-ups orient toward the Ummia teaching
+  persona — but the bootstrap call itself is now identical, with
+  the user's first follow-up query determining which workflow
+  takes over. The `data-umami-event-path` attribute on each copy
+  button still distinguishes `"research"` vs `"teaching"` for
+  analytics, so we can still see which CTA visitors click.
+
 ## [0.2.1] — 2026-06-02
 
 ### Added
